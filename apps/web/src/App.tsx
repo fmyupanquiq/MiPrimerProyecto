@@ -8,6 +8,7 @@ import { ForgotPasswordPage } from './pages/ForgotPasswordPage.js';
 import { LoginPage } from './pages/LoginPage.js';
 import { ProjectsPage } from './pages/ProjectsPage.js';
 import { DashboardPage } from './pages/project/DashboardPage.js';
+import { MembersPage } from './pages/project/MembersPage.js';
 import { ProjectLayout } from './pages/project/ProjectLayout.js';
 import { SettingsPage } from './pages/project/SettingsPage.js';
 import { ResetPasswordPage } from './pages/ResetPasswordPage.js';
@@ -44,6 +45,7 @@ export function App() {
           <Route path="/projects/trash" element={<TrashPage />} />
           <Route path="/projects/:projectId" element={<ProjectLayout />}>
             <Route index element={<DashboardPage />} />
+            <Route path="members" element={<MembersPage />} />
             <Route path="settings" element={<SettingsPage />} />
           </Route>
         </Route>
