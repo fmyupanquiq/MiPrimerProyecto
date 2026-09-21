@@ -2,7 +2,7 @@ import type { Server } from 'node:http';
 import type { Type } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Test, type TestingModuleBuilder } from '@nestjs/testing';
-import { useSpanishValidationMessages } from '@letfer/shared';
+import { configureSpanishValidationMessages } from '@letfer/shared';
 import request from 'supertest';
 import { vi } from 'vitest';
 import { AppModule } from '../../src/app.module.js';
@@ -44,7 +44,7 @@ export interface CreateTestAppOptions {
 /** Aplicación completa (AppModule) con PostgreSQL real y reloj falso, lista para supertest. */
 export async function createTestApp(options: CreateTestAppOptions = {}): Promise<TestApp> {
   for (const [key, value] of Object.entries(options.env ?? {})) vi.stubEnv(key, value);
-  useSpanishValidationMessages();
+  configureSpanishValidationMessages();
 
   const clock = new FakeClock('2026-06-01T12:00:00.000Z');
   const mail = new InMemoryMailService();

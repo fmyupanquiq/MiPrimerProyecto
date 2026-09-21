@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Module, Post } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Test } from '@nestjs/testing';
-import { useSpanishValidationMessages } from '@letfer/shared';
+import { configureSpanishValidationMessages } from '@letfer/shared';
 import request from 'supertest';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
@@ -55,7 +55,7 @@ describe('base HTTP y seguridad (e2e)', () => {
 
   async function start(env: Record<string, string> = {}) {
     for (const [key, value] of Object.entries(env)) vi.stubEnv(key, value);
-    useSpanishValidationMessages();
+    configureSpanishValidationMessages();
     const moduleRef = await Test.createTestingModule({ imports: [ProbeModule] }).compile();
     app = moduleRef.createNestApplication<NestExpressApplication>();
     configureApp(app);

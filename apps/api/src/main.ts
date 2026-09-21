@@ -1,13 +1,13 @@
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
-import { useSpanishValidationMessages } from '@letfer/shared';
+import { configureSpanishValidationMessages } from '@letfer/shared';
 import { AppModule } from './app.module.js';
 import { configureApp } from './app.setup.js';
 import { loadConfig, loadEnvFiles } from './config/app-config.js';
 
 loadEnvFiles();
 const config = loadConfig();
-useSpanishValidationMessages();
+configureSpanishValidationMessages();
 
 const app = await NestFactory.create<NestExpressApplication>(AppModule);
 configureApp(app);

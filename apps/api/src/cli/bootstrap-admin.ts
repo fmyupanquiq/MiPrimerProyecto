@@ -7,14 +7,14 @@
 //
 // Es idempotente: si ya existe un Administrador Global no cambia nada.
 import { NestFactory } from '@nestjs/core';
-import { useSpanishValidationMessages } from '@letfer/shared';
+import { configureSpanishValidationMessages } from '@letfer/shared';
 import { AppModule } from '../app.module.js';
 import { BootstrapAdminError, BootstrapAdminService } from '../auth/bootstrap-admin.service.js';
 import { loadEnvFiles } from '../config/app-config.js';
 import { readBootstrapInput } from './bootstrap-input.js';
 
 loadEnvFiles();
-useSpanishValidationMessages();
+configureSpanishValidationMessages();
 
 const credentials = readBootstrapInput(process.env);
 if (!credentials.ok) {

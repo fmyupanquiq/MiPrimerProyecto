@@ -1,7 +1,11 @@
+import { configureSpanishValidationMessages } from '@letfer/shared';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { BrowserRouter } from 'react-router';
 import { App } from './App.js';
 import './index.css';
+
+configureSpanishValidationMessages();
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -10,6 +14,8 @@ if (!rootElement) {
 
 createRoot(rootElement).render(
   <StrictMode>
-    <App />
+    <BrowserRouter>
+      <App />
+    </BrowserRouter>
   </StrictMode>,
 );

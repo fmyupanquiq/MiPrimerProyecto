@@ -9,6 +9,6 @@ export * from './user.js';
 export const SYSTEM_NAME = 'LetFer';
 
 /** Mensajes de validación de zod en español. Se llama una vez al arrancar la API y la web. */
-export function useSpanishValidationMessages(): void {
+export function configureSpanishValidationMessages(): void {
   z.config(z.locales.es());
 }
