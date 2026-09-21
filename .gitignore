@@ -1,0 +1,31 @@
+# Dependencias
+node_modules/
+
+# Builds y artefactos
+dist/
+build/
+coverage/
+*.tsbuildinfo
+.vite/
+
+# Variables de entorno y secretos (solo se versiona .env.example)
+.env
+.env.*
+!.env.example
+
+# Datos locales de PostgreSQL de desarrollo (ver docs/decisiones)
+.data/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editores y sistema operativo
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+
+# Estado local de Claude Code
+.claude/settings.local.json
