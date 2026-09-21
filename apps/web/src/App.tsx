@@ -5,6 +5,7 @@ import { loginPathFor } from './auth/redirect.js';
 import { ReauthProvider } from './auth/ReauthContext.js';
 import { AppShell } from './pages/AppShell.js';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage.js';
+import { InvitePage } from './pages/InvitePage.js';
 import { LoginPage } from './pages/LoginPage.js';
 import { ProjectsPage } from './pages/ProjectsPage.js';
 import { DashboardPage } from './pages/project/DashboardPage.js';
@@ -32,6 +33,8 @@ export function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
+        {/* La invitación es pública: quien la recibe puede no tener cuenta todavía. */}
+        <Route path="/invite" element={<InvitePage />} />
         <Route
           element={
             <RequireAuth>

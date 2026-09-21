@@ -3,6 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Los enlaces de invitación y de recuperación llevan un token en la URL: nunca deben
+         viajar en la cabecera Referer hacia otros sitios. -->
+    <meta name="referrer" content="no-referrer" />
     <title>LetFer</title>
   </head>
   <body>
