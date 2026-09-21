@@ -7,6 +7,9 @@ import { AppShell } from './pages/AppShell.js';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage.js';
 import { LoginPage } from './pages/LoginPage.js';
 import { ProjectsPage } from './pages/ProjectsPage.js';
+import { DashboardPage } from './pages/project/DashboardPage.js';
+import { ProjectLayout } from './pages/project/ProjectLayout.js';
+import { SettingsPage } from './pages/project/SettingsPage.js';
 import { ResetPasswordPage } from './pages/ResetPasswordPage.js';
 import { TrashPage } from './pages/TrashPage.js';
 
@@ -39,6 +42,10 @@ export function App() {
         >
           <Route path="/" element={<ProjectsPage />} />
           <Route path="/projects/trash" element={<TrashPage />} />
+          <Route path="/projects/:projectId" element={<ProjectLayout />}>
+            <Route index element={<DashboardPage />} />
+            <Route path="settings" element={<SettingsPage />} />
+          </Route>
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

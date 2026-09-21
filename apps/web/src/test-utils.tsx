@@ -14,7 +14,7 @@ export interface RecordedCall {
   body: unknown;
 }
 
-type Handler = StubResponse | ((call: RecordedCall) => StubResponse);
+export type Handler = StubResponse | ((call: RecordedCall) => StubResponse);
 
 /**
  * Sustituye `fetch` por un simulador de la API. Las rutas se indican como `"MÉTODO /ruta"`
