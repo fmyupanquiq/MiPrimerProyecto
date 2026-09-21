@@ -1,12 +1,26 @@
-import { Body, Controller, Get, Header, HttpCode, Inject, Post, Res } from '@nestjs/common';
-import { loginSchema, type AuthState, type LoginInput } from '@letfer/shared';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Header,
+  HttpCode,
+  Inject,
+  Param,
+  Post,
+  Res,
+} from '@nestjs/common';
+import { loginSchema, type AuthState, type LoginInput, type SessionInfo } from '@letfer/shared';
 import type { Response } from 'express';
+import { z } from 'zod';
 import { AuthRateLimit } from '../common/rate-limit.js';
 import { APP_CONFIG, type AppConfig } from '../config/app-config.js';
 import { CurrentAuth, Public, type AuthContext } from './auth-context.js';
 import { toAuthState } from './auth-state.js';
 import { AuthService } from './auth.service.js';
 import { clearSessionCookie, writeSessionCookie } from './session-cookie.js';
+
+const sessionIdSchema = z.uuid();
 
 @Controller('auth')
 export class AuthController {
@@ -45,5 +59,31 @@ export class AuthController {
   @Header('Cache-Control', 'no-store')
   me(@CurrentAuth() auth: AuthContext): AuthState {
     return toAuthState(auth.user, auth.session);
+  }
+
+  /** Sesiones abiertas del usuario (§3). */
+  @Get('sessions')
+  @Header('Cache-Control', 'no-store')
+  async sessions(@CurrentAuth() auth: AuthContext): Promise<{ sessions: SessionInfo[] }> {
+    return { sessions: await this.authService.listSessions(auth) };
+  }
+
+  /** Revoca una sesión propia. Si es la actual equivale a cerrar sesión. */
+  @Delete('sessions/:id')
+  @HttpCode(204)
+  async revokeSession(
+    @CurrentAuth() auth: AuthContext,
+    @Param('id', { schema: sessionIdSchema }) sessionId: string,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<void> {
+    await this.authService.revokeSession(auth, sessionId);
+    if (sessionId === auth.session.id) clearSessionCookie(response, this.config);
+  }
+
+  /** Cierra todas las sesiones salvo la actual. */
+  @Post('sessions/revoke-others')
+  @HttpCode(200)
+  async revokeOtherSessions(@CurrentAuth() auth: AuthContext): Promise<{ revoked: number }> {
+    return { revoked: await this.authService.revokeOtherSessions(auth) };
   }
 }

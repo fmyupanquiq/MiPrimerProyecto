@@ -23,6 +23,8 @@ export interface TestApp {
   hasher: PasswordHasher;
   /** Crea un usuario con contraseña real (hash argon2id). */
   createUser: (overrides?: Partial<UserRow> & { password?: string }) => Promise<UserRow>;
+  /** Vacía la base de datos y reinicia el reloj (para `beforeEach`). */
+  reset: () => Promise<void>;
   close: () => Promise<void>;
 }
 
@@ -61,6 +63,10 @@ export async function createTestApp(options: CreateTestAppOptions = {}): Promise
     hasher,
     createUser: async ({ password = TEST_PASSWORD, ...overrides } = {}) =>
       insertUser(t.db, { passwordHash: await hasher.hash(password), ...overrides }),
+    reset: async () => {
+      await truncateAll(t.pool);
+      clock.set('2026-06-01T12:00:00.000Z');
+    },
     close: async () => {
       await app.close();
       await t.close();

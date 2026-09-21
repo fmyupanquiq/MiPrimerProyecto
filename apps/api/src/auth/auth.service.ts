@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { ErrorCode, normalizeEmail } from '@letfer/shared';
+import { ErrorCode, normalizeEmail, type SessionInfo } from '@letfer/shared';
 import { eq } from 'drizzle-orm';
 import { AuditService } from '../audit/audit.service.js';
 import { AppError } from '../common/app-error.js';
@@ -11,6 +11,7 @@ import { users, type SessionRow, type UserRow } from '../database/schema/index.j
 import { SessionService } from '../sessions/session.service.js';
 import { UsersService } from '../users/users.service.js';
 import type { AuthContext } from './auth-context.js';
+import { toSessionInfo } from './auth-state.js';
 import { LoginAttemptsService } from './login-attempts.service.js';
 import { PasswordHasher } from './password-hasher.js';
 
@@ -138,6 +139,55 @@ export class AuthService {
         entityId: auth.user.id,
         actorUserId: auth.user.id,
       });
+    });
+  }
+
+  /** Sesiones abiertas del usuario (§3), con la actual marcada. */
+  async listSessions(auth: AuthContext): Promise<SessionInfo[]> {
+    const active = await this.sessions.listActive(auth.user.id);
+    return active.map((session) => toSessionInfo(session, auth.session.id));
+  }
+
+  /**
+   * Revoca una de las sesiones del propio usuario. Una sesión ajena o inexistente da el mismo
+   * 404: no se revela si existe.
+   */
+  async revokeSession(auth: AuthContext, sessionId: string): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      const revoked = await this.sessions.revoke(
+        sessionId,
+        'user_revoked',
+        { userId: auth.user.id },
+        tx,
+      );
+      if (!revoked) throw new AppError(404, ErrorCode.NOT_FOUND, 'Sesión no encontrada.');
+      await this.audit.record(tx, {
+        action: 'auth.session.revoked',
+        entityType: 'user',
+        entityId: auth.user.id,
+        actorUserId: auth.user.id,
+        metadata: { revokedSessionId: sessionId, current: sessionId === auth.session.id },
+      });
+    });
+  }
+
+  /** Cierra todas las sesiones del usuario menos la actual. Devuelve cuántas cerró. */
+  async revokeOtherSessions(auth: AuthContext): Promise<number> {
+    return this.db.transaction(async (tx) => {
+      const revoked = await this.sessions.revokeAllForUser(
+        auth.user.id,
+        'user_revoked_others',
+        { exceptSessionId: auth.session.id },
+        tx,
+      );
+      await this.audit.record(tx, {
+        action: 'auth.sessions.revoked_others',
+        entityType: 'user',
+        entityId: auth.user.id,
+        actorUserId: auth.user.id,
+        metadata: { revoked },
+      });
+      return revoked;
     });
   }
 }

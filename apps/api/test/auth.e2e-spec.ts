@@ -19,11 +19,7 @@ describe('autenticación (e2e, PostgreSQL real)', () => {
     ctx = await createTestApp();
   });
   afterAll(() => ctx.close());
-  beforeEach(async () => {
-    const { truncateAll } = await import('./support/test-database.js');
-    await truncateAll(ctx.t.pool);
-    ctx.clock.set('2026-06-01T12:00:00.000Z');
-  });
+  beforeEach(() => ctx.reset());
 
   const audit = (action: string) =>
     ctx.t.db.select().from(auditLogs).where(eq(auditLogs.action, action));
