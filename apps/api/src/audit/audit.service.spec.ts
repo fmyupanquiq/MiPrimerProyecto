@@ -2,6 +2,7 @@ import { desc, eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { FakeClock } from '../../test/support/fake-clock.js';
+import { insertUser } from '../../test/support/factories.js';
 import {
   createTestDatabase,
   truncateAll,
@@ -30,7 +31,7 @@ describe('AuditService (PostgreSQL real)', () => {
   const lastEntries = () => t.db.select().from(auditLogs).orderBy(desc(auditLogs.occurredAt));
 
   it('registra la entrada con los datos de la petición en curso', async () => {
-    const userId = randomUUID();
+    const userId = (await insertUser(t.db)).id;
     const sessionId = randomUUID();
     const entityId = randomUUID();
 
