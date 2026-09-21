@@ -60,3 +60,26 @@ export interface CreatedInvitation extends InvitationSummary {
   token: string;
   link: string;
 }
+
+/** Lo que se muestra de una invitación antes de aceptarla (sin datos sensibles del proyecto). */
+export interface InvitationPreview {
+  projectName: string;
+  roleName: string;
+  /** Nombre de quien invitó. */
+  invitedBy: string;
+  expiresAt: string | null;
+  singleUse: boolean;
+  /** Correo al que está restringida, enmascarado (`a***@dominio`), o `null` si es abierta. */
+  restrictedEmailHint: string | null;
+}
+
+/** Resultado de aceptar: `ALREADY_MEMBER` no cambia nada (aceptar es idempotente, §105.7). */
+export const ACCEPT_OUTCOMES = ['ADDED', 'REACTIVATED', 'ALREADY_MEMBER'] as const;
+export type AcceptOutcome = (typeof ACCEPT_OUTCOMES)[number];
+
+export interface AcceptInvitationResult {
+  projectId: string;
+  projectName: string;
+  roleName: string;
+  outcome: AcceptOutcome;
+}
