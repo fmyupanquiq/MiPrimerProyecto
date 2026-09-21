@@ -11,9 +11,11 @@
   },
   "workspaces": [
     "packages/shared",
-    "apps/api"
+    "apps/api",
+    "apps/web"
   ],
   "scripts": {
+    "dev": "npm run build:shared && concurrently -n api,web -c blue,green \"npm run dev -w @letfer/api\" \"npm run dev -w @letfer/web\"",
     "build:shared": "npm run build -w @letfer/shared",
     "build": "npm run build --workspaces --if-present",
     "typecheck": "npm run build:shared && npm run typecheck --workspaces --if-present",
