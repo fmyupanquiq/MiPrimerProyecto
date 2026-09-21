@@ -1,5 +1,6 @@
 import { drizzle } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
+import { reconcileRbac } from '../../src/authorization/rbac-seeder.js';
 import type { Database } from '../../src/database/database.module.js';
 import * as schema from '../../src/database/schema/index.js';
 
@@ -37,4 +38,6 @@ export async function truncateAll(pool: pg.Pool): Promise<void> {
   } finally {
     client.release();
   }
+  // El vaciado también borra los roles de sistema: se vuelven a sembrar (idempotente).
+  await reconcileRbac(drizzle(pool, { schema }));
 }

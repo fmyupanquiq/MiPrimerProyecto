@@ -9,6 +9,7 @@ import {
 } from '../../test/support/test-database.js';
 import { AuditService } from '../audit/audit.service.js';
 import { loadConfig } from '../config/app-config.js';
+import { roleKeyById } from '../database/role-lookup.js';
 import { auditLogs, users } from '../database/schema/index.js';
 import { SessionService } from '../sessions/session.service.js';
 import { UsersService } from '../users/users.service.js';
@@ -61,9 +62,9 @@ describe('BootstrapAdminService (PostgreSQL real)', () => {
       email: 'admin@letfer.example',
       firstName: 'Fernando',
       lastName: 'Yupanqui',
-      systemRole: 'GLOBAL_ADMIN',
       status: 'ACTIVE',
     });
+    expect(await roleKeyById(t.db, admin!.globalRoleId)).toBe('GLOBAL_ADMIN');
     expect(admin!.passwordHash).toMatch(/^\$argon2id\$/);
     expect(admin!.passwordHash).not.toContain(input.password);
     await expect(hasher.verify(input.password, admin!.passwordHash)).resolves.toBe(true);
@@ -74,7 +75,7 @@ describe('BootstrapAdminService (PostgreSQL real)', () => {
       action: 'user.bootstrap_admin',
       entityId: admin!.id,
       actorUserId: null,
-      newValues: { email: 'admin@letfer.example', systemRole: 'GLOBAL_ADMIN' },
+      newValues: { email: 'admin@letfer.example', globalRole: 'GLOBAL_ADMIN' },
     });
     expect(JSON.stringify(entries)).not.toContain(input.password);
   });
@@ -93,7 +94,7 @@ describe('BootstrapAdminService (PostgreSQL real)', () => {
   });
 
   it('si ya existe un Administrador Global (otro correo) no crea un segundo', async () => {
-    await insertUser(t.db, { email: 'otro-admin@example.com', systemRole: 'GLOBAL_ADMIN' });
+    await insertUser(t.db, { email: 'otro-admin@example.com', globalRole: 'GLOBAL_ADMIN' });
     await expect(service.run(input)).resolves.toEqual({ status: 'already_exists' });
     expect(await t.db.select().from(users)).toHaveLength(1);
   });
@@ -103,7 +104,7 @@ describe('BootstrapAdminService (PostgreSQL real)', () => {
     await expect(service.run(input)).rejects.toBeInstanceOf(BootstrapAdminError);
 
     const [user] = await t.db.select().from(users).where(eq(users.email, 'admin@letfer.example'));
-    expect(user!.systemRole).toBe('USER');
+    expect(await roleKeyById(t.db, user!.globalRoleId)).toBe('USER');
   });
 
   it('rechaza una contraseña débil sin crear nada ni revelarla en el error', async () => {

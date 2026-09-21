@@ -1,5 +1,5 @@
 import { createParamDecorator, type ExecutionContext, SetMetadata } from '@nestjs/common';
-import { ErrorCode } from '@letfer/shared';
+import { ErrorCode, type PermissionCode } from '@letfer/shared';
 import type { Request } from 'express';
 import { AppError } from '../common/app-error.js';
 import type { SessionRow, UserRow } from '../database/schema/index.js';
@@ -18,6 +18,10 @@ export interface AuthContext {
   session: SessionRow;
   /** Cómo llegó el token: cookie (web) o cabecera `Authorization: Bearer` (app móvil futura). */
   via: 'cookie' | 'bearer';
+  /** Clave del rol global del usuario (§105.2). */
+  globalRoleKey: string;
+  /** Permisos globales del usuario. */
+  globalPermissions: ReadonlySet<PermissionCode>;
 }
 
 const contexts = new WeakMap<Request, AuthContext>();

@@ -1,4 +1,4 @@
-import { SYSTEM_ROLES, USER_STATUSES } from '@letfer/shared';
+import { USER_STATUSES } from '@letfer/shared';
 import { sql } from 'drizzle-orm';
 import {
   type AnyPgColumn,
@@ -9,10 +9,10 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
+import { roles } from './rbac.js';
 import { primaryId, softDeleteColumns, timestamps, timestamptz, versionColumn } from './columns.js';
 
 export const userStatusEnum = pgEnum('user_status', USER_STATUSES);
-export const systemRoleEnum = pgEnum('system_role', SYSTEM_ROLES);
 
 /**
  * Usuarios (§2). El `id` es la identidad canónica y permanente: cambiar nombre o correo no
@@ -32,7 +32,10 @@ export const users = pgTable(
     /** Referencia al avatar. La subida de archivos llega con Object Storage (Fase 7). */
     avatarRef: text('avatar_ref'),
     status: userStatusEnum('status').notNull().default('ACTIVE'),
-    systemRole: systemRoleEnum('system_role').notNull().default('USER'),
+    /** Rol global (§105.2). La migración desde el rol de sistema de la Fase 1 lo rellenó. */
+    globalRoleId: uuid('global_role_id')
+      .notNull()
+      .references((): AnyPgColumn => roles.id, { onDelete: 'restrict' }),
     lastLoginAt: timestamptz('last_login_at'),
     passwordChangedAt: timestamptz('password_changed_at').notNull().defaultNow(),
     ...timestamps(),

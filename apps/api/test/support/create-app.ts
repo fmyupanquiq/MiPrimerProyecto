@@ -113,7 +113,7 @@ export function login(
 
 /** Cuerpo JSON de respuesta con los campos que usan las pruebas (evita `any`). */
 export interface ResponseBody {
-  user: Record<string, unknown> & { id: string; email: string; status: string; systemRole: string };
+  user: Record<string, unknown> & { id: string; email: string; status: string; globalRole: string };
   session: Record<string, unknown> & { persistent: boolean; current: boolean };
   code: string;
   message: string;

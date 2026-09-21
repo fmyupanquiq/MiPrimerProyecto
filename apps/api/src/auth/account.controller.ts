@@ -51,7 +51,7 @@ export class AccountController {
     @CurrentAuth() auth: AuthContext,
     @Body({ schema: updateProfileSchema }) body: UpdateProfileInput,
   ): Promise<PublicUser> {
-    return toPublicUser(await this.accountService.updateProfile(auth, body));
+    return toPublicUser(await this.accountService.updateProfile(auth, body), auth.globalRoleKey);
   }
 
   /** Cambia el correo confirmando la contraseña. */
@@ -63,6 +63,6 @@ export class AccountController {
     @CurrentAuth() auth: AuthContext,
     @Body({ schema: changeEmailSchema }) body: ChangeEmailInput,
   ): Promise<PublicUser> {
-    return toPublicUser(await this.accountService.changeEmail(auth, body));
+    return toPublicUser(await this.accountService.changeEmail(auth, body), auth.globalRoleKey);
   }
 }

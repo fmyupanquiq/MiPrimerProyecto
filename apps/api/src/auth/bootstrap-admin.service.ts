@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { AuditService } from '../audit/audit.service.js';
 import { DATABASE } from '../database/database.constants.js';
 import type { Database } from '../database/database.module.js';
-import { users } from '../database/schema/index.js';
+import { roles, users } from '../database/schema/index.js';
 import { UsersService } from '../users/users.service.js';
 import { PasswordHasher } from './password-hasher.js';
 
@@ -65,7 +65,8 @@ export class BootstrapAdminService {
       const [existingAdmin] = await tx
         .select({ id: users.id })
         .from(users)
-        .where(eq(users.systemRole, 'GLOBAL_ADMIN'))
+        .innerJoin(roles, eq(roles.id, users.globalRoleId))
+        .where(eq(roles.key, 'GLOBAL_ADMIN'))
         .limit(1);
       if (existingAdmin) return { status: 'already_exists' } as const;
 
@@ -82,7 +83,7 @@ export class BootstrapAdminService {
           lastName: input.lastName,
           email: input.email,
           passwordHash,
-          systemRole: 'GLOBAL_ADMIN',
+          globalRole: 'GLOBAL_ADMIN',
         },
         tx,
       );
@@ -91,7 +92,7 @@ export class BootstrapAdminService {
         entityType: 'user',
         entityId: admin.id,
         actorUserId: null,
-        newValues: { email: admin.email, systemRole: admin.systemRole },
+        newValues: { email: admin.email, globalRole: 'GLOBAL_ADMIN' },
       });
       return { status: 'created', userId: admin.id } as const;
     });

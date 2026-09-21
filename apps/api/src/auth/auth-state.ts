@@ -1,4 +1,4 @@
-import type { AuthState, SessionInfo } from '@letfer/shared';
+import type { AuthState, PermissionCode, SessionInfo } from '@letfer/shared';
 import type { SessionRow, UserRow } from '../database/schema/index.js';
 import { toPublicUser } from '../users/users.service.js';
 
@@ -16,6 +16,15 @@ export function toSessionInfo(session: SessionRow, currentSessionId: string): Se
 }
 
 /** Estado de autenticación que se devuelve al cliente: usuario público y sesión actual. */
-export function toAuthState(user: UserRow, session: SessionRow): AuthState {
-  return { user: toPublicUser(user), session: toSessionInfo(session, session.id) };
+export function toAuthState(
+  user: UserRow,
+  session: SessionRow,
+  globalRoleKey: string,
+  permissions: Iterable<PermissionCode>,
+): AuthState {
+  return {
+    user: toPublicUser(user, globalRoleKey),
+    session: toSessionInfo(session, session.id),
+    permissions: [...permissions].sort(),
+  };
 }

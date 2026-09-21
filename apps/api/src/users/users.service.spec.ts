@@ -17,6 +17,7 @@ import {
   PG_UNIQUE_VIOLATION,
   pgErrorCode,
 } from '../database/pg-errors.js';
+import { roleKeyById } from '../database/role-lookup.js';
 import { auditLogs, users } from '../database/schema/index.js';
 import { SessionService } from '../sessions/session.service.js';
 import { loadConfig } from '../config/app-config.js';
@@ -59,12 +60,12 @@ describe('UsersService (PostgreSQL real)', () => {
         lastName: 'Pérez',
         email: 'ana.perez@example.com',
         status: 'ACTIVE',
-        systemRole: 'USER',
         version: 1,
         avatarRef: null,
         lastLoginAt: null,
         deletedAt: null,
       });
+      expect(await roleKeyById(t.db, user.globalRoleId)).toBe('USER');
       expect(user.id).toMatch(/^[0-9a-f-]{36}$/);
       expect(user.createdAt).toBeInstanceOf(Date);
       expect(user.passwordChangedAt).toBeInstanceOf(Date);
@@ -99,7 +100,7 @@ describe('UsersService (PostgreSQL real)', () => {
 
     it('toPublicUser nunca expone el hash de contraseña', async () => {
       const user = await service.create(newUser());
-      const publicUser = toPublicUser(user);
+      const publicUser = toPublicUser(user, 'USER');
       expect(JSON.stringify(publicUser)).not.toContain('argon2id');
       expect(publicUser).not.toHaveProperty('passwordHash');
       expect(publicUser).toMatchObject({ email: 'ana.perez@example.com', version: 1 });

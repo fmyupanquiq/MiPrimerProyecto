@@ -33,7 +33,7 @@ describe('autenticación (e2e, PostgreSQL real)', () => {
         id: user.id,
         email: 'ana@example.com',
         status: 'ACTIVE',
-        systemRole: 'USER',
+        globalRole: 'USER',
       });
       expect(bodyOf(response).user).not.toHaveProperty('passwordHash');
       expect(bodyOf(response).session).toMatchObject({ persistent: false, current: true });

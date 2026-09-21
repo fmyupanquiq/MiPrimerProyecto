@@ -1,5 +1,6 @@
 import { drizzle } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
+import { reconcileRbac } from '../../src/authorization/rbac-seeder.js';
 import { runMigrations } from '../../src/database/migrate.js';
 import * as schema from '../../src/database/schema/index.js';
 import { TEST_DATABASE_URL } from './test-database.js';
@@ -23,7 +24,9 @@ export async function setup(): Promise<void> {
     await pool.query('DROP SCHEMA IF EXISTS drizzle CASCADE');
     await pool.query('DROP SCHEMA public CASCADE');
     await pool.query('CREATE SCHEMA public');
-    await runMigrations(drizzle(pool, { schema }));
+    const db = drizzle(pool, { schema });
+    await runMigrations(db);
+    await reconcileRbac(db);
   } finally {
     await pool.end();
   }

@@ -1,9 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
+  DEFAULT_GLOBAL_ROLE_KEY,
   ErrorCode,
   normalizeEmail,
   type PublicUser,
-  type SystemRole,
   type UserStatus,
 } from '@letfer/shared';
 import { and, eq } from 'drizzle-orm';
@@ -20,6 +20,7 @@ import {
 import { DATABASE } from '../database/database.constants.js';
 import type { Database } from '../database/database.module.js';
 import type { DbExecutor } from '../database/database.types.js';
+import { roleIdByKey } from '../database/role-lookup.js';
 import { PG_UNIQUE_VIOLATION, pgConstraintName, pgErrorCode } from '../database/pg-errors.js';
 import { users, type UserRow } from '../database/schema/index.js';
 import { SessionService } from '../sessions/session.service.js';
@@ -29,7 +30,8 @@ export interface CreateUserInput {
   lastName: string;
   email: string;
   passwordHash: string;
-  systemRole?: SystemRole;
+  /** Clave del rol global; por defecto `USER` (§105.1). */
+  globalRole?: string;
 }
 
 export interface ProfilePatch {
@@ -40,7 +42,7 @@ export interface ProfilePatch {
 export const EMAIL_UNIQUE_CONSTRAINT = 'users_email_lower_unique';
 
 /** Proyección segura de un usuario para la API: nunca incluye el hash de contraseña. */
-export function toPublicUser(user: UserRow): PublicUser {
+export function toPublicUser(user: UserRow, globalRole: string): PublicUser {
   return {
     id: user.id,
     firstName: user.firstName,
@@ -48,7 +50,7 @@ export function toPublicUser(user: UserRow): PublicUser {
     email: user.email,
     avatarRef: user.avatarRef,
     status: user.status,
-    systemRole: user.systemRole,
+    globalRole,
     createdAt: user.createdAt.toISOString(),
     lastLoginAt: user.lastLoginAt ? user.lastLoginAt.toISOString() : null,
     version: user.version,
@@ -100,7 +102,7 @@ export class UsersService {
           lastName: input.lastName.trim(),
           email: normalizeEmail(input.email),
           passwordHash: input.passwordHash,
-          systemRole: input.systemRole ?? 'USER',
+          globalRoleId: await roleIdByKey(executor, input.globalRole ?? DEFAULT_GLOBAL_ROLE_KEY),
         })
         .returning();
       return user!;

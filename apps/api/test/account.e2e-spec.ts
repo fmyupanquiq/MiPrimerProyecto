@@ -259,7 +259,8 @@ describe('cuenta del usuario (e2e, PostgreSQL real)', () => {
       await patch(cookie, {
         firstName: 'Ana',
         version: 1,
-        systemRole: 'GLOBAL_ADMIN',
+        globalRole: 'GLOBAL_ADMIN',
+        globalRoleId: '00000000-0000-7000-8000-0000000000aa',
         status: 'DISABLED',
         email: 'otro@example.com',
         passwordHash: 'hackeado',
@@ -268,7 +269,7 @@ describe('cuenta del usuario (e2e, PostgreSQL real)', () => {
 
       const [row] = await ctx.t.db.select().from(users).where(eq(users.id, user.id));
       expect(row).toMatchObject({
-        systemRole: 'USER',
+        globalRoleId: user.globalRoleId,
         status: 'ACTIVE',
         email: 'ana@example.com',
         passwordHash: user.passwordHash,

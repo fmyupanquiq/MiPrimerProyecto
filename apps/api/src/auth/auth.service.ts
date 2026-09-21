@@ -1,7 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { ErrorCode, normalizeEmail, type SessionInfo } from '@letfer/shared';
+import { ErrorCode, normalizeEmail, type PermissionCode, type SessionInfo } from '@letfer/shared';
 import { eq } from 'drizzle-orm';
 import { AuditService } from '../audit/audit.service.js';
+import { AuthorizationService } from '../authorization/authorization.service.js';
 import { AppError } from '../common/app-error.js';
 import { RequestContext } from '../common/request-context.js';
 import { lockByKey } from '../database/advisory-lock.js';
@@ -26,6 +27,8 @@ export interface LoginResult {
   token: string;
   user: UserRow;
   session: SessionRow;
+  globalRoleKey: string;
+  globalPermissions: ReadonlySet<PermissionCode>;
 }
 
 type LoginOutcome =
@@ -42,6 +45,7 @@ export class AuthService {
     private readonly attempts: LoginAttemptsService,
     private readonly hasher: PasswordHasher,
     private readonly audit: AuditService,
+    private readonly authorization: AuthorizationService,
   ) {}
 
   /**
@@ -112,7 +116,17 @@ export class AuthService {
         metadata: { persistent: command.keepSignedIn },
       });
       const fresh = (await this.usersService.findById(user.id, tx)) ?? user;
-      return { kind: 'ok', result: { token, user: fresh, session } };
+      const access = await this.authorization.globalAccess(fresh, tx);
+      return {
+        kind: 'ok',
+        result: {
+          token,
+          user: fresh,
+          session,
+          globalRoleKey: access.roleKey,
+          globalPermissions: access.permissions,
+        },
+      };
     });
 
     if (outcome.kind === 'locked') {

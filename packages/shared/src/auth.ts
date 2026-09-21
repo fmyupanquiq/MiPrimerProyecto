@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { passwordPolicyIssues } from './password-policy.js';
+import type { PermissionCode } from './permissions.js';
 import type { PublicUser } from './user.js';
 
 /** Correo normalizado (sin espacios, en minúsculas) y con formato válido. */
@@ -91,4 +92,6 @@ export interface SessionInfo {
 export interface AuthState {
   user: PublicUser;
   session: SessionInfo;
+  /** Permisos globales del usuario (para mostrar u ocultar controles; el backend siempre valida). */
+  permissions: PermissionCode[];
 }

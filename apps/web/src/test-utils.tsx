@@ -63,7 +63,7 @@ export const ANA = {
   email: 'ana@example.com',
   avatarRef: null,
   status: 'ACTIVE',
-  systemRole: 'USER',
+  globalRole: 'USER',
   createdAt: '2026-06-01T12:00:00.000Z',
   lastLoginAt: null,
   version: 1,
@@ -85,4 +85,7 @@ export const UNAUTHENTICATED: StubResponse = {
   body: { statusCode: 401, code: 'UNAUTHENTICATED', message: 'Se requiere iniciar sesión.' },
 };
 
-export const AUTH_STATE: StubResponse = { status: 200, body: { user: ANA, session: SESSION } };
+export const AUTH_STATE: StubResponse = {
+  status: 200,
+  body: { user: ANA, session: SESSION, permissions: ['projects.create'] },
+};

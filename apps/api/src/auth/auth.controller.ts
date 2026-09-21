@@ -50,9 +50,10 @@ export class AuthController {
     @Body({ schema: loginSchema }) body: LoginInput,
     @Res({ passthrough: true }) response: Response,
   ): Promise<AuthState> {
-    const { token, user, session } = await this.authService.login(body);
+    const { token, user, session, globalRoleKey, globalPermissions } =
+      await this.authService.login(body);
     writeSessionCookie(response, token, this.config, session.persistent);
-    return toAuthState(user, session);
+    return toAuthState(user, session, globalRoleKey, globalPermissions);
   }
 
   @Post('logout')
@@ -69,7 +70,7 @@ export class AuthController {
   @Get('me')
   @Header('Cache-Control', 'no-store')
   me(@CurrentAuth() auth: AuthContext): AuthState {
-    return toAuthState(auth.user, auth.session);
+    return toAuthState(auth.user, auth.session, auth.globalRoleKey, auth.globalPermissions);
   }
 
   /** Sesiones abiertas del usuario (§3). */
