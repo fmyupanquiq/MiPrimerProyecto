@@ -2,6 +2,8 @@
 // para que Drizzle (aplicación y drizzle-kit) tenga una única entrada.
 export * from './rbac.js';
 export * from './users.js';
+export * from './projects.js';
+export * from './project-members.js';
 export * from './audit-logs.js';
 export * from './sessions.js';
 export * from './login-attempts.js';

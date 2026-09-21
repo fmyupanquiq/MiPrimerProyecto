@@ -85,6 +85,20 @@
       "when": 1790027619697,
       "tag": "0011_rbac_enforce",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1790028070654,
+      "tag": "0012_projects",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1790028078656,
+      "tag": "0013_projects_triggers",
+      "breakpoints": true
     }
   ]
 }

@@ -1,12 +1,12 @@
 import { index, jsonb, pgTable, text, uuid } from 'drizzle-orm/pg-core';
 import { primaryId, timestamptz } from './columns.js';
+import { projects } from './projects.js';
 import { users } from './users.js';
 
 /**
  * Registro de auditoría (§10, §35). Es inmutable: los disparadores de la migración
  * `audit_logs_immutable` rechazan UPDATE, DELETE y TRUNCATE.
- *
- * `project_id` referenciará a `projects` cuando esa tabla exista (Fase 2).
+
  */
 export const auditLogs = pgTable(
   'audit_logs',
@@ -15,7 +15,7 @@ export const auditLogs = pgTable(
     occurredAt: timestamptz('occurred_at').notNull().defaultNow(),
     /** Usuario que ejecutó la acción; nulo para acciones anónimas o del sistema. */
     actorUserId: uuid('actor_user_id').references(() => users.id, { onDelete: 'restrict' }),
-    projectId: uuid('project_id'),
+    projectId: uuid('project_id').references(() => projects.id, { onDelete: 'restrict' }),
     /** Acción, p. ej. `auth.login.succeeded`. */
     action: text('action').notNull(),
     /** Tipo de registro afectado, p. ej. `user`. */

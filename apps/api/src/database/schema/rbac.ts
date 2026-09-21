@@ -1,6 +1,7 @@
 import { PERMISSION_SCOPES } from '@letfer/shared';
 import { sql } from 'drizzle-orm';
 import {
+  type AnyPgColumn,
   boolean,
   check,
   pgEnum,
@@ -10,6 +11,7 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
+import { projects } from './projects.js';
 import { primaryId, softDeleteColumns, timestamps, versionColumn } from './columns.js';
 
 export const permissionScopeEnum = pgEnum('permission_scope', PERMISSION_SCOPES);
@@ -34,8 +36,10 @@ export const roles = pgTable(
     id: primaryId(),
     key: text('key'),
     scope: permissionScopeEnum('scope').notNull(),
-    /** Solo en roles personalizados de un proyecto. La clave foránea se declara con `projects`. */
-    projectId: uuid('project_id'),
+    /** Solo en roles personalizados de un proyecto. */
+    projectId: uuid('project_id').references((): AnyPgColumn => projects.id, {
+      onDelete: 'restrict',
+    }),
     name: text('name').notNull(),
     description: text('description').notNull().default(''),
     isSystem: boolean('is_system').notNull().default(false),
