@@ -38,8 +38,19 @@ cuerpo si ambos difieren. Si una regla debe cambiar: primero se actualiza la esp
 - `packages/shared` se compila a `dist/`; los demás workspaces lo consumen ya compilado, por
   eso los scripts de la raíz lo construyen primero.
 - Versiones de dependencias fijadas sin `^` (ver `.npmrc`). No subas `.env` ni secretos.
-- Decisiones técnicas registradas en `docs/decisiones/`.
+- Decisiones técnicas registradas en `docs/decisiones/` (léelas antes de cambiar herramientas).
+- ORM: **Drizzle** (ADR 0003). Dinero/cuotas: `numeric` y decimales como cadena, nunca `number`;
+  `CHECK`/índices únicos parciales en el esquema; `.for('update')` al gastar saldo; acceso a datos
+  solo desde repositorios/servicios, nunca en controladores.
+- PostgreSQL local de desarrollo: `npm run db:start` (PostgreSQL 17 vía `embedded-postgres`,
+  bases `letfer_dev` y `letfer_test`). Las pruebas de integración usan `letfer_test`, sin simular
+  la base de datos.
+- TypeScript se mantiene en 6.0.x mientras `typescript-eslint` no soporte la 7 (ADR 0001).
 
 ## Comandos (desde la raíz)
 
-- `npm run build` · `npm run typecheck` · `npm test` · `npm run format:check`
+- `npm run check`: formato, lint, tipos, pruebas y build (ejecútalo antes de dar algo por hecho).
+- Por separado: `npm run build` · `npm run typecheck` · `npm run lint` · `npm test` ·
+  `npm run format:check`.
+- `npm run dev` levanta API (:3000) y web (:5173). `npm run db:start|stop|status|reset` gestiona
+  PostgreSQL local.
