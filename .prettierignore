@@ -1,0 +1,10 @@
+node_modules
+dist
+build
+coverage
+.data
+package-lock.json
+
+# La especificación mantiene su propio formato (líneas de ~72 columnas);
+# no se reformatea automáticamente para no generar diffs ruidosos.
+docs/
