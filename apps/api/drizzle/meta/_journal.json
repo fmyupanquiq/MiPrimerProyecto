@@ -50,6 +50,13 @@
       "when": 1790019563386,
       "tag": "0006_login_attempts",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1790020420142,
+      "tag": "0007_login_attempts_seq",
+      "breakpoints": true
     }
   ]
 }

@@ -1,4 +1,5 @@
 import type { Server } from 'node:http';
+import type { Type } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Test, type TestingModuleBuilder } from '@nestjs/testing';
 import { useSpanishValidationMessages } from '@letfer/shared';
@@ -8,6 +9,8 @@ import { AppModule } from '../../src/app.module.js';
 import { configureApp } from '../../src/app.setup.js';
 import { PasswordHasher } from '../../src/auth/password-hasher.js';
 import { Clock } from '../../src/common/clock.js';
+import { MailService } from '../../src/mail/mail.service.js';
+import { InMemoryMailService } from './in-memory-mail.js';
 import type { UserRow } from '../../src/database/schema/index.js';
 import { insertUser } from './factories.js';
 import { FakeClock } from './fake-clock.js';
@@ -19,6 +22,7 @@ export interface TestApp {
   app: NestExpressApplication;
   server: Server;
   clock: FakeClock;
+  mail: InMemoryMailService;
   t: TestDatabase;
   hasher: PasswordHasher;
   /** Crea un usuario con contraseña real (hash argon2id). */
@@ -31,7 +35,9 @@ export interface TestApp {
 export interface CreateTestAppOptions {
   /** Variables de entorno adicionales (se aplican antes de compilar la aplicación). */
   env?: Record<string, string>;
-  /** Permite sustituir proveedores (p. ej. el servicio de correo). */
+  /** Controladores adicionales solo para pruebas (p. ej. una ruta con @RequireRecentAuth). */
+  controllers?: Type[];
+  /** Permite sustituir proveedores. */
   customize?: (builder: TestingModuleBuilder) => TestingModuleBuilder;
 }
 
@@ -41,9 +47,15 @@ export async function createTestApp(options: CreateTestAppOptions = {}): Promise
   useSpanishValidationMessages();
 
   const clock = new FakeClock('2026-06-01T12:00:00.000Z');
-  let builder = Test.createTestingModule({ imports: [AppModule] })
+  const mail = new InMemoryMailService();
+  let builder = Test.createTestingModule({
+    imports: [AppModule],
+    controllers: options.controllers ?? [],
+  })
     .overrideProvider(Clock)
-    .useValue(clock);
+    .useValue(clock)
+    .overrideProvider(MailService)
+    .useValue(mail);
   if (options.customize) builder = options.customize(builder);
   const moduleRef = await builder.compile();
 
@@ -59,6 +71,7 @@ export async function createTestApp(options: CreateTestAppOptions = {}): Promise
     app,
     server: app.getHttpServer(),
     clock,
+    mail,
     t,
     hasher,
     createUser: async ({ password = TEST_PASSWORD, ...overrides } = {}) =>
@@ -66,6 +79,7 @@ export async function createTestApp(options: CreateTestAppOptions = {}): Promise
     reset: async () => {
       await truncateAll(t.pool);
       clock.set('2026-06-01T12:00:00.000Z');
+      mail.clear();
     },
     close: async () => {
       await app.close();

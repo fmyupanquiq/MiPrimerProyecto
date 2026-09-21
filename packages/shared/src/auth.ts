@@ -26,6 +26,43 @@ export const loginSchema = z.object({
 });
 export type LoginInput = z.infer<typeof loginSchema>;
 
+/** Cambio de contraseña con la sesión iniciada (§104.4). */
+export const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1).max(MAX_SUBMITTED_PASSWORD_LENGTH),
+  newPassword: newPasswordSchema,
+});
+export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
+
+/** Reautenticación por contraseña para operaciones sensibles (§39, §104.5). */
+export const reauthSchema = z.object({
+  password: z.string().min(1).max(MAX_SUBMITTED_PASSWORD_LENGTH),
+});
+export type ReauthInput = z.infer<typeof reauthSchema>;
+
+const personNameSchema = z.string().trim().min(1).max(100);
+
+/**
+ * Edición del perfil. `version` es la versión que el cliente leyó: si otra edición la cambió
+ * mientras tanto, la API responde `CONCURRENCY_CONFLICT` (§96).
+ */
+export const updateProfileSchema = z
+  .object({
+    firstName: personNameSchema.optional(),
+    lastName: personNameSchema.optional(),
+    version: z.number().int().positive(),
+  })
+  .refine((value) => value.firstName !== undefined || value.lastName !== undefined, {
+    message: 'Indica al menos un campo para modificar.',
+  });
+export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
+
+/** Cambio de correo confirmando la contraseña (§104.9). */
+export const changeEmailSchema = z.object({
+  newEmail: emailSchema,
+  password: z.string().min(1).max(MAX_SUBMITTED_PASSWORD_LENGTH),
+});
+export type ChangeEmailInput = z.infer<typeof changeEmailSchema>;
+
 /** Datos de una sesión abierta que se muestran al usuario (§3). */
 export interface SessionInfo {
   id: string;

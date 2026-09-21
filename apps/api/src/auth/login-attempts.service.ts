@@ -31,15 +31,13 @@ export class LoginAttemptsService {
     const windowStart = new Date(now.getTime() - windowSeconds * 1000);
 
     const [lastSuccess] = await executor
-      .select({ attemptedAt: loginAttempts.attemptedAt })
+      .select({ seq: loginAttempts.seq })
       .from(loginAttempts)
       .where(
         and(eq(loginAttempts.emailNormalized, emailNormalized), eq(loginAttempts.succeeded, true)),
       )
-      .orderBy(desc(loginAttempts.attemptedAt))
+      .orderBy(desc(loginAttempts.seq))
       .limit(1);
-    const since =
-      lastSuccess && lastSuccess.attemptedAt > windowStart ? lastSuccess.attemptedAt : windowStart;
 
     const failures = await executor
       .select({ attemptedAt: loginAttempts.attemptedAt })
@@ -48,10 +46,12 @@ export class LoginAttemptsService {
         and(
           eq(loginAttempts.emailNormalized, emailNormalized),
           eq(loginAttempts.succeeded, false),
-          gt(loginAttempts.attemptedAt, since),
+          // Solo cuentan los fallos de la ventana posteriores al último acceso correcto.
+          gt(loginAttempts.attemptedAt, windowStart),
+          gt(loginAttempts.seq, lastSuccess?.seq ?? 0),
         ),
       )
-      .orderBy(desc(loginAttempts.attemptedAt))
+      .orderBy(desc(loginAttempts.seq))
       .limit(maxFailures);
 
     if (failures.length < maxFailures) {

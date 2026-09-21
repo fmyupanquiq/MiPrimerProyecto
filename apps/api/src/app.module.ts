@@ -4,12 +4,21 @@ import { AuthModule } from './auth/auth.module.js';
 import { CommonModule } from './common/common.module.js';
 import { ConfigModule } from './config/config.module.js';
 import { DatabaseModule } from './database/database.module.js';
+import { MailModule } from './mail/mail.module.js';
 import { HealthController } from './health/health.controller.js';
 import { HealthService } from './health/health.service.js';
 import { UsersModule } from './users/users.module.js';
 
 @Module({
-  imports: [ConfigModule, CommonModule, DatabaseModule, AuditModule, UsersModule, AuthModule],
+  imports: [
+    ConfigModule,
+    CommonModule,
+    DatabaseModule,
+    AuditModule,
+    UsersModule,
+    MailModule,
+    AuthModule,
+  ],
   controllers: [HealthController],
   providers: [HealthService],
 })
