@@ -97,10 +97,11 @@ export const updateProjectSchema = z
 export type UpdateProjectInput = z.infer<typeof updateProjectSchema>;
 
 /** Motivo opcional al enviar un proyecto a la papelera o expulsar a un miembro. */
-export const reasonSchema = z.object({
-  reason: z.string().trim().max(500).optional(),
-});
-export type ReasonInput = z.infer<typeof reasonSchema>;
+export const reasonSchema = z.preprocess(
+  (value) => value ?? {},
+  z.object({ reason: z.string().trim().max(500).optional() }),
+);
+export type ReasonInput = { reason?: string | undefined };
 
 export const listProjectsQuerySchema = z.object({
   scope: z.enum(['mine', 'all']).default('mine'),

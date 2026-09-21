@@ -11,6 +11,10 @@ export const ErrorCode = {
   CONFLICT: 'CONFLICT',
   EMAIL_IN_USE: 'EMAIL_IN_USE',
   CONCURRENCY_CONFLICT: 'CONCURRENCY_CONFLICT',
+  /** La operación no es válida en el estado actual del recurso (p. ej. reabrir un proyecto activo). */
+  INVALID_STATE: 'INVALID_STATE',
+  /** Se intentó modificar al propietario del proyecto (§105.4). */
+  OWNER_PROTECTED: 'OWNER_PROTECTED',
   INVALID_TOKEN: 'INVALID_TOKEN',
   RATE_LIMITED: 'RATE_LIMITED',
   PAYLOAD_TOO_LARGE: 'PAYLOAD_TOO_LARGE',
