@@ -208,7 +208,8 @@ queda eliminada/deshabilitada lógicamente.
 Un proyecto eliminado pasa a papelera durante **90 días**. Durante ese
 periodo conserva todas sus relaciones y puede restaurarse.
 
-La eliminación definitiva está reservada al Administrador Global.
+La eliminación definitiva está reservada al Administrador Global. La
+retención y la purga se rigen por el §89.
 
 ## 10. Auditoría del núcleo
 
@@ -266,7 +267,7 @@ Antes de confirmar se muestra:
 -   Impacto previsto.
 
 El cambio queda auditado y recalcula valores derivados de las apuestas
-de la etapa.
+de la etapa, conforme a las reglas y límites del §73.
 
 No existirá una segunda `unit_stake_used` autoritativa por apuesta que
 impida esta corrección.
@@ -330,8 +331,9 @@ Aumentan el capital, pero no cuentan como ganancias de apuestas.
 Dinero que sale del proyecto.
 
 -   El administrador inicia.
--   Requieren aprobación.
--   Afectan la banca solo al aprobarse.
+-   Requieren aprobación (ver §79).
+-   Reservan el monto desde la solicitud y solo se convierten en salida
+    definitiva de la banca al aprobarse (ver §79).
 -   No pueden exceder el saldo disponible.
 -   Mientras el proyecto esté activo, el flujo ordinario no permitirá
     retirar deliberadamente el 100 % del capital.
@@ -364,6 +366,10 @@ Una apuesta pendiente compromete inmediatamente su monto.
 El dinero pendiente no puede reutilizarse. LetFer nunca permitirá saldo
 disponible negativo.
 
+Las definiciones financieras de referencia (saldo disponible,
+comprometido, capital actual) están en el §92, y la comparación contra
+la casa en el §80.
+
 ## 18. Apuestas
 
 Cada apuesta pertenece obligatoriamente a:
@@ -377,6 +383,7 @@ Conserva, entre otros:
 
 -   Fecha real de colocación.
 -   Hora real si existe.
+-   Fecha/hora real de liquidación cuando exista (ver §71).
 -   Fecha/hora de registro en LetFer.
 -   Stake.
 -   Monto oficial.
@@ -410,7 +417,8 @@ Liga/competición queda fuera del MVP.
 
 ## 20. Tipos de apuesta
 
-La clasificación se deriva de la estructura:
+La clasificación se deriva de la estructura. El campo `betType` y su
+precedencia frente a la IA se rigen por el §90:
 
 ### Simple
 
@@ -430,15 +438,21 @@ el detalle interno puede conservar la estructura creada.
 
 ## 21. Resultados
 
-Estados fijos:
+Estados fijos (ver §78):
 
 -   Pendiente.
 -   Ganada.
 -   Perdida.
 -   Anulada/Cancelada.
+-   Cash Out.
 
 En v1 no habrá resultado financiero individual por selección. El
 resultado final del ticket afecta al dinero.
+
+Las fórmulas de 21.2 a 21.4 son los valores por defecto para casos
+ordinarios. El retorno oficial es la autoridad financiera y, cuando
+falta, se aplica el §77. Las liquidaciones especiales y el Cash Out se
+rigen por el §78.
 
 ### 21.1 Pendiente
 
@@ -521,7 +535,7 @@ Los cambios relevantes se auditan campo por campo con valor
 anterior/nuevo, usuario y fecha.
 
 Si una edición histórica cambia efectos financieros, se recalculan los
-resúmenes afectados.
+resúmenes afectados y se aplican las reglas del §74.
 
 ## 25. Movimiento entre etapas
 
@@ -530,13 +544,13 @@ Solo administradores autorizados.
 Antes de mover se muestra etapa actual, destino, unidades e impacto.
 
 Se recalculan valores derivados conforme a la etapa destino, respetando
-los valores oficiales confirmados.
+los valores oficiales confirmados y las reglas del §74.
 
 La fecha real de colocación no cambia.
 
 ## 26. Eliminación de apuestas
 
-Eliminación lógica con papelera durante **90 días**.
+Eliminación lógica con papelera durante **90 días** (ver §89).
 
 Se conserva quién eliminó, cuándo y motivo cuando corresponda.
 
@@ -615,7 +629,8 @@ La IA intentará extraer:
 No se requiere liga/competición ni número externo de ticket en v1.
 
 La IA puede leer la etiqueta usada por la casa, pero LetFer también
-analiza la estructura para proponer Simple, Creada o Múltiple.
+analiza la estructura para proponer Simple, Creada o Múltiple. La IA
+nunca tiene autoridad final sobre `betType` (ver §90).
 
 ## 30. Autoridad de la IA
 
@@ -651,19 +666,21 @@ Nunca reemplaza silenciosamente información histórica.
 
 La conciliación es requisito del MVP y funciona por casa.
 
-El usuario introduce/confirma el saldo oficial real de la casa.
+El usuario introduce/confirma el saldo disponible oficial real de la
+casa (ver §80).
 
 LetFer compara:
 
--   Saldo calculado LetFer.
--   Saldo oficial declarado.
+-   Saldo disponible calculado por LetFer.
+-   Saldo disponible oficial declarado.
 -   Diferencia.
 -   Última conciliación correcta.
 
 ### 32.1 Coincidencia
 
-Si la diferencia es 0, se crea un **checkpoint de conciliación** con
-fecha/hora, saldo LetFer, saldo oficial y diferencia 0.
+Si la diferencia es 0, se crea un **checkpoint de conciliación** con los
+datos definidos en el §80 (entre ellos fecha/hora, saldo disponible
+LetFer, saldo disponible oficial, comprometido y diferencia 0).
 
 ### 32.2 Discrepancia
 
@@ -696,7 +713,8 @@ Usuario. - Resultado. - Stake.
 
 Los filtros modifican el análisis, nunca la realidad financiera.
 
-Indicadores principales:
+Indicadores principales (definiciones en el §92; separación de
+extraordinarios en el §91):
 
 -   Capital actual.
 -   Disponible.
@@ -754,12 +772,18 @@ ordinarios.
 
 La restauración recompone las relaciones correspondientes.
 
+El significado exacto de la retención de 90 días y la política de purga
+se rigen por el §89.
+
 ## 37. Backups
 
 -   Backup automático diario.
 -   Referencia MVP: aproximadamente 30 generaciones diarias rotativas.
 -   Los archivos/tickets tendrán estrategia compatible de respaldo.
 -   El backup debe permitir reconstruir LetFer, no solo algunas tablas.
+
+La estrategia previa a datos reales y de producción (incluida la
+recuperación a un punto en el tiempo) se detalla en el §82.
 
 Solo el Administrador Global puede restaurar backups.
 
@@ -864,7 +888,7 @@ LetFer/
 ├── packages/
 │   └── shared/
 ├── docs/
-│   └── ESPECIFICACION_LETFER_V1.md
+│   └── ESPECIFICACION_LETFER_V1_1.md
 ├── README.md
 └── ...
 ```
@@ -1035,10 +1059,12 @@ Los nombres finales pueden variar; la separación conceptual no.
 Guardar separadamente:
 
 -   `placed_at`: cuándo ocurrió realmente.
+-   `settled_at`: cuándo la casa liquidó la apuesta (ver §71).
 -   `created_at`: cuándo se registró en LetFer.
 -   `updated_at`: última modificación.
 
-Esto permite importar historial sin falsear fechas.
+Esto permite importar historial sin falsear fechas. El manejo de zonas
+horarias y fechas sin hora se rige por el §93.
 
 ## 56. Precisión de almacenamiento
 
@@ -1195,7 +1221,9 @@ Documentación, monorepo y entorno.
 
 ### Fase 1 --- Base
 
-PostgreSQL, usuarios y autenticación.
+PostgreSQL, usuarios y autenticación. Incluye la infraestructura
+transversal mínima de auditoría, borrado lógico, seguridad y timestamps
+(ver §81 y §102).
 
 ### Fase 2 --- Colaboración
 
@@ -1223,7 +1251,9 @@ Carga de archivos, lectura, comparación y confirmación.
 
 ### Fase 8 --- Administración
 
-Auditoría, papelera y administración.
+Interfaces y herramientas completas de auditoría, papelera y
+administración, sobre la infraestructura construida desde la Fase 1
+(ver §81 y §102).
 
 ### Fase 9 --- Migración
 
@@ -1231,7 +1261,8 @@ Importación controlada del Excel histórico.
 
 ### Fase 10 --- Pruebas reales
 
-Uso operativo, corrección de flujos y validación financiera.
+Uso operativo, corrección de flujos y validación financiera. Requiere
+un respaldo funcional previo (ver §82).
 
 ### Fase 11 --- Producción
 
@@ -1330,6 +1361,25 @@ especificación:
 contradice esta adenda, **prevalece esta adenda**. Durante la
 implementación, estas reglas deben tratarse como parte integral de la
 especificación maestra.
+
+**Índice de precedencia.** Cláusulas del cuerpo cuyo detalle fue
+precisado o reemplazado por esta adenda (el cuerpo ya incluye la
+referencia cruzada correspondiente):
+
+| Cláusula del cuerpo | Tema | Prevalece |
+|---|---|---|
+| §9, §26, §36 | Retención de 90 días y purga | §89 |
+| §12.1 | Corrección de unidad | §73 |
+| §16.2 | Retiros | §79 |
+| §17 | Disponible y comprometido | §80, §92 |
+| §18, §55 | Tiempos de la apuesta | §71, §93 |
+| §20, §29 | Clasificación de `betType` | §90 |
+| §21 | Estados y liquidaciones | §77, §78 |
+| §24, §25 | Ediciones y movimientos históricos | §74 |
+| §32 | Conciliación | §80 |
+| §33 | Métricas del dashboard | §91, §92 |
+| §37 | Backups | §82 |
+| §67 | Orden de construcción | §81, §102 |
 
 ## 71. Fecha de liquidación
 
