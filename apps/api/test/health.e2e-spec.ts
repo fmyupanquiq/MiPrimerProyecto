@@ -20,11 +20,11 @@ describe('GET /api/health (e2e)', () => {
     await app.close();
   });
 
-  it('responde 200 con el estado del servicio', async () => {
+  it('responde 200 con el estado del servicio y de PostgreSQL real', async () => {
     // getHttpServer() está tipado como `any` en Nest; se acota al tipo real.
     await request(app.getHttpServer() as Server)
       .get('/api/health')
       .expect(200)
-      .expect({ status: 'ok', service: 'LetFer API' });
+      .expect({ status: 'ok', service: 'LetFer API', database: 'up' });
   });
 });

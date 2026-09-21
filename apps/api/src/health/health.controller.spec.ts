@@ -1,21 +1,32 @@
+import { ServiceUnavailableException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
+import { PG_POOL } from '../database/database.constants.js';
 import { HealthController } from './health.controller.js';
-import { HealthService } from './health.service.js';
+import { HealthService, type Pingable } from './health.service.js';
+
+async function createController(pool: Pingable): Promise<HealthController> {
+  const moduleRef = await Test.createTestingModule({
+    controllers: [HealthController],
+    providers: [HealthService, { provide: PG_POOL, useValue: pool }],
+  }).compile();
+  return moduleRef.get(HealthController);
+}
 
 describe('HealthController', () => {
-  let controller: HealthController;
-
-  beforeEach(async () => {
-    const moduleRef = await Test.createTestingModule({
-      controllers: [HealthController],
-      providers: [HealthService],
-    }).compile();
-
-    controller = moduleRef.get(HealthController);
+  it('resuelve el servicio por inyección de dependencias y responde ok', async () => {
+    const controller = await createController({ query: () => Promise.resolve([]) });
+    await expect(controller.check()).resolves.toEqual({
+      status: 'ok',
+      service: 'LetFer API',
+      database: 'up',
+    });
   });
 
-  it('resuelve el servicio por inyección de dependencias y responde ok', () => {
-    expect(controller.check()).toEqual({ status: 'ok', service: 'LetFer API' });
+  it('responde 503 cuando la base de datos no responde', async () => {
+    const controller = await createController({
+      query: () => Promise.reject(new Error('conexión rechazada')),
+    });
+    await expect(controller.check()).rejects.toBeInstanceOf(ServiceUnavailableException);
   });
 });
