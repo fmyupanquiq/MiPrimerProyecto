@@ -1,4 +1,10 @@
-import type { LoginInput, PublicUser } from '@letfer/shared';
+import type {
+  AuthState,
+  LoginInput,
+  PermissionCode,
+  PublicUser,
+  RegisterInput,
+} from '@letfer/shared';
 import {
   createContext,
   type ReactNode,
@@ -16,7 +22,13 @@ export type AuthStatus = 'loading' | 'authenticated' | 'anonymous';
 interface AuthContextValue {
   status: AuthStatus;
   user: PublicUser | null;
+  /** Permisos GLOBALES del usuario (los del proyecto vienen con cada proyecto). */
+  permissions: readonly PermissionCode[];
+  /** ¿Tiene este permiso global? Solo mejora la interfaz: la autoridad es siempre la API. */
+  can: (permission: PermissionCode) => boolean;
   login: (input: LoginInput) => Promise<void>;
+  /** Crea la cuenta desde una invitación y abre sesión (§84, §105.7). */
+  register: (input: RegisterInput) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -26,15 +38,26 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>('loading');
   const [user, setUser] = useState<PublicUser | null>(null);
+  const [permissions, setPermissions] = useState<readonly PermissionCode[]>([]);
+
+  const apply = useCallback((state: AuthState) => {
+    setUser(state.user);
+    setPermissions(state.permissions);
+    setStatus('authenticated');
+  }, []);
+
+  const clear = useCallback(() => {
+    setUser(null);
+    setPermissions([]);
+    setStatus('anonymous');
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
     authApi
       .me()
       .then((state) => {
-        if (cancelled) return;
-        setUser(state.user);
-        setStatus('authenticated');
+        if (!cancelled) apply(state);
       })
       .catch((error: unknown) => {
         if (cancelled) return;
@@ -42,31 +65,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!(error instanceof ApiError) || error.status !== 401) {
           console.error('No se pudo consultar la sesión', error);
         }
-        setUser(null);
-        setStatus('anonymous');
+        clear();
       });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [apply, clear]);
 
-  const login = useCallback(async (input: LoginInput) => {
-    const state = await authApi.login(input);
-    setUser(state.user);
-    setStatus('authenticated');
-  }, []);
+  const login = useCallback(
+    async (input: LoginInput) => {
+      apply(await authApi.login(input));
+    },
+    [apply],
+  );
+
+  const register = useCallback(
+    async (input: RegisterInput) => {
+      apply(await authApi.register(input));
+    },
+    [apply],
+  );
 
   const logout = useCallback(async () => {
     try {
       await authApi.logout();
     } finally {
       // Aunque la llamada falle, la web deja de mostrar la sesión.
-      setUser(null);
-      setStatus('anonymous');
+      clear();
     }
-  }, []);
+  }, [clear]);
 
-  const value = useMemo(() => ({ status, user, login, logout }), [status, user, login, logout]);
+  const value = useMemo<AuthContextValue>(
+    () => ({
+      status,
+      user,
+      permissions,
+      can: (permission) => permissions.includes(permission),
+      login,
+      register,
+      logout,
+    }),
+    [status, user, permissions, login, register, logout],
+  );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

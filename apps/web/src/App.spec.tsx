@@ -20,14 +20,15 @@ describe('sesión y rutas', () => {
   });
 
   it('con una sesión abierta muestra directamente el contenedor autenticado', async () => {
-    stubApi({ 'GET /auth/me': AUTH_STATE });
+    stubApi({ 'GET /auth/me': AUTH_STATE, 'GET /projects': { status: 200, body: [] } });
     renderApp('/');
     expect(await screen.findByText('Ana Pérez')).toBeTruthy();
     expect(screen.getByText(/ana@example.com/)).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Mis proyectos' })).toBeTruthy();
   });
 
   it('con una sesión abierta, /login redirige a la página principal', async () => {
-    stubApi({ 'GET /auth/me': AUTH_STATE });
+    stubApi({ 'GET /auth/me': AUTH_STATE, 'GET /projects': { status: 200, body: [] } });
     renderApp('/login');
     expect(await screen.findByText('Ana Pérez')).toBeTruthy();
   });
@@ -41,6 +42,7 @@ describe('sesión y rutas', () => {
   it('cerrar sesión llama a la API y vuelve al inicio de sesión', async () => {
     const { calls } = stubApi({
       'GET /auth/me': AUTH_STATE,
+      'GET /projects': { status: 200, body: [] },
       'POST /auth/logout': { status: 204 },
     });
     renderApp('/');
@@ -53,7 +55,11 @@ describe('sesión y rutas', () => {
 
 describe('inicio de sesión', () => {
   it('envía las credenciales y entra; por defecto no mantiene la sesión', async () => {
-    const { calls } = stubApi({ 'GET /auth/me': UNAUTHENTICATED, 'POST /auth/login': AUTH_STATE });
+    const { calls } = stubApi({
+      'GET /auth/me': UNAUTHENTICATED,
+      'POST /auth/login': AUTH_STATE,
+      'GET /projects': { status: 200, body: [] },
+    });
     renderApp('/login');
     await screen.findByRole('heading', { name: 'Iniciar sesión' });
 
@@ -71,7 +77,11 @@ describe('inicio de sesión', () => {
   });
 
   it('"Mantener sesión iniciada" se envía como keepSignedIn: true', async () => {
-    const { calls } = stubApi({ 'GET /auth/me': UNAUTHENTICATED, 'POST /auth/login': AUTH_STATE });
+    const { calls } = stubApi({
+      'GET /auth/me': UNAUTHENTICATED,
+      'POST /auth/login': AUTH_STATE,
+      'GET /projects': { status: 200, body: [] },
+    });
     renderApp('/login');
     await screen.findByRole('heading', { name: 'Iniciar sesión' });
 

@@ -89,3 +89,70 @@ export const AUTH_STATE: StubResponse = {
   status: 200,
   body: { user: ANA, session: SESSION, permissions: ['projects.create'] },
 };
+
+// ---------------------------------------------------------------------------------------------
+// Datos de ejemplo de la Fase 2 (proyectos, miembros, invitaciones)
+// ---------------------------------------------------------------------------------------------
+export const PROJECT_ID = '0195f7c0-0000-7000-8000-0000000000a1';
+
+export const apiError = (status: number, code: string, message = 'x'): StubResponse => ({
+  status,
+  body: { statusCode: status, code, message },
+});
+
+/** Respuesta de `GET /auth/me` con permisos globales a medida. */
+export function authState(
+  permissions: string[] = ['projects.create'],
+  user: Record<string, unknown> = ANA,
+): StubResponse {
+  return { status: 200, body: { user, session: SESSION, permissions } };
+}
+
+export function projectSummary(overrides: Record<string, unknown> = {}) {
+  return {
+    id: PROJECT_ID,
+    name: 'Grupo Norte',
+    description: '',
+    imageRef: null,
+    status: 'ACTIVE',
+    ownerId: ANA.id,
+    ownerName: 'Ana Pérez',
+    isOwner: true,
+    myRole: 'PROJECT_ADMIN',
+    createdAt: '2026-06-01T12:00:00.000Z',
+    deletedAt: null,
+    purgeEligibleAt: null,
+    previousStatus: null,
+    ...overrides,
+  };
+}
+
+/** Permisos de la persona que es propietaria y Administradora de Proyecto. */
+export const OWNER_PERMISSIONS = [
+  'invitations.create',
+  'invitations.disable',
+  'invitations.view',
+  'members.remove',
+  'members.update_role',
+  'members.view',
+  'project.close',
+  'project.reopen',
+  'project.restore',
+  'project.trash',
+  'project.update',
+  'project.view',
+  'projects.create',
+];
+
+export function projectDetail(overrides: Record<string, unknown> = {}) {
+  return {
+    ...projectSummary(),
+    currency: 'PEN',
+    timezone: 'America/Lima',
+    dateFormat: 'DD/MM/YYYY',
+    version: 1,
+    updatedAt: '2026-06-01T12:00:00.000Z',
+    myPermissions: OWNER_PERMISSIONS,
+    ...overrides,
+  };
+}

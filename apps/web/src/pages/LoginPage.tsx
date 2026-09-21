@@ -1,19 +1,23 @@
 import { loginSchema } from '@letfer/shared';
 import { type FormEvent, useState } from 'react';
-import { Link, Navigate } from 'react-router';
+import { Link, Navigate, useSearchParams } from 'react-router';
 import { describeApiError } from '../api/errors.js';
 import { useAuth } from '../auth/AuthContext.js';
+import { safeNextPath } from '../auth/redirect.js';
 import { AuthLayout, buttonClass, FormError, inputClass, linkClass } from './AuthLayout.js';
 
 export function LoginPage() {
   const { status, login } = useAuth();
+  const [params] = useSearchParams();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [keepSignedIn, setKeepSignedIn] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  if (status === 'authenticated') return <Navigate to="/" replace />;
+  if (status === 'authenticated') {
+    return <Navigate to={safeNextPath(params.get('next'))} replace />;
+  }
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
