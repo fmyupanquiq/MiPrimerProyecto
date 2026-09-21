@@ -64,7 +64,9 @@ servidor (§39).
 ### Límite de tasa por IP
 
 `@nestjs/throttler`: limitador `default` para toda la API y `auth` (más estricto) para los
-endpoints marcados con `@AuthRateLimit()`. Con un proxy inverso hay que fijar `TRUST_PROXY_HOPS`;
+endpoints marcados con `@AuthRateLimit()`. El contador es **por endpoint y por IP** (no compartido
+entre endpoints): 20 inicios de sesión por minuto desde una IP, y aparte 20 cambios de contraseña,
+etc. Verificado en el servidor real: 30 logins seguidos dan 429 a partir del 21.º. Con un proxy inverso hay que fijar `TRUST_PROXY_HOPS`;
 con 0 se ignora `X-Forwarded-For` para que nadie pueda falsear su IP.
 
 ## Problemas encontrados y resueltos
