@@ -3,3 +3,4 @@
 export * from './users.js';
 export * from './audit-logs.js';
 export * from './sessions.js';
+export * from './login-attempts.js';

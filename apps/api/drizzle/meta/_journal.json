@@ -43,6 +43,13 @@
       "when": 1790019362528,
       "tag": "0005_sessions",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790019563386,
+      "tag": "0006_login_attempts",
+      "breakpoints": true
     }
   ]
 }

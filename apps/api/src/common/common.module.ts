@@ -21,24 +21,27 @@ const isAuthRoute = (handler: unknown): boolean =>
 @Module({
   imports: [
     // Límite de tasa por IP: `default` para toda la API y `auth` (más estricto) solo para los
-    // endpoints marcados con @AuthRateLimit(). Cada uno se omite en las rutas del otro.
+    // endpoints marcados con @AuthRateLimit(). Cada uno se omite en las rutas del otro. El interruptor
+    // THROTTLE_ENABLED va dentro de cada `skipIf` porque el `skipIf` global no se aplica a los
+    // limitadores que definen el suyo.
     ThrottlerModule.forRootAsync({
       imports: [],
       inject: [APP_CONFIG],
       useFactory: (config: AppConfig): ThrottlerModuleOptions => ({
-        skipIf: () => !config.throttle.enabled,
         throttlers: [
           {
             name: 'default',
             ttl: config.throttle.ttlMs,
             limit: config.throttle.limit,
-            skipIf: (context: ExecutionContext) => isAuthRoute(context.getHandler()),
+            skipIf: (context: ExecutionContext) =>
+              !config.throttle.enabled || isAuthRoute(context.getHandler()),
           },
           {
             name: 'auth',
             ttl: config.throttle.authTtlMs,
             limit: config.throttle.authLimit,
-            skipIf: (context: ExecutionContext) => !isAuthRoute(context.getHandler()),
+            skipIf: (context: ExecutionContext) =>
+              !config.throttle.enabled || !isAuthRoute(context.getHandler()),
           },
         ],
       }),
