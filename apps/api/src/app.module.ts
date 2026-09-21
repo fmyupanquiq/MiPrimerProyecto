@@ -8,6 +8,7 @@ import { DatabaseModule } from './database/database.module.js';
 import { MailModule } from './mail/mail.module.js';
 import { HealthController } from './health/health.controller.js';
 import { HealthService } from './health/health.service.js';
+import { ProjectsModule } from './projects/projects.module.js';
 import { UsersModule } from './users/users.module.js';
 
 @Module({
@@ -20,6 +21,7 @@ import { UsersModule } from './users/users.module.js';
     MailModule,
     AuthorizationModule,
     AuthModule,
+    ProjectsModule,
   ],
   controllers: [HealthController],
   providers: [HealthService],
