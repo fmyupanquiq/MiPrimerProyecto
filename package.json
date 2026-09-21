@@ -22,6 +22,7 @@
     "db:reset": "node scripts/dev-db.mjs reset",
     "db:generate": "npm run db:generate -w @letfer/api",
     "db:migrate": "npm run db:migrate -w @letfer/api",
+    "bootstrap:admin": "npm run bootstrap:admin -w @letfer/api",
     "build:shared": "npm run build -w @letfer/shared",
     "build": "npm run build --workspaces --if-present",
     "typecheck": "npm run build:shared && npm run typecheck --workspaces --if-present",
