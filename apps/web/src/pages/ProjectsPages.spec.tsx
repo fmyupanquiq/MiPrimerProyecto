@@ -179,7 +179,7 @@ describe('Mis proyectos', () => {
       fireEvent.click(within(form).getByRole('button', { name: 'Crear proyecto' }));
 
       expect((await within(form).findByRole('alert')).textContent).toMatch(/No tienes permiso/);
-      expect((within(form).getByLabelText('Nombre') as HTMLInputElement).value).toBe('Mi grupo');
+      expect(within(form).getByLabelText('Nombre').value).toBe('Mi grupo');
     });
 
     it('Cancelar cierra el formulario', async () => {
