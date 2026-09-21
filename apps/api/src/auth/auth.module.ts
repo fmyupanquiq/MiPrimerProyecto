@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
+import { GlobalPermissionGuard, ProjectAccessGuard } from '../authorization/permission.guards.js';
 import { SessionsModule } from '../sessions/sessions.module.js';
 import { UsersModule } from '../users/users.module.js';
 import { AccountController } from './account.controller.js';
@@ -24,9 +25,12 @@ import { RecentAuthGuard } from './recent-auth.guard.js';
     AuthService,
     AccountService,
     PasswordResetService,
-    // Orden de ejecución: origen (CSRF), autenticación y reautenticación reciente.
+    // Orden de ejecución: origen (CSRF), autenticación, permiso global, acceso al proyecto y
+    // reautenticación reciente (el acceso va antes para no pedir la contraseña por un 404).
     { provide: APP_GUARD, useClass: OriginGuard },
     { provide: APP_GUARD, useClass: AuthGuard },
+    { provide: APP_GUARD, useClass: GlobalPermissionGuard },
+    { provide: APP_GUARD, useClass: ProjectAccessGuard },
     { provide: APP_GUARD, useClass: RecentAuthGuard },
   ],
   exports: [

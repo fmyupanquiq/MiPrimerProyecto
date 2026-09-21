@@ -26,7 +26,9 @@ export interface TestApp {
   t: TestDatabase;
   hasher: PasswordHasher;
   /** Crea un usuario con contraseña real (hash argon2id). */
-  createUser: (overrides?: Partial<UserRow> & { password?: string }) => Promise<UserRow>;
+  createUser: (
+    overrides?: Partial<UserRow> & { password?: string; globalRole?: string },
+  ) => Promise<UserRow>;
   /** Vacía la base de datos y reinicia el reloj (para `beforeEach`). */
   reset: () => Promise<void>;
   close: () => Promise<void>;

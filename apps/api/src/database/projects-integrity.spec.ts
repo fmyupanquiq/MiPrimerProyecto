@@ -273,13 +273,11 @@ describe('integridad de proyectos y membresías en PostgreSQL', () => {
     it('la auditoría solo acepta un project_id que exista', async () => {
       const { project } = await insertProject(t.db);
       await expect(
-        t.db
-          .insert(auditLogs)
-          .values({
-            action: 'x.y',
-            entityType: 'x',
-            projectId: '00000000-0000-7000-8000-00000000000f',
-          }),
+        t.db.insert(auditLogs).values({
+          action: 'x.y',
+          entityType: 'x',
+          projectId: '00000000-0000-7000-8000-00000000000f',
+        }),
       ).rejects.toSatisfy(code(FK_VIOLATION));
       await expect(
         t.db.insert(auditLogs).values({ action: 'x.y', entityType: 'x', projectId: project.id }),
