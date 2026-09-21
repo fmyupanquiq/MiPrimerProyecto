@@ -13,5 +13,6 @@ export const SYSTEM_NAME = 'LetFer';
 export function configureSpanishValidationMessages(): void {
   z.config(z.locales.es());
 }
+export * from './invitation.js';
 export * from './member.js';
 export * from './project.js';

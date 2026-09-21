@@ -9,6 +9,7 @@ import {
 import { eq } from 'drizzle-orm';
 import { AuditService } from '../audit/audit.service.js';
 import { AppError } from '../common/app-error.js';
+import { maskEmail } from '../common/mask-email.js';
 import { Clock } from '../common/clock.js';
 import { RequestContext } from '../common/request-context.js';
 import { lockByKey } from '../database/advisory-lock.js';
@@ -25,13 +26,6 @@ import { PasswordHasher } from './password-hasher.js';
 
 type ConfirmOutcome =
   { kind: 'ok' } | { kind: 'wrong' } | { kind: 'locked'; retryAfterSeconds: number };
-
-/** Oculta la parte local de un correo para mencionarlo sin exponerlo entero (`a***@dominio`). */
-export function maskEmail(email: string): string {
-  const at = email.lastIndexOf('@');
-  if (at <= 0) return '***';
-  return `${email[0]}***${email.slice(at)}`;
-}
 
 /**
  * Operaciones del propio usuario sobre su cuenta: confirmación de contraseña, cambio de

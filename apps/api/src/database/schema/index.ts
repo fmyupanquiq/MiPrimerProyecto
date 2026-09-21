@@ -8,3 +8,4 @@ export * from './audit-logs.js';
 export * from './sessions.js';
 export * from './login-attempts.js';
 export * from './password-reset-tokens.js';
+export * from './invitations.js';

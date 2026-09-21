@@ -16,6 +16,9 @@ import { MIGRATIONS_FOLDER } from './migrate.js';
 const PHASE1_LAST_MIGRATION = 8; // 0008_password_reset_tokens
 const FIRST_PHASE2_MIGRATION = 9;
 
+// Crear y borrar la base temporal puede tardar más de 10 s en Windows con toda la suite en marcha.
+const HOOK_TIMEOUT_MS = 60_000;
+
 describe('migración desde el estado de la Fase 1', () => {
   const scratchName = 'letfer_migration_scratch';
   const scratchUrl = TEST_DATABASE_URL.replace(/\/[^/]+$/, `/${scratchName}`);
@@ -49,14 +52,14 @@ describe('migración desde el estado de la Fase 1', () => {
       cpSync(join(MIGRATIONS_FOLDER, `${entry.tag}.sql`), join(phase1Folder, `${entry.tag}.sql`));
     }
     expect(journal.entries.length).toBeGreaterThan(FIRST_PHASE2_MIGRATION);
-  });
+  }, HOOK_TIMEOUT_MS);
 
   afterAll(async () => {
     await pool.end();
     await admin.query(`DROP DATABASE IF EXISTS ${scratchName} WITH (FORCE)`);
     await admin.end();
     rmSync(phase1Folder, { recursive: true, force: true });
-  });
+  }, HOOK_TIMEOUT_MS);
 
   it('conserva a los usuarios existentes y les asigna el rol global equivalente', async () => {
     // 1. Estado de la Fase 1.
