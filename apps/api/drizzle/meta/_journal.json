@@ -36,6 +36,13 @@
       "when": 1790018960471,
       "tag": "0004_users_triggers",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790019362528,
+      "tag": "0005_sessions",
+      "breakpoints": true
     }
   ]
 }

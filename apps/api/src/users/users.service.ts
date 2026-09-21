@@ -22,6 +22,7 @@ import type { Database } from '../database/database.module.js';
 import type { DbExecutor } from '../database/database.types.js';
 import { PG_UNIQUE_VIOLATION, pgConstraintName, pgErrorCode } from '../database/pg-errors.js';
 import { users, type UserRow } from '../database/schema/index.js';
+import { SessionService } from '../sessions/session.service.js';
 
 export interface CreateUserInput {
   firstName: string;
@@ -71,6 +72,7 @@ export class UsersService {
     @Inject(DATABASE) private readonly db: Database,
     private readonly clock: Clock,
     private readonly audit: AuditService,
+    private readonly sessions: SessionService,
   ) {}
 
   async findById(id: string, executor: DbExecutor = this.db): Promise<UserRow | null> {
@@ -170,6 +172,17 @@ export class UsersService {
       .where(eq(users.id, userId))
       .returning();
 
+    // Desactivar o eliminar la cuenta cierra sus sesiones (§104.6); reactivarla no las revive.
+    const revokedSessions =
+      status === 'ACTIVE'
+        ? 0
+        : await this.sessions.revokeAllForUser(
+            userId,
+            `account_${status.toLowerCase()}`,
+            {},
+            executor,
+          );
+
     await this.audit.record(executor, {
       action: 'user.status.changed',
       entityType: 'user',
@@ -177,7 +190,7 @@ export class UsersService {
       ...(options.actorUserId !== undefined && { actorUserId: options.actorUserId }),
       oldValues: { status: before.status },
       newValues: { status },
-      metadata: options.reason ? { reason: options.reason } : null,
+      metadata: { ...(options.reason && { reason: options.reason }), revokedSessions },
     });
     return updated!;
   }

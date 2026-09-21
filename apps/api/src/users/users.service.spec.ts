@@ -18,12 +18,15 @@ import {
   pgErrorCode,
 } from '../database/pg-errors.js';
 import { auditLogs, users } from '../database/schema/index.js';
+import { SessionService } from '../sessions/session.service.js';
+import { loadConfig } from '../config/app-config.js';
 import { toPublicUser, UsersService } from './users.service.js';
 
 describe('UsersService (PostgreSQL real)', () => {
   let t: TestDatabase;
   let clock: FakeClock;
   let service: UsersService;
+  let sessionService: SessionService;
 
   beforeAll(() => {
     t = createTestDatabase();
@@ -32,7 +35,12 @@ describe('UsersService (PostgreSQL real)', () => {
   beforeEach(async () => {
     await truncateAll(t.pool);
     clock = new FakeClock('2026-06-01T12:00:00.000Z');
-    service = new UsersService(t.db, clock, new AuditService(clock));
+    sessionService = new SessionService(
+      t.db,
+      clock,
+      loadConfig({ DATABASE_URL: 'postgresql://u:p@localhost:5432/db' }),
+    );
+    service = new UsersService(t.db, clock, new AuditService(clock), sessionService);
   });
 
   const newUser = (email = 'Ana.Perez@Example.com') => ({
@@ -197,7 +205,7 @@ describe('UsersService (PostgreSQL real)', () => {
         entityId: user.id,
         oldValues: { status: 'ACTIVE' },
         newValues: { status: 'DISABLED' },
-        metadata: { reason: 'baja temporal' },
+        metadata: { reason: 'baja temporal', revokedSessions: 0 },
       });
     });
 
@@ -226,6 +234,32 @@ describe('UsersService (PostgreSQL real)', () => {
         deletionReason: null,
       });
       expect(await t.db.select().from(auditLogs)).toHaveLength(2);
+    });
+
+    it('desactivar o eliminar cierra las sesiones y reactivar no las revive (§104.6)', async () => {
+      const user = await insertUser(t.db);
+      const other = await insertUser(t.db);
+      const { token } = await sessionService.create({ userId: user.id, persistent: true });
+      const { token: otherToken } = await sessionService.create({
+        userId: other.id,
+        persistent: false,
+      });
+      expect(await sessionService.validate(token)).not.toBeNull();
+
+      await service.setStatus(user.id, 'DISABLED', {});
+      expect(await sessionService.validate(token)).toBeNull();
+      // Las sesiones de otros usuarios no se ven afectadas.
+      expect(await sessionService.validate(otherToken)).not.toBeNull();
+
+      await service.setStatus(user.id, 'ACTIVE', {});
+      expect(await sessionService.validate(token)).toBeNull();
+
+      const { token: fresh } = await sessionService.create({ userId: user.id, persistent: false });
+      await service.setStatus(user.id, 'DELETED', { reason: 'baja' });
+      expect(await sessionService.validate(fresh)).toBeNull();
+
+      const entries = await t.db.select().from(auditLogs).orderBy(auditLogs.occurredAt);
+      expect(entries.at(0)!.metadata).toMatchObject({ revokedSessions: 1 });
     });
 
     it('un usuario inexistente da 404', async () => {

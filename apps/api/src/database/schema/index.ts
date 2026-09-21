@@ -2,3 +2,4 @@
 // para que Drizzle (aplicación y drizzle-kit) tenga una única entrada.
 export * from './users.js';
 export * from './audit-logs.js';
+export * from './sessions.js';

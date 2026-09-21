@@ -10,6 +10,7 @@ import {
 import { AuditService } from '../audit/audit.service.js';
 import { loadConfig } from '../config/app-config.js';
 import { auditLogs, users } from '../database/schema/index.js';
+import { SessionService } from '../sessions/session.service.js';
 import { UsersService } from '../users/users.service.js';
 import { BootstrapAdminError, BootstrapAdminService } from './bootstrap-admin.service.js';
 import { PasswordHasher } from './password-hasher.js';
@@ -41,7 +42,14 @@ describe('BootstrapAdminService (PostgreSQL real)', () => {
     await truncateAll(t.pool);
     const clock = new FakeClock();
     const audit = new AuditService(clock);
-    service = new BootstrapAdminService(t.db, new UsersService(t.db, clock, audit), hasher, audit);
+    const config = loadConfig({ DATABASE_URL: 'postgresql://u:p@localhost:5432/db' });
+    const sessions = new SessionService(t.db, clock, config);
+    service = new BootstrapAdminService(
+      t.db,
+      new UsersService(t.db, clock, audit, sessions),
+      hasher,
+      audit,
+    );
   });
 
   it('crea el Administrador Global con la contraseña hasheada y lo audita', async () => {
