@@ -10,7 +10,8 @@
     "npm": ">=11"
   },
   "workspaces": [
-    "packages/shared"
+    "packages/shared",
+    "apps/api"
   ],
   "scripts": {
     "build:shared": "npm run build -w @letfer/shared",
