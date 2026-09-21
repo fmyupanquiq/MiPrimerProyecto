@@ -19,7 +19,7 @@ import { expectUpdated, nextVersion } from '../database/concurrency.js';
 import { DATABASE } from '../database/database.constants.js';
 import type { Database } from '../database/database.module.js';
 import type { DbExecutor } from '../database/database.types.js';
-import { roleIdByKey } from '../database/role-lookup.js';
+import { roleIdByKey, roleKeyById } from '../database/role-lookup.js';
 import {
   projectMembers,
   projects,
@@ -218,6 +218,89 @@ export class ProjectsService {
         });
       }
       return updated;
+    });
+  }
+
+  /**
+   * Transfiere la propiedad a otro miembro activo (§105.4, F4). Solo la invoca el Administrador
+   * Global. El nuevo propietario pasa a Administrador de Proyecto (si no lo era) y el anterior
+   * conserva su membresía de Administrador. Todo ocurre en una transacción: el disparador diferido
+   * de la base de datos exige que, al confirmar, el propietario sea un Administrador activo.
+   */
+  async transferOwnership(actor: UserRow, projectId: string, newOwnerId: string): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      const [project] = await tx
+        .select()
+        .from(projects)
+        .where(eq(projects.id, projectId))
+        .for('update')
+        .limit(1);
+      if (!project) throw new AppError(404, ErrorCode.NOT_FOUND, 'Proyecto no encontrado.');
+      if (project.ownerId === newOwnerId) {
+        throw new AppError(
+          409,
+          ErrorCode.INVALID_STATE,
+          'Esa persona ya es la propietaria del proyecto.',
+        );
+      }
+
+      const [target] = await tx
+        .select({ member: projectMembers, user: users })
+        .from(projectMembers)
+        .innerJoin(users, eq(users.id, projectMembers.userId))
+        .where(
+          and(
+            eq(projectMembers.projectId, projectId),
+            eq(projectMembers.userId, newOwnerId),
+            eq(projectMembers.status, 'ACTIVE'),
+          ),
+        )
+        .for('update', { of: projectMembers })
+        .limit(1);
+      if (!target || target.user.status !== 'ACTIVE') {
+        throw new AppError(
+          409,
+          ErrorCode.INVALID_STATE,
+          'La nueva persona propietaria debe ser miembro activo del proyecto.',
+        );
+      }
+
+      const adminRoleId = await roleIdByKey(tx, OWNER_MEMBERSHIP_ROLE_KEY);
+      const previousRoleId = target.member.roleId;
+      if (previousRoleId !== adminRoleId) {
+        await tx
+          .update(projectMembers)
+          .set({ roleId: adminRoleId, version: nextVersion(projectMembers.version) })
+          .where(eq(projectMembers.id, target.member.id));
+      }
+      await tx
+        .update(projects)
+        .set({ ownerId: newOwnerId, version: nextVersion(projects.version) })
+        .where(eq(projects.id, projectId));
+
+      const previousRoleKey = await roleKeyById(tx, previousRoleId);
+      if (previousRoleId !== adminRoleId) {
+        await this.audit.record(tx, {
+          action: 'member.role_changed',
+          entityType: 'project_member',
+          entityId: target.member.id,
+          projectId,
+          actorUserId: actor.id,
+          oldValues: { roleId: previousRoleId, role: previousRoleKey },
+          newValues: { roleId: adminRoleId, role: OWNER_MEMBERSHIP_ROLE_KEY },
+          metadata: { memberUserId: newOwnerId, reason: 'ownership_transfer' },
+        });
+      }
+      await this.audit.record(tx, {
+        action: 'project.ownership_transferred',
+        entityType: 'project',
+        entityId: projectId,
+        projectId,
+        actorUserId: actor.id,
+        oldValues: { ownerId: project.ownerId },
+        newValues: { ownerId: newOwnerId },
+        metadata: { newOwnerPreviousRole: previousRoleKey },
+      });
     });
   }
 }

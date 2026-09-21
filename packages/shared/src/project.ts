@@ -103,6 +103,10 @@ export const reasonSchema = z.preprocess(
 );
 export type ReasonInput = { reason?: string | undefined };
 
+/** Transferencia de la propiedad (solo Administrador Global, §105.4). */
+export const transferOwnershipSchema = z.object({ newOwnerId: z.uuid() });
+export type TransferOwnershipInput = z.infer<typeof transferOwnershipSchema>;
+
 export const listProjectsQuerySchema = z.object({
   scope: z.enum(['mine', 'all']).default('mine'),
 });

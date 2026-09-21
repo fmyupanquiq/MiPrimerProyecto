@@ -3,6 +3,7 @@ import {
   createProjectSchema,
   listProjectsQuerySchema,
   reasonSchema,
+  transferOwnershipSchema,
   updateProjectSchema,
   ErrorCode,
   type CreateProjectInput,
@@ -10,6 +11,7 @@ import {
   type ProjectDetail,
   type ProjectSummary,
   type ReasonInput,
+  type TransferOwnershipInput,
   type UpdateProjectInput,
 } from '@letfer/shared';
 import { CurrentAuth, type AuthContext } from '../auth/auth-context.js';
@@ -136,6 +138,24 @@ export class ProjectsController {
     @CurrentProject() access: ProjectAccess,
   ): Promise<ProjectDetail> {
     await this.lifecycle.restore(access.project.id, auth.user);
+    return this.projectsService.detailFor(auth.user, access.project.id);
+  }
+
+  /**
+   * Transfiere la propiedad del proyecto a otro miembro activo. Solo el Administrador Global
+   * (permiso global `projects.transfer_ownership`) y con reautenticación reciente (F4).
+   */
+  @Post(':projectId/transfer-ownership')
+  @HttpCode(200)
+  @ProjectRoute('projects.transfer_ownership')
+  @RequireRecentAuth()
+  @Header('Cache-Control', 'no-store')
+  async transferOwnership(
+    @CurrentAuth() auth: AuthContext,
+    @CurrentProject() access: ProjectAccess,
+    @Body({ schema: transferOwnershipSchema }) body: TransferOwnershipInput,
+  ): Promise<ProjectDetail> {
+    await this.projectsService.transferOwnership(auth.user, access.project.id, body.newOwnerId);
     return this.projectsService.detailFor(auth.user, access.project.id);
   }
 }
