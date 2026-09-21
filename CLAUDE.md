@@ -68,6 +68,30 @@ cuerpo si ambos difieren. Si una regla debe cambiar: primero se actualiza la esp
   y contraseña incorrecta debe ser indistinguible para no revelar si una cuenta existe.
 - **Web**: la web nunca ve el token de sesión (cookie HttpOnly); las llamadas van a `/api`.
 
+## Convenciones de la Fase 2 (ADR 0009 a 0012)
+
+- **Permisos**: el catálogo y la matriz de roles de sistema viven en `@letfer/shared`
+  (`permissions.ts`) y se sincronizan con la base de datos al arrancar (`reconcileRbac`). No
+  compares nombres de rol en la lógica: pide un permiso. Rutas: `@RequireGlobalPermission(...)` o
+  `@ProjectRoute(permiso, { allowTrashed? })` (inyecta `@CurrentProject()`). Quien no tiene acceso
+  al proyecto recibe **404** (igual que si no existiera); quien lo tiene y le falta el permiso, **403**.
+- **Roles**: nadie asigna un rol con permisos que no tiene ni gestiona a alguien con un rol superior
+  (`canAssignRole`). `PROJECT_OWNER` y los roles globales nunca se asignan.
+- **Propietario**: siempre miembro activo con rol `PROJECT_ADMIN` (lo garantizan disparadores en
+  la base de datos). Solo el Administrador Global transfiere la propiedad.
+- **Membresías**: una fila por (proyecto, usuario); salir, ser expulsado y volver reutiliza la fila
+  (`MembersService.addOrReactivate`). Nunca se borran.
+- **Ciclo de vida del proyecto**: `FOR UPDATE` sobre la fila; transiciones inválidas → 409
+  `INVALID_STATE`; cerrar, reabrir, papelera y restaurar llevan `@RequireRecentAuth()`.
+- **Invitaciones**: solo se guarda el hash SHA-256 del token; el enlace se muestra una vez; todo
+  enlace inválido responde igual (`INVALID_TOKEN`); nunca pongas el token ni su hash en la
+  auditoría. Aceptar se serializa bloqueando la invitación.
+- **Web**: `useAuth().can()` y `useProject().can()` solo mejoran la interfaz (manda la API);
+  acciones sensibles con `useReauth()`/`runWithReauth`; datos con `useLoad(clave, cargador)`;
+  `?next=` solo con `safeNextPath`. Pruebas con `stubApi` (falla ante peticiones no previstas).
+- **Pruebas**: `insertProject`/`insertMember` (`test/support/factories.ts`) crean proyecto y
+  membresías respetando los disparadores; `truncateAll` vuelve a sembrar el RBAC.
+
 ## Comandos (desde la raíz)
 
 - `npm run check`: formato, lint, tipos, pruebas y build (ejecútalo antes de dar algo por hecho).
