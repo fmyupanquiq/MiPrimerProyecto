@@ -54,6 +54,20 @@ export type ReauthInput = z.infer<typeof reauthSchema>;
 const personNameSchema = z.string().trim().min(1).max(100);
 
 /**
+ * Registro por invitación (§84, §105.7): sin cuenta, el enlace permite crearla (rol global USER).
+ * La cuenta se crea y se abre sesión, pero la invitación NO se acepta: es un paso posterior.
+ */
+export const registerSchema = z.object({
+  token: z.string().trim().max(200),
+  firstName: personNameSchema,
+  lastName: personNameSchema,
+  email: emailSchema,
+  password: newPasswordSchema,
+  keepSignedIn: z.boolean().default(false),
+});
+export type RegisterInput = z.infer<typeof registerSchema>;
+
+/**
  * Edición del perfil. `version` es la versión que el cliente leyó: si otra edición la cambió
  * mientras tanto, la API responde `CONCURRENCY_CONFLICT` (§96).
  */

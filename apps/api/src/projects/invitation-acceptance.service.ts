@@ -118,7 +118,7 @@ export class InvitationAcceptanceService {
       }
 
       await this.assertUsable(tx, invitation);
-      this.assertAddressedTo(invitation, user);
+      this.assertAddressedTo(invitation, user.email);
       if (isActiveMember) return this.result(tx, invitation, 'ALREADY_MEMBER');
 
       const { outcome } = await this.members.addOrReactivate(tx, {
@@ -166,7 +166,7 @@ export class InvitationAcceptanceService {
       const invitation = await this.findByToken(tx, token, false);
       if (!invitation) throw invalidInvitation();
       await this.assertUsable(tx, invitation);
-      this.assertAddressedTo(invitation, user);
+      this.assertAddressedTo(invitation, user.email);
       await this.audit.record(tx, {
         action: 'invitation.rejected',
         entityType: 'invitation',
@@ -176,6 +176,22 @@ export class InvitationAcceptanceService {
         metadata: { userId: user.id },
       });
     });
+  }
+
+  /**
+   * Comprueba que el token sirve para registrarse con ese correo (vigente, proyecto activo, creador
+   * autorizado y correo permitido). No consume ni modifica nada. Devuelve la invitación.
+   */
+  async validateForRegistration(
+    executor: DbExecutor,
+    token: string,
+    email: string,
+  ): Promise<InvitationRow> {
+    const invitation = await this.findByToken(executor, token, false);
+    if (!invitation) throw invalidInvitation();
+    await this.assertUsable(executor, invitation);
+    this.assertAddressedTo(invitation, email);
+    return invitation;
   }
 
   /** Invitación por token (por su hash), opcionalmente bloqueada. `null` si no existe. */
@@ -233,11 +249,8 @@ export class InvitationAcceptanceService {
   }
 
   /** La restricción por correo se valida siempre en el servidor. */
-  private assertAddressedTo(invitation: InvitationRow, user: UserRow): void {
-    if (
-      invitation.restrictedEmail &&
-      invitation.restrictedEmail !== user.email.trim().toLowerCase()
-    ) {
+  private assertAddressedTo(invitation: InvitationRow, email: string): void {
+    if (invitation.restrictedEmail && invitation.restrictedEmail !== email.trim().toLowerCase()) {
       throw notForYou();
     }
   }

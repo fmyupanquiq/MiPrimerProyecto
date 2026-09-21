@@ -9,6 +9,7 @@ import { MailModule } from './mail/mail.module.js';
 import { HealthController } from './health/health.controller.js';
 import { HealthService } from './health/health.service.js';
 import { ProjectsModule } from './projects/projects.module.js';
+import { RegistrationModule } from './registration/registration.module.js';
 import { UsersModule } from './users/users.module.js';
 
 @Module({
@@ -22,6 +23,7 @@ import { UsersModule } from './users/users.module.js';
     AuthorizationModule,
     AuthModule,
     ProjectsModule,
+    RegistrationModule,
   ],
   controllers: [HealthController],
   providers: [HealthService],
