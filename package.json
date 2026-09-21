@@ -1,0 +1,30 @@
+{
+  "name": "letfer",
+  "version": "0.0.0",
+  "private": true,
+  "description": "LetFer: sistema privado para administrar y analizar la actividad de apuestas de un equipo.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "engines": {
+    "node": ">=24.15.0 <25",
+    "npm": ">=11"
+  },
+  "workspaces": [
+    "packages/shared"
+  ],
+  "scripts": {
+    "build:shared": "npm run build -w @letfer/shared",
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run build:shared && npm run typecheck --workspaces --if-present",
+    "test": "npm run build:shared && npm run test --workspaces --if-present",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "@types/node": "24.13.6",
+    "concurrently": "10.0.5",
+    "prettier": "3.9.8",
+    "typescript": "6.0.3",
+    "vitest": "5.0.1"
+  }
+}
