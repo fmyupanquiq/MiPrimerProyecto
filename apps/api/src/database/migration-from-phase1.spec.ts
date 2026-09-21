@@ -139,6 +139,6 @@ describe('migración desde el estado de la Fase 1', () => {
       migrate(drizzle(pool), { migrationsFolder: MIGRATIONS_FOLDER }),
     ).resolves.not.toThrow();
     const count = await pool.query<{ n: number }>(`SELECT count(*)::int AS n FROM users`);
-    expect(count.rows[0].n).toBe(3);
+    expect(count.rows[0]!.n).toBe(3);
   });
 });
