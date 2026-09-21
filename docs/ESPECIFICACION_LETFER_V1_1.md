@@ -1379,6 +1379,7 @@ referencia cruzada correspondiente):
 | §32 | Conciliación | §80 |
 | §33 | Métricas del dashboard | §91, §92 |
 | §37 | Backups | §82 |
+| §3, §8, §84 | Sesiones, cuentas, registro y recuperación | §104 |
 | §67 | Orden de construcción | §81, §102 |
 
 ## 71. Fecha de liquidación
@@ -2000,3 +2001,91 @@ Ante cualquier duda durante la implementación:
 9.  La IA nunca tiene autoridad financiera autónoma.
 10. Si una nueva regla contradice esta especificación, primero se
     actualiza la especificación y luego el código.
+
+## 104. Parámetros de cuentas y autenticación (Fase 1)
+
+**Estado:** Aprobada.\
+Precisa y completa los §2, §3, §8, §39, §41 y §84 con los valores
+concretos que la Fase 1 necesita. Todos los valores numéricos son la
+configuración por defecto y se implementan como parámetros de
+configuración del backend, no como constantes dispersas en el código.
+
+### 104.1 Registro de usuarios
+
+En la Fase 1 no existe registro público. El único alta de usuario es el
+bootstrap del primer Administrador Global (§83). El registro de nuevos
+usuarios mediante invitación se incorpora en la Fase 2 (§7, §84).
+
+### 104.2 Duración de las sesiones
+
+-   Con **Mantener sesión iniciada**: expira tras 30 días sin actividad
+    (ventana deslizante) y, en todo caso, a los 90 días desde el inicio
+    de sesión.
+-   Sin **Mantener sesión iniciada**: expira tras 1 hora sin actividad
+    y, en todo caso, a las 12 horas desde el inicio de sesión. El
+    navegador la trata como cookie de sesión.
+
+### 104.3 Bloqueo temporal por intentos fallidos
+
+5 intentos de acceso fallidos en un periodo de 15 minutos para un mismo
+correo producen un bloqueo de 15 minutos. Un acceso correcto reinicia el
+conteo. Los correos inexistentes reciben exactamente la misma respuesta
+que los existentes, y las cuentas deshabilitadas o eliminadas no se
+distinguen de una contraseña incorrecta.
+
+### 104.4 Contraseñas y recuperación
+
+-   La contraseña tiene entre 10 y 128 caracteres, sin reglas de
+    composición, y no puede contener la parte local del correo
+    electrónico.
+-   El enlace de recuperación es válido durante 1 hora, es de un solo
+    uso, y un enlace nuevo invalida los anteriores.
+-   Al restablecer la contraseña se cierran todas las sesiones del
+    usuario.
+-   La solicitud de recuperación responde igual exista o no el correo.
+
+### 104.5 Reautenticación
+
+Una confirmación de contraseña por reautenticación (§39) se considera
+vigente durante 5 minutos.
+
+### 104.6 Estados de cuenta
+
+`ACTIVE`, `DISABLED` y `DELETED`. Solo una cuenta `ACTIVE` puede iniciar
+sesión. Pasar a `DISABLED` o `DELETED` invalida sus sesiones. La cuenta
+nunca se elimina físicamente (§8).
+
+### 104.7 Auditoría de autenticación
+
+Se auditan: inicio de sesión correcto, activación de un bloqueo,
+cierre de sesión, revocación de sesiones, cambio de contraseña,
+solicitud y realización de un restablecimiento de contraseña, cambios de
+perfil o correo, cambios de estado de cuenta y el bootstrap del
+Administrador Global. Los intentos fallidos se registran como intentos
+de acceso, no como entradas de auditoría, salvo el bloqueo resultante.
+
+### 104.8 Rol global previo al RBAC
+
+Hasta que la Fase 2 incorpore roles y permisos (§4.5), el usuario tiene
+un rol de sistema con dos valores: `USER` y `GLOBAL_ADMIN`.
+
+### 104.9 Cambio de correo
+
+El usuario puede cambiar su correo confirmando su contraseña. No se
+exige verificación mediante enlace. Se avisa al correo anterior. El
+cambio se audita con el valor anterior y el nuevo y no altera la
+atribución histórica (§2).
+
+### 104.10 Alcance diferido
+
+Quedan fuera de la Fase 1: la solicitud y aprobación de eliminación de
+cuenta (§8) y la gestión de usuarios por el administrador (Fase 8), la
+subida de avatar (Fase 7, requiere Object Storage) y las claves de
+idempotencia (Fase 3). La Fase 1 solo deja el modelo de datos y el campo
+de avatar.
+
+### 104.11 Interfaz mínima de la Fase 1
+
+La Fase 1 incluye las pantallas mínimas de Login, recuperación y
+restablecimiento de contraseña y un contenedor autenticado provisional
+(§49). Su diseño visual no es definitivo (§62).
