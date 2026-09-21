@@ -1,3 +1,4 @@
+import type { Server } from 'node:http';
 import { Test } from '@nestjs/testing';
 import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
@@ -20,7 +21,8 @@ describe('GET /api/health (e2e)', () => {
   });
 
   it('responde 200 con el estado del servicio', async () => {
-    await request(app.getHttpServer())
+    // getHttpServer() está tipado como `any` en Nest; se acota al tipo real.
+    await request(app.getHttpServer() as Server)
       .get('/api/health')
       .expect(200)
       .expect({ status: 'ok', service: 'LetFer API' });
