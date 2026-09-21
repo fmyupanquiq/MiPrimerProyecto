@@ -47,10 +47,32 @@ cuerpo si ambos difieren. Si una regla debe cambiar: primero se actualiza la esp
   la base de datos.
 - TypeScript se mantiene en 6.0.x mientras `typescript-eslint` no soporte la 7 (ADR 0001).
 
+## Convenciones de la API (Fase 1, ADR 0005 a 0008)
+
+- **Denegar por defecto**: toda ruta exige sesión salvo las marcadas con `@Public()`. Para acciones
+  sensibles usa `@RequireRecentAuth()` (contraseña confirmada en los últimos 5 minutos).
+- **Validación**: esquemas zod en `@letfer/shared`, usados con `@Body({ schema })` (la forma
+  `@Body(schema)` no valida en Nest 12). Errores con la forma `ApiErrorBody` y códigos `ErrorCode`.
+- **Auditoría**: `AuditService.record(tx, …)` con la transacción de la operación auditada; nunca
+  guardes secretos (las claves password/token/hash/secret se redactan).
+- **Concurrencia**: `version` + `nextVersion`/`expectUpdated` para ediciones; `lockByKey` para
+  serializar por recurso lógico. Operaciones con varios efectos: `db.transaction` y pasar el
+  `tx` a los servicios (`DbExecutor`).
+- **Migraciones**: cambiar el esquema → `npm run db:generate` → revisar el SQL; las reglas que
+  Drizzle no modela (disparadores) van en migraciones personalizadas (`drizzle-kit generate
+--custom`). Nunca edites una migración ya aplicada.
+- **Tiempo**: inyecta `Clock`, nunca `new Date()` en la lógica; en pruebas usa `FakeClock`.
+- **Pruebas**: PostgreSQL real (`letfer_test`), `createTestApp()` (`test/support/create-app.ts`)
+  para e2e con reloj falso y correo en memoria. `npm test` arranca la base de datos sola.
+- **Secretos y usuarios**: nunca imprimas contraseñas ni tokens; la respuesta de login, recuperación
+  y contraseña incorrecta debe ser indistinguible para no revelar si una cuenta existe.
+- **Web**: la web nunca ve el token de sesión (cookie HttpOnly); las llamadas van a `/api`.
+
 ## Comandos (desde la raíz)
 
 - `npm run check`: formato, lint, tipos, pruebas y build (ejecútalo antes de dar algo por hecho).
 - Por separado: `npm run build` · `npm run typecheck` · `npm run lint` · `npm test` ·
   `npm run format:check`.
 - `npm run dev` levanta API (:3000) y web (:5173). `npm run db:start|stop|status|reset` gestiona
-  PostgreSQL local.
+  PostgreSQL local; `npm run db:generate|db:migrate` gestionan las migraciones;
+  `npm run bootstrap:admin` crea el primer Administrador Global.
