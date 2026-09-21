@@ -1380,6 +1380,7 @@ referencia cruzada correspondiente):
 | §33 | Métricas del dashboard | §91, §92 |
 | §37 | Backups | §82 |
 | §3, §8, §84 | Sesiones, cuentas, registro y recuperación | §104 |
+| §4 a §7, §9, §85, §87, §88, §98 | Proyectos, roles, membresías e invitaciones | §105 |
 | §67 | Orden de construcción | §81, §102 |
 
 ## 71. Fecha de liquidación
@@ -2067,7 +2068,8 @@ de acceso, no como entradas de auditoría, salvo el bloqueo resultante.
 ### 104.8 Rol global previo al RBAC
 
 Hasta que la Fase 2 incorpore roles y permisos (§4.5), el usuario tiene
-un rol de sistema con dos valores: `USER` y `GLOBAL_ADMIN`.
+un rol de sistema con dos valores: `USER` y `GLOBAL_ADMIN`. (La Fase 2
+lo sustituye por el rol global de la tabla de roles, §105.2.)
 
 ### 104.9 Cambio de correo
 
@@ -2089,3 +2091,137 @@ de avatar.
 La Fase 1 incluye las pantallas mínimas de Login, recuperación y
 restablecimiento de contraseña y un contenedor autenticado provisional
 (§49). Su diseño visual no es definitivo (§62).
+
+## 105. Proyectos, miembros, roles e invitaciones (Fase 2)
+
+**Estado:** Aprobada.\
+Precisa y completa los §4 a §7, §9, §10, §85, §87, §88 y §98 con las
+decisiones de la Fase 2. Si alguna regla anterior las contradice,
+prevalece este apartado.
+
+### 105.1 Quién puede crear proyectos
+
+**Todo usuario activo con el rol global `USER` puede crear un proyecto
+propio, y también el Administrador Global. Crear proyectos NO es una
+facultad exclusiva del Administrador Global.** El permiso
+`projects.create` pertenece a los roles globales `USER` y
+`GLOBAL_ADMIN`.
+
+Al crear un proyecto, en una única transacción:
+
+-   El creador pasa a ser el propietario (`owner`) del proyecto.
+-   Se crea su membresía como Administrador de Proyecto.
+-   Se registra la auditoría de la creación.
+
+En la Fase 2 la creación genera el proyecto, su propietario y su
+membresía, en estado `ACTIVE`, pero todavía **sin** Etapa 1, unidad de
+stake, banca inicial ni casas: esos pasos del §5 los incorpora la
+Fase 3, que completará el flujo de creación.
+
+### 105.2 Roles de sistema y permisos
+
+Roles y permisos son datos separados (§4.5). Los roles de sistema son:
+
+-   Globales: `GLOBAL_ADMIN` y `USER`.
+-   De proyecto: `PROJECT_ADMIN`, `COLLABORATOR` y `READER`.
+-   `PROJECT_OWNER`: rol implícito del propietario; no se asigna ni
+    puede concederse mediante una invitación.
+
+Los permisos efectivos de un usuario en un proyecto son la unión de los
+de su rol global, los de su rol de membresía y, si es el propietario,
+los de `PROJECT_OWNER`. Un Administrador Global tiene todos los
+permisos en todos los proyectos (§4.1). La arquitectura admite roles
+personalizados globales y de proyecto; su interfaz queda fuera de la
+Fase 2.
+
+| Permiso | Global Admin | Owner | Project Admin | Colaborador | Lector | USER |
+|---|---|---|---|---|---|---|
+| `projects.create` | sí | | | | | sí |
+| `projects.list_all` | sí | | | | | |
+| `projects.transfer_ownership` | sí | | | | | |
+| `project.view` | sí | sí | sí | sí | sí | |
+| `members.view` | sí | sí | sí | sí | sí | |
+| `project.update` | sí | sí | sí | | | |
+| `project.close` | sí | sí | sí | | | |
+| `project.reopen` | sí | sí | | | | |
+| `project.trash` | sí | sí | | | | |
+| `project.restore` | sí | sí | | | | |
+| `members.update_role` | sí | sí | sí | | | |
+| `members.remove` | sí | sí | sí | | | |
+| `invitations.view` | sí | sí | sí | | | |
+| `invitations.create` | sí | sí | sí | | | |
+| `invitations.disable` | sí | sí | sí | | | |
+
+Un Administrador de Proyecto solo puede enviar un proyecto a papelera
+si un rol personalizado le concede explícitamente `project.trash` (§87).
+
+**Límite de asignación (§84, §98):** un rol solo puede asignarse
+(mediante una invitación o un cambio de rol) si todos sus permisos están
+incluidos en los permisos efectivos de quien lo asigna.
+
+### 105.3 Aislamiento
+
+Un usuario solo ve los proyectos a los que pertenece; el Administrador
+Global ve todos (§5). Quien no es miembro ni tiene permiso global recibe
+la misma respuesta que ante un proyecto inexistente. Un proyecto en
+papelera solo es visible para quienes pueden restaurarlo.
+
+### 105.4 Propietario y membresías
+
+-   La membresía del propietario es siempre de Administrador de Proyecto
+    y no puede quitarse ni degradarse; el propietario no abandona el
+    proyecto. Lo protege también la base de datos.
+-   Solo el Administrador Global transfiere la propiedad, con
+    reautenticación (§39) y auditoría. El nuevo propietario debe ser
+    miembro activo; el propietario anterior queda como Administrador de
+    Proyecto.
+-   Estados de una membresía: `ACTIVE`, `LEFT` (abandonó) y `REMOVED`
+    (expulsado). Quien vuelve a incorporarse con su misma cuenta
+    reutiliza su misma membresía: su historial permanece (§2).
+-   Los correos de los miembros solo los ven quienes pueden administrar
+    miembros; el resto ve nombre, rol y estado.
+
+### 105.5 Ciclo de vida del proyecto
+
+-   Cerrar: `ACTIVE` → `CLOSED` (propietario, Administrador de Proyecto
+    y Global). Reabrir: `CLOSED` → `ACTIVE` (propietario y Global).
+-   Papelera: `ACTIVE` o `CLOSED` → `TRASHED`; conserva el estado
+    anterior, la fecha y el motivo, y queda restaurable al menos 90 días
+    (§9, §89). Restaurar vuelve al estado anterior (propietario y
+    Global). No hay purga automática.
+-   Cerrar, reabrir, enviar a papelera y restaurar exigen
+    reautenticación (§39) y se auditan.
+-   Las invitaciones solo se crean y se aceptan en proyectos `ACTIVE`.
+
+### 105.6 Datos del proyecto
+
+Nombre (1 a 100 caracteres), descripción (hasta 2000), moneda `PEN` (no
+modificable en esta versión), zona horaria IANA (por defecto
+`America/Lima`, editable con auditoría) y formato de fecha (por defecto
+`DD/MM/YYYY`). La imagen del proyecto se subirá con Object Storage
+(Fase 7); la Fase 2 solo conserva su referencia.
+
+### 105.7 Invitaciones
+
+-   Vencimientos: 24 horas, 7, 15 o 30 días, o sin vencimiento hasta
+    desactivación manual. Un solo uso o reutilizable. Restricción
+    opcional a un correo. El rol de ingreso lo define quien invita,
+    dentro del límite de asignación (§105.2).
+-   El token se genera con 256 bits aleatorios, se muestra una sola vez
+    al crear la invitación y en la base de datos solo se guarda su
+    hash. Por eso el panel no puede volver a mostrar el enlace.
+-   Estado (se calcula al consultar): `DISABLED` si fue deshabilitada;
+    si no, `ACCEPTED` si es de un solo uso y ya se aceptó; si no,
+    `EXPIRED` si venció; si no, `ACTIVE`.
+-   Aceptar es idempotente: quien ya es miembro activo no duplica su
+    membresía ni cambia su rol. Un enlace de un solo uso se consume de
+    forma atómica. Rechazar solo se audita: no consume ni deshabilita el
+    enlace.
+-   Una invitación deja de ser válida si su creador ya no está
+    autorizado a crearla o si el proyecto no está `ACTIVE`.
+-   Registro por invitación (§84): sin cuenta, el enlace permite crear
+    la cuenta (rol global `USER`); después el usuario acepta o rechaza
+    la invitación. La restricción por correo se valida en el servidor.
+-   Se auditan la creación, deshabilitación, aceptación y rechazo de
+    invitaciones, los cambios de rol, las expulsiones, los abandonos y
+    todos los cambios de estado del proyecto.
