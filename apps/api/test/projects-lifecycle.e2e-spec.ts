@@ -109,10 +109,6 @@ describe('ciclo de vida del proyecto (e2e, PostgreSQL real)', () => {
 
       for (const actor of ['owner', 'root'] as const) {
         await setStatus('ACTIVE');
-        await ctx.t.pool.query(
-          `UPDATE projects SET previous_status = NULL, deleted_at = NULL, deleted_by = NULL, purge_eligible_at = NULL WHERE id = $1`,
-          [projectId],
-        );
         await act(actor, 'trash').expect(200);
         expect((await statusOf()).status, `enviado por ${actor}`).toBe('TRASHED');
       }
