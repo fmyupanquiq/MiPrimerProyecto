@@ -1,6 +1,6 @@
-import { ServiceUnavailableException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { describe, expect, it } from 'vitest';
+import { AppError } from '../common/app-error.js';
 import { PG_POOL } from '../database/database.constants.js';
 import { HealthController } from './health.controller.js';
 import { HealthService, type Pingable } from './health.service.js';
@@ -27,6 +27,8 @@ describe('HealthController', () => {
     const controller = await createController({
       query: () => Promise.reject(new Error('conexión rechazada')),
     });
-    await expect(controller.check()).rejects.toBeInstanceOf(ServiceUnavailableException);
+    await expect(controller.check()).rejects.toSatisfy(
+      (error) => error instanceof AppError && error.getStatus() === 503,
+    );
   });
 });
