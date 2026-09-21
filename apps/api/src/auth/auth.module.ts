@@ -11,6 +11,7 @@ import { BootstrapAdminService } from './bootstrap-admin.service.js';
 import { LoginAttemptsService } from './login-attempts.service.js';
 import { OriginGuard } from './origin.guard.js';
 import { PasswordHasher } from './password-hasher.js';
+import { PasswordResetService } from './password-reset.service.js';
 import { RecentAuthGuard } from './recent-auth.guard.js';
 
 @Module({
@@ -22,6 +23,7 @@ import { RecentAuthGuard } from './recent-auth.guard.js';
     LoginAttemptsService,
     AuthService,
     AccountService,
+    PasswordResetService,
     // Orden de ejecución: origen (CSRF), autenticación y reautenticación reciente.
     { provide: APP_GUARD, useClass: OriginGuard },
     { provide: APP_GUARD, useClass: AuthGuard },

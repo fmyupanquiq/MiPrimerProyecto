@@ -57,6 +57,13 @@
       "when": 1790020420142,
       "tag": "0007_login_attempts_seq",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1790020544946,
+      "tag": "0008_password_reset_tokens",
+      "breakpoints": true
     }
   ]
 }

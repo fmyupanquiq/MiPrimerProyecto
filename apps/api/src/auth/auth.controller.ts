@@ -10,7 +10,16 @@ import {
   Post,
   Res,
 } from '@nestjs/common';
-import { loginSchema, type AuthState, type LoginInput, type SessionInfo } from '@letfer/shared';
+import {
+  forgotPasswordSchema,
+  loginSchema,
+  resetPasswordSchema,
+  type AuthState,
+  type ForgotPasswordInput,
+  type LoginInput,
+  type ResetPasswordInput,
+  type SessionInfo,
+} from '@letfer/shared';
 import type { Response } from 'express';
 import { z } from 'zod';
 import { AuthRateLimit } from '../common/rate-limit.js';
@@ -18,6 +27,7 @@ import { APP_CONFIG, type AppConfig } from '../config/app-config.js';
 import { CurrentAuth, Public, type AuthContext } from './auth-context.js';
 import { toAuthState } from './auth-state.js';
 import { AuthService } from './auth.service.js';
+import { PasswordResetService } from './password-reset.service.js';
 import { clearSessionCookie, writeSessionCookie } from './session-cookie.js';
 
 const sessionIdSchema = z.uuid();
@@ -26,6 +36,7 @@ const sessionIdSchema = z.uuid();
 export class AuthController {
   constructor(
     private readonly authService: AuthService,
+    private readonly passwordReset: PasswordResetService,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
 
@@ -85,5 +96,31 @@ export class AuthController {
   @HttpCode(200)
   async revokeOtherSessions(@CurrentAuth() auth: AuthContext): Promise<{ revoked: number }> {
     return { revoked: await this.authService.revokeOtherSessions(auth) };
+  }
+
+  /**
+   * Solicita el enlace de recuperación (§104.4). Responde siempre 202 con el mismo cuerpo,
+   * exista o no el correo.
+   */
+  @Public()
+  @AuthRateLimit()
+  @Post('password/forgot')
+  @HttpCode(202)
+  async forgotPassword(
+    @Body({ schema: forgotPasswordSchema }) body: ForgotPasswordInput,
+  ): Promise<{ accepted: true }> {
+    await this.passwordReset.requestReset(body.email);
+    return { accepted: true };
+  }
+
+  /** Restablece la contraseña con el token del correo; cierra todas las sesiones. */
+  @Public()
+  @AuthRateLimit()
+  @Post('password/reset')
+  @HttpCode(204)
+  async resetPassword(
+    @Body({ schema: resetPasswordSchema }) body: ResetPasswordInput,
+  ): Promise<void> {
+    await this.passwordReset.resetPassword(body.token, body.newPassword);
   }
 }

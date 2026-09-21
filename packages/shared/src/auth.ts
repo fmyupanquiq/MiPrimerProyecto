@@ -26,6 +26,17 @@ export const loginSchema = z.object({
 });
 export type LoginInput = z.infer<typeof loginSchema>;
 
+/** Solicitud de recuperación de contraseña (§104.4). La respuesta no revela si el correo existe. */
+export const forgotPasswordSchema = z.object({ email: emailSchema });
+export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
+
+/** Restablecimiento con el token recibido por correo (§104.4). */
+export const resetPasswordSchema = z.object({
+  token: z.string().min(20).max(200),
+  newPassword: newPasswordSchema,
+});
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
+
 /** Cambio de contraseña con la sesión iniciada (§104.4). */
 export const changePasswordSchema = z.object({
   currentPassword: z.string().min(1).max(MAX_SUBMITTED_PASSWORD_LENGTH),
