@@ -6,6 +6,7 @@ import { CommonModule } from './common/common.module.js';
 import { ConfigModule } from './config/config.module.js';
 import { DatabaseModule } from './database/database.module.js';
 import { MailModule } from './mail/mail.module.js';
+import { FinanceModule } from './finance/finance.module.js';
 import { HealthController } from './health/health.controller.js';
 import { HealthService } from './health/health.service.js';
 import { ProjectsModule } from './projects/projects.module.js';
@@ -23,6 +24,7 @@ import { UsersModule } from './users/users.module.js';
     AuthorizationModule,
     AuthModule,
     ProjectsModule,
+    FinanceModule,
     RegistrationModule,
   ],
   controllers: [HealthController],
