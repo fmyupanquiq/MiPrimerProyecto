@@ -24,7 +24,7 @@ LetFer/
 │   └── shared/     # Código compartido: esquemas zod, tipos y códigos de error
 ├── docs/
 │   ├── ESPECIFICACION_LETFER_V1_1.md
-│   └── decisiones/ # Registros de decisiones técnicas (ADR 0001-0012)
+│   └── decisiones/ # Registros de decisiones técnicas (ADR 0001-0013)
 ├── scripts/        # Herramientas de desarrollo (PostgreSQL local)
 └── ...
 ```
@@ -130,16 +130,49 @@ confirmado la contraseña en los últimos 5 minutos.
 | `POST /invitations/reject`                      | Rechaza la invitación (solo se audita).                                                     |
 | `POST /auth/register` (P)                       | Crea la cuenta desde un enlace de invitación (no acepta la invitación).                     |
 
-## Web (Fase 2)
+### API (Fase 3): configuración inicial, etapas, casas y finanzas
 
-| Ruta                        | Pantalla                                                                          |
-| --------------------------- | --------------------------------------------------------------------------------- |
-| `/`                         | Mis proyectos y alta de un proyecto nuevo.                                        |
-| `/projects/trash`           | Papelera: restaurar proyectos (pide la contraseña).                               |
-| `/projects/:id`             | Resumen del proyecto ("sin etapa activa" hasta la Fase 3).                        |
-| `/projects/:id/members`     | Miembros, cambio de rol, expulsión e invitaciones.                                |
-| `/projects/:id/settings`    | Datos del proyecto y acciones: cerrar, reabrir, papelera, salir.                  |
-| `/invite?token=…` (pública) | Vista previa de la invitación, crear cuenta o iniciar sesión, aceptar o rechazar. |
+Igual criterio 404/403 que la Fase 2. Un proyecto sin configurar (`setupComplete: false`) rechaza
+estas rutas (salvo el propio `setup`) con 409 `INVALID_STATE`. `R` = exige haber confirmado la
+contraseña en los últimos 5 minutos. Detalles de las decisiones D1-D8 en
+[`docs/decisiones/0013-etapas-casas-y-movimientos-financieros.md`](docs/decisiones/0013-etapas-casas-y-movimientos-financieros.md)
+y en la especificación, sección 106.
+
+| Método y ruta                                    | Quién / descripción                                                               |
+| ------------------------------------------------ | --------------------------------------------------------------------------------- |
+| `POST /projects/:id/setup`                       | Crea la Etapa 1, las casas y la banca inicial (D1). Solo una vez.                 |
+| `GET /projects/:id/stages`                       | Lista etapas (`?status=TRASHED` para la papelera).                                |
+| `POST /projects/:id/stages`                      | Crea y activa una etapa nueva; cierra la etapa activa anterior.                   |
+| `POST /projects/:id/stages/:stageId/unit` (R)    | Corrige la unidad de stake; sin `confirm`, devuelve una vista previa del impacto. |
+| `POST /projects/:id/stages/:stageId/trash`       | Envía una etapa cerrada a la papelera.                                            |
+| `POST /projects/:id/stages/:stageId/restore` (R) | Restaura una etapa desde la papelera.                                             |
+| `GET /projects/:id/houses`                       | Lista casas con saldo, comprometido y disponible calculados al vuelo (D3).        |
+| `POST /projects/:id/houses`                      | Crea una casa (catálogo libre por proyecto, D7).                                  |
+| `POST /projects/:id/houses/:houseId/deactivate`  | Desactiva una casa (no se elimina, D7).                                           |
+| `POST /projects/:id/houses/:houseId/activate`    | Reactiva una casa desactivada.                                                    |
+| `GET /projects/:id/movements`                    | Historial del ledger (D2), más reciente primero.                                  |
+| `POST /projects/:id/movements/deposits`          | Registra un depósito.                                                             |
+| `POST /projects/:id/movements/transfers`         | Transferencia interna atómica entre dos casas (D4).                               |
+| `POST /projects/:id/movements/extraordinary` (R) | Movimiento extraordinario real, con motivo obligatorio.                           |
+| `GET /projects/:id/withdrawals`                  | Lista solicitudes de retiro con su estado.                                        |
+| `POST /projects/:id/withdrawals`                 | Solicita un retiro; reserva el monto de inmediato (D5).                           |
+| `POST /projects/:id/withdrawals/:id/approve` (R) | Aprueba y genera el movimiento definitivo (regla de autoaprobación, §79).         |
+| `POST /projects/:id/withdrawals/:id/reject`      | Rechaza; libera la reserva sin dejar rastro en el ledger.                         |
+| `POST /projects/:id/withdrawals/:id/cancel`      | Cancela (quien solicitó, o quien puede aprobar).                                  |
+
+## Web (Fases 2 y 3)
+
+| Ruta                        | Pantalla                                                                           |
+| --------------------------- | ---------------------------------------------------------------------------------- |
+| `/`                         | Mis proyectos y alta de un proyecto nuevo.                                         |
+| `/projects/trash`           | Papelera: restaurar proyectos (pide la contraseña).                                |
+| `/projects/:id`             | Resumen del proyecto; aviso para completar la configuración inicial si falta.      |
+| `/projects/:id/setup`       | Configuración inicial: unidad de la Etapa 1, casas y banca inicial (D1).           |
+| `/projects/:id/stages`      | Etapas: crear/activar, corregir unidad (con vista previa), papelera.               |
+| `/projects/:id/finance`     | Casas y Finanzas: saldos, registrar movimiento, historial y solicitudes de retiro. |
+| `/projects/:id/members`     | Miembros, cambio de rol, expulsión e invitaciones.                                 |
+| `/projects/:id/settings`    | Datos del proyecto y acciones: cerrar, reabrir, papelera, salir.                   |
+| `/invite?token=…` (pública) | Vista previa de la invitación, crear cuenta o iniciar sesión, aceptar o rechazar.  |
 
 ## Base de datos
 
@@ -155,7 +188,7 @@ El esquema se define en `apps/api/src/database/schema/` (Drizzle) y las migracio
 
 ## Estado
 
-**Fases 0 y 1: completadas y aprobadas. Fase 2 (proyectos, miembros, roles e invitaciones):
-implementada en la rama `fase-2/colaboracion`, pendiente de revisión.** Siguiente: Fase 3
-(configuración financiera inicial). Ver la sección 67 de la especificación y, para las reglas de
-la Fase 2, la sección 105.
+**Fases 0 a 2: completadas, aprobadas e integradas en `main` (tag `v0.2-fase2-completa`). Fase 3
+(etapas, casas y movimientos financieros): implementada en la rama `fase-3/finanzas`, pendiente de
+revisión.** Siguiente: Fase 4 (apuestas). Ver la sección 67 de la especificación y, para las reglas
+de cada fase, las secciones 104 (Fase 1), 105 (Fase 2) y 106 (Fase 3).

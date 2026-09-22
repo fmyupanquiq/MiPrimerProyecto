@@ -3,7 +3,7 @@
 ## Fuente de verdad
 
 `docs/ESPECIFICACION_LETFER_V1_1.md` es la **única** fuente de verdad funcional y técnica.
-Léela completa antes de implementar funcionalidad. La adenda (§71–§103) prevalece sobre el
+Léela completa antes de implementar funcionalidad. La adenda (§71–§106) prevalece sobre el
 cuerpo si ambos difieren. Si una regla debe cambiar: primero se actualiza la especificación
 (con aprobación del usuario) y luego el código.
 
@@ -91,6 +91,33 @@ cuerpo si ambos difieren. Si una regla debe cambiar: primero se actualiza la esp
   `?next=` solo con `safeNextPath`. Pruebas con `stubApi` (falla ante peticiones no previstas).
 - **Pruebas**: `insertProject`/`insertMember` (`test/support/factories.ts`) crean proyecto y
   membresías respetando los disparadores; `truncateAll` vuelve a sembrar el RBAC.
+
+## Convenciones de la Fase 3 (ADR 0013, §106)
+
+- **Setup del proyecto (D1)**: `POST /projects` solo crea el proyecto y su propietario;
+  `POST /projects/:id/setup` completa la Etapa 1, las casas y la banca inicial, y solo puede
+  ejecutarse una vez (`projects.setupCompletedAt`). Ninguna ruta financiera ni de etapas/casas
+  adicionales funciona antes de completarlo.
+- **Ledger (D2, D3)**: `financial_movements` es inmutable tras insertarse (`prevent_modification`);
+  una corrección es un movimiento nuevo, nunca una edición. Los saldos de una casa (`balance`,
+  `committed`, `available`) se calculan por consulta desde el ledger (`finance/balances.ts`); no se
+  persiste un saldo como caché.
+- **Transferencias (D4)**: una transferencia interna es una sola fila con `fromHouseId`/`toHouseId`
+  y un `operationId`, registrada de forma atómica bajo `.for('update')` sobre ambas casas.
+- **Retiros (D5)**: `withdrawal_requests` es una tabla aparte con su propio ciclo
+  (`PENDING`/`APPROVED`/`REJECTED`/`CANCELLED`); solo aprobar genera el movimiento definitivo en el
+  ledger, con revalidación del disponible sobre la casa bloqueada. Autoaprobación (§79): solo si
+  ningún otro miembro tiene `withdrawals.approve` por su rol; en ese caso exige reautenticación.
+- **Reautenticación (D6)**: exigen `@RequireRecentAuth()` aprobar un retiro, corregir la unidad de
+  una etapa y registrar un movimiento extraordinario. Depósitos, transferencias y crear
+  etapas/casas no la exigen.
+- **Casas (D7)**: catálogo libre por proyecto, sin catálogo global; una casa nunca se elimina, solo
+  se desactiva/reactiva.
+- **Permisos (D8)**: `stages.*`, `houses.*`, `movements.*` y `withdrawals.*` en `@letfer/shared`
+  (`permissions.ts`); `COLLABORATOR`/`READER` solo reciben los de consulta (`*.view`).
+- **Web**: `ProjectSetupPage`, `StagesPage` y `FinancePage` remiten a `/projects/:id/setup` mientras
+  `project.setupComplete` sea falso, en vez de mostrar su contenido. Mismos patrones de la Fase 2
+  (`useReauth`, `useLoad`, `stubApi`) para las acciones y pruebas nuevas.
 
 ## Comandos (desde la raíz)
 

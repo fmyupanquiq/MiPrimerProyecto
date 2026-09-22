@@ -2225,3 +2225,106 @@ modificable en esta versión), zona horaria IANA (por defecto
 -   Se auditan la creación, deshabilitación, aceptación y rechazo de
     invitaciones, los cambios de rol, las expulsiones, los abandonos y
     todos los cambios de estado del proyecto.
+
+## 106. Etapas, casas y movimientos financieros (Fase 3)
+
+**Estado:** Aprobada.\
+Precisa y completa los §5, §11 a §17, §39, §49 y §72 a §79 con las
+decisiones de la Fase 3 (D1 a D8). Si alguna regla anterior las
+contradice, prevalece este apartado.
+
+### 106.1 Configuración inicial del proyecto (D1)
+
+`POST /projects` (Fase 2) solo crea el proyecto, su propietario y su
+membresía. `POST /projects/:id/setup` completa la configuración
+inicial en una única transacción: crea la Etapa 1 con su unidad de
+stake, da de alta las casas indicadas y registra la banca inicial de
+cada una como capital inicial (`INITIAL_CAPITAL`) en el ledger. Un
+proyecto sin configurar existe (es visible, editable en sus datos
+básicos) pero **no admite ninguna operación financiera** (movimientos,
+retiros) ni la creación de etapas o casas adicionales hasta completar
+el setup. El setup solo puede ejecutarse una vez; reintentarlo sobre un
+proyecto ya configurado responde 409 `INVALID_STATE`.
+
+### 106.2 Ledger financiero único (D2, D3, D4)
+
+Todo movimiento de dinero del proyecto (capital inicial, depósito,
+retiro, transferencia interna, extraordinario) se registra como una
+fila en un único ledger (`financial_movements`). **Una fila confirmada
+del ledger nunca se edita ni se borra**: cualquier corrección posterior
+se hace con un movimiento nuevo, nunca modificando el existente. Esto
+no afecta al ciclo de vida propio de una solicitud de retiro (§106.5),
+que sí cambia de estado hasta su resolución: eso no es editar un
+movimiento confirmado, es el flujo de aprobación anterior a que exista
+uno.
+
+Los saldos de una casa (saldo, comprometido y disponible) se calculan
+en cada consulta sumando el ledger y descontando los retiros
+`PENDING`; **no se guarda un saldo como caché**. Se prioriza la
+integridad y la trazabilidad sobre la optimización prematura (si el
+cálculo en consulta llegara a ser un problema de rendimiento, se
+resolverá más adelante con una caché reconstruible, nunca convirtiendo
+esa caché en fuente de verdad).
+
+Una transferencia interna entre dos casas del mismo proyecto es **una
+sola fila** del ledger con `from_house_id` y `to_house_id` (no dos
+filas separadas de salida/entrada), identificada además por un
+`operation_id` para poder correlacionarla en la auditoría. La
+operación es atómica: afecta a las dos casas o a ninguna.
+
+### 106.3 Casas de apuestas (D7)
+
+El catálogo de casas es libre y propio de cada proyecto: cualquier
+nombre es válido, sin un catálogo global compartido entre proyectos.
+Una casa no se elimina físicamente (integridad financiera): solo se
+desactiva y puede reactivarse. No requiere reautenticación crear una
+casa nueva.
+
+### 106.4 Movimientos financieros
+
+-   **Depósito:** dinero externo que entra a una casa. No exige
+    reautenticación.
+-   **Transferencia interna:** ver §106.2. No exige reautenticación.
+-   **Extraordinario:** un hecho real de la casa (cashback,
+    bonificación, comisión, corrección oficial de la casa); nunca un
+    "ajuste" genérico para cuadrar cifras. El motivo es obligatorio.
+    Exige reautenticación (D6).
+
+### 106.5 Solicitudes de retiro (D5)
+
+Un retiro es una solicitud con su propio ciclo de vida en una tabla
+separada (`withdrawal_requests`): `PENDING` → `APPROVED` (o
+`REJECTED`, o `CANCELLED`). Solicitar un retiro reserva de inmediato su
+monto (reduce el disponible de la casa, §17) sin tocar el ledger. Solo
+al **aprobarse** se genera el movimiento definitivo (`WITHDRAWAL`) en
+`financial_movements`; rechazar o cancelar libera la reserva sin dejar
+rastro en el ledger. Aprobar exige reautenticación (D6) y control de
+concurrencia optimista (`version`); revalida el disponible sobre la
+casa bloqueada antes de confirmar, por si el estado cambió entre la
+solicitud y la aprobación.
+
+### 106.6 Reautenticación (D6, precisa §39)
+
+Exigen `@RequireRecentAuth()`: aprobar un retiro, corregir la unidad de
+una etapa (§12.1), registrar un movimiento extraordinario y transferir
+la propiedad del proyecto (§105.4, ya vigente desde la Fase 2). No la
+exigen: depósitos, transferencias internas, ni la creación de etapas o
+casas.
+
+### 106.7 Permisos (D8)
+
+Un Colaborador solo tiene acceso de **consulta** a la información
+operativa: ver etapas, ver casas y sus saldos, y ver el historial de
+movimientos. No puede crear, aprobar ni modificar ningún dato
+financiero (ni casas, ni movimientos, ni retiros) salvo que un rol
+personalizado se lo conceda explícitamente (§105.2). El Lector solo
+consulta. El Administrador de Proyecto y el propietario tienen todos
+los permisos financieros del proyecto.
+
+### 106.8 Auditoría
+
+Se auditan la configuración inicial del proyecto, la creación y
+activación de etapas, la corrección de unidad, la creación y
+desactivación/reactivación de casas, todo movimiento financiero
+(depósito, transferencia, extraordinario) y cada cambio de estado de
+una solicitud de retiro (solicitud, aprobación, rechazo, cancelación).
