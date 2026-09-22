@@ -18,6 +18,18 @@ export function assertProjectActive(access: ProjectAccess): void {
   }
 }
 
+/** Además de activo, exige que ya se haya completado la configuración inicial (D1). */
+export function assertFinanceReady(access: ProjectAccess): void {
+  assertProjectActive(access);
+  if (access.project.setupCompletedAt === null) {
+    throw new AppError(
+      409,
+      ErrorCode.INVALID_STATE,
+      'Completa primero la configuración inicial del proyecto.',
+    );
+  }
+}
+
 export const financeNotFound = (message: string): AppError =>
   new AppError(404, ErrorCode.NOT_FOUND, message);
 
