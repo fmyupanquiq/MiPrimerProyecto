@@ -34,6 +34,35 @@ export const PERMISSIONS = {
   'invitations.view': { scope: 'PROJECT', description: 'Ver las invitaciones del proyecto' },
   'invitations.create': { scope: 'PROJECT', description: 'Crear invitaciones' },
   'invitations.disable': { scope: 'PROJECT', description: 'Deshabilitar invitaciones' },
+
+  // --- Finanzas (Fase 3, §11-17, §72, §79) ---
+  'project.setup': {
+    scope: 'PROJECT',
+    description: 'Completar la configuración inicial: etapa, unidad, casas y banca',
+  },
+  'stages.view': { scope: 'PROJECT', description: 'Ver las etapas del proyecto' },
+  'stages.create': { scope: 'PROJECT', description: 'Crear/activar una nueva etapa' },
+  'stages.correct_unit': { scope: 'PROJECT', description: 'Corregir la unidad de una etapa' },
+  'stages.trash': { scope: 'PROJECT', description: 'Enviar una etapa a la papelera' },
+  'stages.restore': { scope: 'PROJECT', description: 'Restaurar una etapa desde la papelera' },
+  'houses.view': { scope: 'PROJECT', description: 'Ver las casas de apuestas y sus saldos' },
+  'houses.create': { scope: 'PROJECT', description: 'Añadir una casa de apuestas' },
+  'houses.deactivate': { scope: 'PROJECT', description: 'Desactivar una casa (con saldo cero)' },
+  'movements.view': {
+    scope: 'PROJECT',
+    description: 'Ver el historial de movimientos financieros',
+  },
+  'movements.deposit': { scope: 'PROJECT', description: 'Registrar un depósito' },
+  'movements.transfer': { scope: 'PROJECT', description: 'Registrar una transferencia interna' },
+  'movements.extraordinary': {
+    scope: 'PROJECT',
+    description: 'Registrar un movimiento extraordinario',
+  },
+  'withdrawals.request': { scope: 'PROJECT', description: 'Solicitar un retiro' },
+  'withdrawals.approve': {
+    scope: 'PROJECT',
+    description: 'Aprobar o rechazar una solicitud de retiro',
+  },
 } as const satisfies Record<string, PermissionDefinition>;
 
 export type PermissionCode = keyof typeof PERMISSIONS;
@@ -117,6 +146,22 @@ export const SYSTEM_ROLE_DEFINITIONS: readonly SystemRoleDefinition[] = [
       'invitations.view',
       'invitations.create',
       'invitations.disable',
+      // Finanzas (§88: el Administrador de Proyecto administra etapas, casas y movimientos).
+      'project.setup',
+      'stages.view',
+      'stages.create',
+      'stages.correct_unit',
+      'stages.trash',
+      'stages.restore',
+      'houses.view',
+      'houses.create',
+      'houses.deactivate',
+      'movements.view',
+      'movements.deposit',
+      'movements.transfer',
+      'movements.extraordinary',
+      'withdrawals.request',
+      'withdrawals.approve',
     ],
   },
   {
@@ -125,7 +170,9 @@ export const SYSTEM_ROLE_DEFINITIONS: readonly SystemRoleDefinition[] = [
     name: 'Colaborador',
     description: 'Usuario operativo del proyecto.',
     assignable: true,
-    permissions: ['project.view', 'members.view'],
+    // Solo consulta de finanzas (§88: "información operativa necesaria para colaborar"; D8).
+    // Incluye stages.view porque §50 exige mostrar la etapa activa en la cabecera a todo miembro.
+    permissions: ['project.view', 'members.view', 'stages.view', 'houses.view', 'movements.view'],
   },
   {
     key: 'READER',
@@ -133,7 +180,7 @@ export const SYSTEM_ROLE_DEFINITIONS: readonly SystemRoleDefinition[] = [
     name: 'Lector',
     description: 'Acceso de consulta, sin capacidad de modificación.',
     assignable: true,
-    permissions: ['project.view', 'members.view'],
+    permissions: ['project.view', 'members.view', 'stages.view', 'houses.view', 'movements.view'],
   },
 ];
 

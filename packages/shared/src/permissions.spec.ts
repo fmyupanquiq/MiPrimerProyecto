@@ -57,10 +57,32 @@ describe('matriz de roles de sistema (§105.2)', () => {
         'invitations.view',
         'invitations.create',
         'invitations.disable',
+        'project.setup',
+        'stages.view',
+        'stages.create',
+        'stages.correct_unit',
+        'stages.trash',
+        'stages.restore',
+        'houses.view',
+        'houses.create',
+        'houses.deactivate',
+        'movements.view',
+        'movements.deposit',
+        'movements.transfer',
+        'movements.extraordinary',
+        'withdrawals.request',
+        'withdrawals.approve',
       ].sort(),
     );
-    expect([...perms('COLLABORATOR')].sort()).toEqual(['members.view', 'project.view']);
-    expect([...perms('READER')].sort()).toEqual(['members.view', 'project.view']);
+    const readOnlyFinance = [
+      'members.view',
+      'project.view',
+      'stages.view',
+      'houses.view',
+      'movements.view',
+    ];
+    expect([...perms('COLLABORATOR')].sort()).toEqual([...readOnlyFinance].sort());
+    expect([...perms('READER')].sort()).toEqual([...readOnlyFinance].sort());
   });
 
   it('el Administrador de Proyecto no puede reabrir, enviar a papelera ni restaurar (§87)', () => {
@@ -70,11 +92,11 @@ describe('matriz de roles de sistema (§105.2)', () => {
     }
   });
 
-  it('colaboradores y lectores no administran nada', () => {
+  it('colaboradores y lectores solo consultan: nada de crear, cambiar ni aprobar', () => {
     for (const role of ['COLLABORATOR', 'READER'] as const) {
       for (const permission of perms(role)) {
         expect(PERMISSIONS[permission].scope).toBe('PROJECT');
-        expect(['project.view', 'members.view']).toContain(permission);
+        expect(permission.endsWith('.view')).toBe(true);
       }
     }
   });
@@ -99,6 +121,39 @@ describe('matriz de roles de sistema (§105.2)', () => {
   it('las claves de rol son únicas', () => {
     const keys = SYSTEM_ROLE_DEFINITIONS.map((role) => role.key);
     expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  it('Fase 3 (§88): solo el Administrador de Proyecto administra etapas, casas y movimientos', () => {
+    const finance: PermissionCode[] = [
+      'project.setup',
+      'stages.create',
+      'stages.correct_unit',
+      'stages.trash',
+      'stages.restore',
+      'houses.create',
+      'houses.deactivate',
+      'movements.deposit',
+      'movements.transfer',
+      'movements.extraordinary',
+      'withdrawals.request',
+      'withdrawals.approve',
+    ];
+    for (const permission of finance) {
+      const holders = SYSTEM_ROLE_DEFINITIONS.filter((role) =>
+        role.permissions.includes(permission),
+      ).map((role) => role.key);
+      // El Administrador Global tiene todos los permisos (incluidos estos); el único rol de
+      // proyecto que los otorga es el Administrador de Proyecto.
+      expect(holders.sort(), permission).toEqual(['GLOBAL_ADMIN', 'PROJECT_ADMIN']);
+    }
+  });
+
+  it('Fase 3: colaboradores y lectores ven la etapa activa, las casas y el historial', () => {
+    for (const role of ['COLLABORATOR', 'READER'] as const) {
+      expect(perms(role)).toEqual(
+        expect.arrayContaining(['stages.view', 'houses.view', 'movements.view']),
+      );
+    }
   });
 });
 

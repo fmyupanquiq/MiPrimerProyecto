@@ -169,7 +169,14 @@ describe('invitaciones: crear, listar y deshabilitar (e2e, PostgreSQL real)', ()
          VALUES (gen_random_uuid(), 'Invitador', '', 'PROJECT', $1, false) RETURNING id`,
         [projectId],
       );
-      for (const code of ['project.view', 'members.view', 'invitations.create']) {
+      for (const code of [
+        'project.view',
+        'members.view',
+        'invitations.create',
+        'stages.view',
+        'houses.view',
+        'movements.view',
+      ]) {
         await ctx.t.pool.query(
           'INSERT INTO role_permissions (role_id, permission_code) VALUES ($1, $2)',
           [rows[0]!.id, code],

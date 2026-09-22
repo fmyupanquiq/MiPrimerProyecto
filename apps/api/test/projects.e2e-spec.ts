@@ -303,7 +303,16 @@ describe('proyectos: crear, listar, ver y editar (e2e, PostgreSQL real)', () => 
           .expect(200),
       );
       expect(detail).toMatchObject({ myRole: 'READER', isOwner: false });
-      expect(detail.myPermissions).toEqual(['members.view', 'project.view', 'projects.create']);
+      expect(detail.myPermissions).toEqual(
+        [
+          'houses.view',
+          'members.view',
+          'movements.view',
+          'project.view',
+          'projects.create',
+          'stages.view',
+        ].sort(),
+      );
     });
 
     it('edita nombre, descripción, zona horaria y formato, y audita el cambio campo a campo', async () => {
