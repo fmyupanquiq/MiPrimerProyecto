@@ -1,8 +1,13 @@
 import type {
+  HouseStatus,
   InvitationExpiry,
   InvitationStatus,
   MemberStatus,
+  MovementDirection,
+  MovementType,
   ProjectStatus,
+  StageStatus,
+  WithdrawalStatus,
 } from '@letfer/shared';
 
 /** Nombres visibles de los roles de sistema (los personalizados usan su propio nombre). */
@@ -41,6 +46,37 @@ export const EXPIRY_LABELS: Record<InvitationExpiry, string> = {
   '15d': '15 días',
   '30d': '30 días',
   never: 'Sin vencimiento (hasta deshabilitarla)',
+};
+
+export const STAGE_STATUS_LABELS: Record<StageStatus, string> = {
+  ACTIVE: 'Activa',
+  CLOSED: 'Cerrada',
+  TRASHED: 'En la papelera',
+};
+
+export const HOUSE_STATUS_LABELS: Record<HouseStatus, string> = {
+  ACTIVE: 'Activa',
+  INACTIVE: 'Desactivada',
+};
+
+export const MOVEMENT_TYPE_LABELS: Record<MovementType, string> = {
+  INITIAL_CAPITAL: 'Capital inicial',
+  DEPOSIT: 'Depósito',
+  WITHDRAWAL: 'Retiro',
+  TRANSFER: 'Transferencia',
+  EXTRAORDINARY: 'Extraordinario',
+};
+
+export const MOVEMENT_DIRECTION_LABELS: Record<MovementDirection, string> = {
+  CREDIT: 'Entrada',
+  DEBIT: 'Salida',
+};
+
+export const WITHDRAWAL_STATUS_LABELS: Record<WithdrawalStatus, string> = {
+  PENDING: 'Pendiente',
+  APPROVED: 'Aprobado',
+  REJECTED: 'Rechazado',
+  CANCELLED: 'Cancelado',
 };
 
 export const DATE_FORMAT_LABELS = {
