@@ -3,13 +3,19 @@ import type { DbExecutor } from '../../src/database/database.types.js';
 import { roleIdByKey } from '../../src/database/role-lookup.js';
 import { newId } from '../../src/database/schema/columns.js';
 import {
+  houses,
   projectMembers,
   projects,
+  stages,
   users,
+  type HouseRow,
+  type NewHouse,
   type NewProject,
+  type NewStage,
   type NewUser,
   type ProjectMemberRow,
   type ProjectRow,
+  type StageRow,
   type UserRow,
 } from '../../src/database/schema/index.js';
 
@@ -91,4 +97,28 @@ export async function insertMember(
     })
     .returning();
   return member!;
+}
+
+/** Inserta una etapa de prueba (por defecto activa, con unidad 10.00). */
+export async function insertStage(
+  db: DbExecutor,
+  overrides: Partial<NewStage> & { projectId: string },
+): Promise<StageRow> {
+  const [stage] = await db
+    .insert(stages)
+    .values({ name: 'Etapa de prueba', unitStake: '10.00', ...overrides })
+    .returning();
+  return stage!;
+}
+
+/** Inserta una casa de apuestas de prueba (por defecto activa, sin saldo). */
+export async function insertHouse(
+  db: DbExecutor,
+  overrides: Partial<NewHouse> & { projectId: string },
+): Promise<HouseRow> {
+  const [house] = await db
+    .insert(houses)
+    .values({ name: `Casa de prueba ${newId()}`, ...overrides })
+    .returning();
+  return house!;
 }
