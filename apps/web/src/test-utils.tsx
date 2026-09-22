@@ -108,6 +108,8 @@ export function authState(
   return { status: 200, body: { user, session: SESSION, permissions } };
 }
 
+export const STAGE_ID = '0195f7c0-0000-7000-8000-0000000000s1';
+
 export function projectSummary(overrides: Record<string, unknown> = {}) {
   return {
     id: PROJECT_ID,
@@ -123,6 +125,10 @@ export function projectSummary(overrides: Record<string, unknown> = {}) {
     deletedAt: null,
     purgeEligibleAt: null,
     previousStatus: null,
+    // Por defecto, un proyecto ya configurado (Fase 3): las pruebas que necesiten uno sin
+    // configurar pasan `setupComplete: false, activeStage: null` explícitamente.
+    setupComplete: true,
+    activeStage: { id: STAGE_ID, name: 'Etapa 1', unitStake: '10.00' },
     ...overrides,
   };
 }
@@ -138,10 +144,25 @@ export const OWNER_PERMISSIONS = [
   'project.close',
   'project.reopen',
   'project.restore',
+  'project.setup',
   'project.trash',
   'project.update',
   'project.view',
   'projects.create',
+  'stages.view',
+  'stages.create',
+  'stages.correct_unit',
+  'stages.trash',
+  'stages.restore',
+  'houses.view',
+  'houses.create',
+  'houses.deactivate',
+  'movements.view',
+  'movements.deposit',
+  'movements.transfer',
+  'movements.extraordinary',
+  'withdrawals.request',
+  'withdrawals.approve',
 ];
 
 export function projectDetail(overrides: Record<string, unknown> = {}) {

@@ -9,9 +9,12 @@ import { InvitePage } from './pages/InvitePage.js';
 import { LoginPage } from './pages/LoginPage.js';
 import { ProjectsPage } from './pages/ProjectsPage.js';
 import { DashboardPage } from './pages/project/DashboardPage.js';
+import { FinancePage } from './pages/project/FinancePage.js';
 import { MembersPage } from './pages/project/MembersPage.js';
 import { ProjectLayout } from './pages/project/ProjectLayout.js';
+import { ProjectSetupPage } from './pages/project/ProjectSetupPage.js';
 import { SettingsPage } from './pages/project/SettingsPage.js';
+import { StagesPage } from './pages/project/StagesPage.js';
 import { ResetPasswordPage } from './pages/ResetPasswordPage.js';
 import { TrashPage } from './pages/TrashPage.js';
 
@@ -48,6 +51,9 @@ export function App() {
           <Route path="/projects/trash" element={<TrashPage />} />
           <Route path="/projects/:projectId" element={<ProjectLayout />}>
             <Route index element={<DashboardPage />} />
+            <Route path="setup" element={<ProjectSetupPage />} />
+            <Route path="stages" element={<StagesPage />} />
+            <Route path="finance" element={<FinancePage />} />
             <Route path="members" element={<MembersPage />} />
             <Route path="settings" element={<SettingsPage />} />
           </Route>

@@ -2,7 +2,7 @@ import type { PermissionCode } from '@letfer/shared';
 import { Link, NavLink, Outlet, useParams } from 'react-router';
 import { projectsApi } from '../../api/projects.js';
 import { useLoad } from '../../hooks/useLoad.js';
-import { Notice, ProjectStatusBadge } from '../../ui.js';
+import { Notice, ProjectStatusBadge, btnPrimary } from '../../ui.js';
 import type { ProjectContextValue } from './ProjectContext.js';
 
 const tabClass = ({ isActive }: { isActive: boolean }) =>
@@ -55,7 +55,9 @@ export function ProjectLayout() {
           <h1 className="text-2xl font-semibold">{project.name}</h1>
           <ProjectStatusBadge status={project.status} />
         </div>
-        <p className="text-sm text-slate-500">Etapa: sin etapa activa</p>
+        <p className="text-sm text-slate-500">
+          Etapa: {project.activeStage ? project.activeStage.name : 'sin etapa activa'}
+        </p>
       </div>
 
       {project.status === 'CLOSED' && (
@@ -65,9 +67,26 @@ export function ProjectLayout() {
         </Notice>
       )}
 
-      <nav aria-label="Proyecto" className="flex gap-1 border-b border-slate-200">
+      {!project.setupComplete && permissions.has('project.setup') && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded border border-amber-300 bg-amber-50 p-3">
+          <p className="text-sm text-amber-900">
+            Este proyecto todavía no tiene etapa, casas ni banca configuradas.
+          </p>
+          <Link to={`/projects/${project.id}/setup`} className={btnPrimary}>
+            Completar configuración
+          </Link>
+        </div>
+      )}
+
+      <nav aria-label="Proyecto" className="flex flex-wrap gap-1 border-b border-slate-200">
         <NavLink to={`/projects/${project.id}`} end className={tabClass}>
           Resumen
+        </NavLink>
+        <NavLink to={`/projects/${project.id}/stages`} className={tabClass}>
+          Etapas
+        </NavLink>
+        <NavLink to={`/projects/${project.id}/finance`} className={tabClass}>
+          Casas y Finanzas
         </NavLink>
         <NavLink to={`/projects/${project.id}/members`} className={tabClass}>
           Miembros

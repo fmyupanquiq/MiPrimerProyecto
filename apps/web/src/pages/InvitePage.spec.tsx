@@ -317,7 +317,7 @@ describe('invitación: con la sesión iniciada', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Aceptar invitación' }));
     expect(await screen.findByRole('heading', { name: 'Grupo Norte' })).toBeTruthy();
-    expect(screen.getByText('Etapa: sin etapa activa')).toBeTruthy();
+    expect(screen.getByText('Etapa: Etapa 1')).toBeTruthy();
     expect(calls.filter((c) => c.path === '/invitations/accept')).toHaveLength(1);
   });
 

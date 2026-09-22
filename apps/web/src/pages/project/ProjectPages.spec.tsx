@@ -47,7 +47,7 @@ describe('diseño del proyecto', () => {
     renderApp(URL);
 
     expect(await screen.findByRole('heading', { name: 'Grupo Norte' })).toBeTruthy();
-    expect(screen.getByText('Etapa: sin etapa activa')).toBeTruthy();
+    expect(screen.getByText('Etapa: Etapa 1')).toBeTruthy();
     expect(screen.getByText('Activo')).toBeTruthy();
     const nav = screen.getByRole('navigation', { name: 'Proyecto' });
     expect(within(nav).getByRole('link', { name: 'Resumen' }).getAttribute('href')).toBe(URL);
@@ -112,7 +112,7 @@ describe('diseño del proyecto', () => {
     });
     renderApp('/');
     fireEvent.click(await screen.findByRole('link', { name: 'Grupo Norte' }));
-    expect(await screen.findByText('Etapa: sin etapa activa')).toBeTruthy();
+    expect(await screen.findByText('Etapa: Etapa 1')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('link', { name: 'Configuración' }));
     expect(await screen.findByRole('form', { name: 'Datos del proyecto' })).toBeTruthy();
@@ -131,7 +131,7 @@ describe('diseño del proyecto', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Crear proyecto' }));
 
     expect(await screen.findByRole('heading', { name: 'Recién creado' })).toBeTruthy();
-    expect(screen.getByText('Etapa: sin etapa activa')).toBeTruthy();
+    expect(screen.getByText('Etapa: Etapa 1')).toBeTruthy();
   });
 });
 
