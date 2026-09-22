@@ -15,4 +15,5 @@ export function configureSpanishValidationMessages(): void {
 }
 export * from './invitation.js';
 export * from './member.js';
+export * from './money.js';
 export * from './project.js';
