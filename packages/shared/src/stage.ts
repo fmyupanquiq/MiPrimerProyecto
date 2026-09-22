@@ -33,6 +33,13 @@ export const correctStageUnitSchema = z.object({
 });
 export type CorrectStageUnitInput = z.infer<typeof correctStageUnitSchema>;
 
+/**
+ * Sin filtro: todo lo visible salvo la papelera (activa + cerradas). `TRASHED` exige poder
+ * restaurar etapas (solo quien administra el proyecto, §88).
+ */
+export const listStagesQuerySchema = z.object({ status: z.enum(STAGE_STATUSES).optional() });
+export type ListStagesQuery = z.infer<typeof listStagesQuerySchema>;
+
 export interface StageSummary {
   id: string;
   projectId: string;
