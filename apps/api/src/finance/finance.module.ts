@@ -8,11 +8,31 @@ import { ProjectSetupController } from './project-setup.controller.js';
 import { ProjectSetupService } from './project-setup.service.js';
 import { StagesController } from './stages.controller.js';
 import { StagesService } from './stages.service.js';
+import { WithdrawalsController } from './withdrawals.controller.js';
+import { WithdrawalsService } from './withdrawals.service.js';
 
 @Module({
   imports: [ProjectsModule],
-  controllers: [ProjectSetupController, StagesController, HousesController, MovementsController],
-  providers: [ProjectSetupService, StagesService, HousesService, MovementsService],
-  exports: [ProjectSetupService, StagesService, HousesService, MovementsService],
+  controllers: [
+    ProjectSetupController,
+    StagesController,
+    HousesController,
+    MovementsController,
+    WithdrawalsController,
+  ],
+  providers: [
+    ProjectSetupService,
+    StagesService,
+    HousesService,
+    MovementsService,
+    WithdrawalsService,
+  ],
+  exports: [
+    ProjectSetupService,
+    StagesService,
+    HousesService,
+    MovementsService,
+    WithdrawalsService,
+  ],
 })
 export class FinanceModule {}
