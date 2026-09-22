@@ -5,6 +5,8 @@ export interface SummaryContext {
   ownerName: string;
   isOwner: boolean;
   myRole: string | null;
+  /** Etapa activa (§50), o `null` mientras el proyecto no tenga una (antes del setup, D1). */
+  activeStage: { id: string; name: string; unitStake: string } | null;
 }
 
 export function toProjectSummary(project: ProjectRow, context: SummaryContext): ProjectSummary {
@@ -22,6 +24,8 @@ export function toProjectSummary(project: ProjectRow, context: SummaryContext): 
     deletedAt: project.deletedAt ? project.deletedAt.toISOString() : null,
     purgeEligibleAt: project.purgeEligibleAt ? project.purgeEligibleAt.toISOString() : null,
     previousStatus: project.previousStatus,
+    setupComplete: project.setupCompletedAt !== null,
+    activeStage: context.activeStage,
   };
 }
 

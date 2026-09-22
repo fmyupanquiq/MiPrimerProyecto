@@ -1,4 +1,4 @@
-import { integer, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { integer, numeric, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { v7 as uuidv7 } from 'uuid';
 
 /** Genera un identificador UUIDv7 (ordenado en el tiempo, ADR 0005). */
@@ -33,3 +33,10 @@ export const softDeleteColumns = () => ({
   deletedAt: timestamptz('deleted_at'),
   deletionReason: text('deletion_reason'),
 });
+
+/**
+ * Cifra de dinero: `NUMERIC(18,2)` (ADR 0004, §94). Se lee y escribe como cadena
+ * (`MoneyString` en `@letfer/shared`), nunca como `number`: el módulo único de dinero
+ * es la única parte del código que hace aritmética con estos valores.
+ */
+export const money = (name: string) => numeric(name, { precision: 18, scale: 2 });

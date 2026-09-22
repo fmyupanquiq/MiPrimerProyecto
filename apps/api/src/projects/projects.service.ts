@@ -8,7 +8,7 @@ import {
   type ProjectSummary,
   type UpdateProjectInput,
 } from '@letfer/shared';
-import { and, desc, eq, ne } from 'drizzle-orm';
+import { and, desc, eq, inArray, ne } from 'drizzle-orm';
 import { AuditService } from '../audit/audit.service.js';
 import { diffFields } from '../audit/audit-values.js';
 import {
@@ -24,13 +24,19 @@ import {
   projectMembers,
   projects,
   roles,
+  stages,
   users,
   type ProjectRow,
   type UserRow,
 } from '../database/schema/index.js';
 import { AppError } from '../common/app-error.js';
 import { Clock } from '../common/clock.js';
-import { fullName, toProjectDetail, toProjectSummary } from './project-mappers.js';
+import {
+  fullName,
+  toProjectDetail,
+  toProjectSummary,
+  type SummaryContext,
+} from './project-mappers.js';
 
 const UPDATABLE_FIELDS = ['name', 'description', 'timezone', 'dateFormat'] as const;
 
@@ -100,7 +106,39 @@ export class ProjectsService {
       isOwner: access.isOwner,
       myRole: access.roleKey,
       permissions: access.permissions,
+      activeStage: await this.activeStageOf(access.project.id, executor),
     });
+  }
+
+  /** Etapa activa del proyecto (§50), o `null` si todavía no tiene ninguna (antes del setup). */
+  private async activeStageOf(
+    projectId: string,
+    executor: DbExecutor,
+  ): Promise<SummaryContext['activeStage']> {
+    const [stage] = await executor
+      .select({ id: stages.id, name: stages.name, unitStake: stages.unitStake })
+      .from(stages)
+      .where(and(eq(stages.projectId, projectId), eq(stages.status, 'ACTIVE')))
+      .limit(1);
+    return stage ?? null;
+  }
+
+  /** Igual que `activeStageOf`, pero para muchos proyectos a la vez (evita N+1 en los listados). */
+  private async activeStagesByProject(
+    projectIds: readonly string[],
+    executor: DbExecutor,
+  ): Promise<Map<string, NonNullable<SummaryContext['activeStage']>>> {
+    if (projectIds.length === 0) return new Map();
+    const rows = await executor
+      .select({
+        projectId: stages.projectId,
+        id: stages.id,
+        name: stages.name,
+        unitStake: stages.unitStake,
+      })
+      .from(stages)
+      .where(and(inArray(stages.projectId, [...new Set(projectIds)]), eq(stages.status, 'ACTIVE')));
+    return new Map(rows.map((row) => [row.projectId, row]));
   }
 
   /** Detalle del proyecto tal como queda tras una operación (vuelve a resolver el acceso). */
@@ -144,11 +182,16 @@ export class ProjectsService {
             .where(ne(projects.status, 'TRASHED'))
             .orderBy(desc(projects.createdAt));
 
+    const activeStages = await this.activeStagesByProject(
+      rows.map((row) => row.project.id),
+      this.db,
+    );
     return rows.map((row) =>
       toProjectSummary(row.project, {
         ownerName: fullName({ firstName: row.ownerFirst, lastName: row.ownerLast }),
         isOwner: row.project.ownerId === actor.id,
         myRole: row.roleKey ?? row.roleName ?? null,
+        activeStage: activeStages.get(row.project.id) ?? null,
       }),
     );
   }
@@ -173,11 +216,18 @@ export class ProjectsService {
       )
       .orderBy(desc(projects.deletedAt));
 
+    // Enviar el proyecto a la papelera no toca sus etapas (§86 no lo exige): la etapa que
+    // estaba activa sigue existiendo, solo queda inaccesible mientras el proyecto lo esté.
+    const activeStages = await this.activeStagesByProject(
+      rows.map((row) => row.project.id),
+      this.db,
+    );
     return rows.map((row) =>
       toProjectSummary(row.project, {
         ownerName: fullName({ firstName: row.ownerFirst, lastName: row.ownerLast }),
         isOwner: row.project.ownerId === actor.id,
         myRole: null,
+        activeStage: activeStages.get(row.project.id) ?? null,
       }),
     );
   }

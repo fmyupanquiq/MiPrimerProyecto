@@ -113,6 +113,20 @@
       "when": 1790030221471,
       "tag": "0015_invitations_triggers",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1790037967151,
+      "tag": "0016_finance_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1790037974856,
+      "tag": "0017_finance_triggers",
+      "breakpoints": true
     }
   ]
 }

@@ -9,3 +9,7 @@ export * from './sessions.js';
 export * from './login-attempts.js';
 export * from './password-reset-tokens.js';
 export * from './invitations.js';
+export * from './stages.js';
+export * from './houses.js';
+export * from './financial-movements.js';
+export * from './withdrawal-requests.js';

@@ -130,6 +130,10 @@ export interface ProjectSummary {
   deletedAt: string | null;
   purgeEligibleAt: string | null;
   previousStatus: ProjectStatus | null;
+  /** `false` hasta completar `POST /projects/:id/setup` (etapa, unidad, casas y banca; D1). */
+  setupComplete: boolean;
+  /** Etapa activa (§50: la cabecera la identifica); `null` mientras falte completar el setup. */
+  activeStage: { id: string; name: string; unitStake: string } | null;
 }
 
 /** Proyecto completo con los permisos efectivos del usuario que lo consulta. */

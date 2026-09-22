@@ -41,6 +41,11 @@ export const projects = pgTable(
     previousStatus: projectStatusEnum('previous_status'),
     /** A partir de esta fecha el proyecto es elegible para purga (papelera + 90 días, §89). */
     purgeEligibleAt: timestamptz('purge_eligible_at'),
+    /**
+     * Cuándo se completó `POST /projects/:id/setup` (etapa 1, unidad, casas y banca, D1).
+     * `null` = todavía no admite operaciones financieras (§5).
+     */
+    setupCompletedAt: timestamptz('setup_completed_at'),
     ...timestamps(),
     version: versionColumn(),
     ...softDeleteColumns(),
