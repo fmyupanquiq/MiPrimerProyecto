@@ -1,21 +1,30 @@
 import { z } from 'zod';
 import { moneyInputSchema, type MoneyString } from './money.js';
 
-/** Tipos de movimiento del ledger unificado (§16, §72). */
+/**
+ * Tipos de movimiento del ledger unificado (§16, §72). `BET_PLACEMENT`/`BET_SETTLEMENT` (Fase 4,
+ * §107.3) se insertan juntos al liquidar una apuesta, no al crearla: mientras está `PENDING`, su
+ * monto se refleja en el comprometido de la casa mediante una consulta en vivo (D5, D-B7), igual
+ * que un retiro pendiente, sin tocar el ledger.
+ */
 export const MOVEMENT_TYPES = [
   'INITIAL_CAPITAL',
   'DEPOSIT',
   'WITHDRAWAL',
   'TRANSFER',
   'EXTRAORDINARY',
+  'BET_PLACEMENT',
+  'BET_SETTLEMENT',
 ] as const;
 export type MovementType = (typeof MOVEMENT_TYPES)[number];
 
 /**
  * Sentido del efecto sobre el saldo de la casa. En capital inicial y depósitos siempre es
- * `CREDIT`; en retiros, siempre `DEBIT`; en extraordinarios lo decide quien lo registra
- * (§16.4: puede ser un cashback que suma o una comisión que resta). Las transferencias no
- * usan `direction`: su efecto lo define el par `fromHouseId`/`toHouseId`.
+ * `CREDIT`; en retiros y en la colocación de una apuesta, siempre `DEBIT`; en la liquidación de
+ * una apuesta, siempre `CREDIT` (D-B2: una apuesta perdida no genera esta fila); en
+ * extraordinarios lo decide quien lo registra (§16.4: puede ser un cashback que suma o una
+ * comisión que resta). Las transferencias no usan `direction`: su efecto lo define el par
+ * `fromHouseId`/`toHouseId`.
  */
 export const MOVEMENT_DIRECTIONS = ['CREDIT', 'DEBIT'] as const;
 export type MovementDirection = (typeof MOVEMENT_DIRECTIONS)[number];

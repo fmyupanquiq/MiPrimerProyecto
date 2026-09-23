@@ -13,11 +13,13 @@ export const SYSTEM_NAME = 'LetFer';
 export function configureSpanishValidationMessages(): void {
   z.config(z.locales.es());
 }
+export * from './bet.js';
 export * from './financial-movement.js';
 export * from './house.js';
 export * from './invitation.js';
 export * from './member.js';
 export * from './money.js';
+export * from './odds.js';
 export * from './project.js';
 export * from './project-setup.js';
 export * from './stage.js';
