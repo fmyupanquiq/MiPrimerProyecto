@@ -70,6 +70,15 @@ describe('diseño del proyecto', () => {
     expect(screen.getByText(/DD\/MM\/AAAA/)).toBeTruthy();
   });
 
+  it('el resumen ya no anuncia etapas, banca y casas como pendientes de fases futuras', async () => {
+    open(URL, detail());
+    renderApp(URL);
+
+    await screen.findByRole('heading', { name: 'Grupo Norte' });
+    expect(screen.getByText('Las apuestas se configuran en la fase siguiente.')).toBeTruthy();
+    expect(screen.queryByText(/etapas, la banca, las casas/)).toBeNull();
+  });
+
   it('un proyecto cerrado avisa que no admite invitaciones', async () => {
     open(URL, detail({ status: 'CLOSED' }));
     renderApp(URL);

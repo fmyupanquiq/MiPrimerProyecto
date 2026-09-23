@@ -2,7 +2,7 @@ import { DATE_FORMAT_LABELS, formatDate, roleLabel } from '../../labels.js';
 import { Section } from '../../ui.js';
 import { useProject } from './ProjectContext.js';
 
-/** Resumen del proyecto. El tablero financiero llega con las fases siguientes. */
+/** Resumen del proyecto. El tablero de análisis con filtros y gráficos llega con la Fase 5. */
 export function DashboardPage() {
   const { project } = useProject();
   return (
@@ -43,10 +43,7 @@ export function DashboardPage() {
           </div>
         </dl>
       </Section>
-      <p className="text-sm text-slate-500">
-        Las etapas, la banca, las casas de apuestas y las apuestas se configuran en las fases
-        siguientes.
-      </p>
+      <p className="text-sm text-slate-500">Las apuestas se configuran en la fase siguiente.</p>
     </>
   );
 }
