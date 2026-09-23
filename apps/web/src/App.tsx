@@ -8,6 +8,7 @@ import { ForgotPasswordPage } from './pages/ForgotPasswordPage.js';
 import { InvitePage } from './pages/InvitePage.js';
 import { LoginPage } from './pages/LoginPage.js';
 import { ProjectsPage } from './pages/ProjectsPage.js';
+import { BetsPage } from './pages/project/BetsPage.js';
 import { DashboardPage } from './pages/project/DashboardPage.js';
 import { FinancePage } from './pages/project/FinancePage.js';
 import { MembersPage } from './pages/project/MembersPage.js';
@@ -54,6 +55,7 @@ export function App() {
             <Route path="setup" element={<ProjectSetupPage />} />
             <Route path="stages" element={<StagesPage />} />
             <Route path="finance" element={<FinancePage />} />
+            <Route path="bets" element={<BetsPage />} />
             <Route path="members" element={<MembersPage />} />
             <Route path="settings" element={<SettingsPage />} />
           </Route>

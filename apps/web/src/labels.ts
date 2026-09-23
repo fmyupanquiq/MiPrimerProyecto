@@ -1,4 +1,6 @@
 import type {
+  BetStatus,
+  BetType,
   HouseStatus,
   InvitationExpiry,
   InvitationStatus,
@@ -65,6 +67,22 @@ export const MOVEMENT_TYPE_LABELS: Record<MovementType, string> = {
   WITHDRAWAL: 'Retiro',
   TRANSFER: 'Transferencia',
   EXTRAORDINARY: 'Extraordinario',
+  BET_PLACEMENT: 'Apuesta (colocación)',
+  BET_SETTLEMENT: 'Apuesta (liquidación)',
+};
+
+export const BET_TYPE_LABELS: Record<BetType, string> = {
+  SIMPLE: 'Simple',
+  CREATED: 'Creada',
+  MULTIPLE: 'Múltiple',
+};
+
+export const BET_STATUS_LABELS: Record<BetStatus, string> = {
+  PENDING: 'Pendiente',
+  WON: 'Ganada',
+  LOST: 'Perdida',
+  VOID: 'Anulada',
+  CASHOUT: 'Cash Out',
 };
 
 export const MOVEMENT_DIRECTION_LABELS: Record<MovementDirection, string> = {

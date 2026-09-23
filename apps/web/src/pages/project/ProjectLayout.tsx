@@ -82,6 +82,9 @@ export function ProjectLayout() {
         <NavLink to={`/projects/${project.id}`} end className={tabClass}>
           Resumen
         </NavLink>
+        <NavLink to={`/projects/${project.id}/bets`} className={tabClass}>
+          Apuestas
+        </NavLink>
         <NavLink to={`/projects/${project.id}/stages`} className={tabClass}>
           Etapas
         </NavLink>
