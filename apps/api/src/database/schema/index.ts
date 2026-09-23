@@ -13,3 +13,5 @@ export * from './stages.js';
 export * from './houses.js';
 export * from './financial-movements.js';
 export * from './withdrawal-requests.js';
+export * from './bets.js';
+export * from './bet-selections.js';

@@ -40,3 +40,12 @@ export const softDeleteColumns = () => ({
  * es la única parte del código que hace aritmética con estos valores.
  */
 export const money = (name: string) => numeric(name, { precision: 18, scale: 2 });
+
+/**
+ * Cuota decimal: `NUMERIC(12,6)` (ADR 0004, §22, §94; regla crítica 5). Nunca se redondea
+ * destructivamente en almacenamiento: se guarda tal como la escribió quien registra la apuesta.
+ */
+export const odds = (name: string) => numeric(name, { precision: 12, scale: 6 });
+
+/** Stake: multiplicador numérico, nunca un porcentaje (regla crítica 1, §12). `NUMERIC(10,4)`. */
+export const stake = (name: string) => numeric(name, { precision: 10, scale: 4 });

@@ -127,6 +127,20 @@
       "when": 1790037974856,
       "tag": "0017_finance_triggers",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1790165866930,
+      "tag": "0018_bet_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1790165915299,
+      "tag": "0019_bet_triggers",
+      "breakpoints": true
     }
   ]
 }

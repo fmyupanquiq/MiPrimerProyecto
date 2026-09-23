@@ -12,14 +12,19 @@ export const movementDirectionEnum = pgEnum('movement_direction', MOVEMENT_DIREC
 
 /**
  * Ledger financiero unificado (§16, §72). Representa los efectos monetarios de capital inicial,
- * depósitos, retiros aprobados, transferencias y extraordinarios; los saldos se reconstruyen
- * sumando estas filas (D3), nunca se guardan aparte. **Inmutable tras confirmarse (D2)**: no
- * hay `UPDATE` ni `DELETE` (disparador `prevent_modification`); una corrección se hace con un
- * movimiento nuevo, nunca editando uno existente.
+ * depósitos, retiros aprobados, transferencias, extraordinarios y, desde la Fase 4, la colocación
+ * y liquidación de apuestas; los saldos se reconstruyen sumando estas filas (D3), nunca se
+ * guardan aparte. **Inmutable tras confirmarse (D2)**: no hay `UPDATE` ni `DELETE` (disparador
+ * `prevent_modification`); una corrección se hace con un movimiento nuevo, nunca editando uno
+ * existente.
  *
  * `operationId` identifica la operación de negocio (por defecto, un id propio; en un retiro
- * aprobado es el id de su `withdrawal_requests`), para poder correlacionar auditoría entre
- * entidades sin necesitar varias filas del ledger por operación.
+ * aprobado o en una apuesta liquidada es el id de esa entidad — `withdrawal_requests` o `bets`),
+ * para poder correlacionar auditoría entre entidades sin necesitar varias filas del ledger por
+ * operación. Una apuesta liquidada genera hasta dos filas (`BET_PLACEMENT` y, si corresponde,
+ * `BET_SETTLEMENT`) que comparten el `id` de la apuesta como `operationId` (§107.3): se insertan
+ * juntas al liquidar, no al crear, mientras está `PENDING` su monto solo se refleja en el
+ * comprometido de la casa mediante una consulta en vivo (D-B7), igual que un retiro pendiente.
  */
 export const financialMovements = pgTable(
   'financial_movements',
@@ -75,7 +80,8 @@ export const financialMovements = pgTable(
     check(
       'financial_movements_direction_shape',
       sql`(${table.type} IN ('INITIAL_CAPITAL', 'DEPOSIT') AND ${table.direction} = 'CREDIT')
-          OR (${table.type} = 'WITHDRAWAL' AND ${table.direction} = 'DEBIT')
+          OR (${table.type} IN ('WITHDRAWAL', 'BET_PLACEMENT') AND ${table.direction} = 'DEBIT')
+          OR (${table.type} = 'BET_SETTLEMENT' AND ${table.direction} = 'CREDIT')
           OR (${table.type} = 'EXTRAORDINARY' AND ${table.direction} IN ('CREDIT', 'DEBIT'))
           OR (${table.type} = 'TRANSFER' AND ${table.direction} IS NULL)`,
     ),
