@@ -3,12 +3,18 @@ import type { DbExecutor } from '../../src/database/database.types.js';
 import { roleIdByKey } from '../../src/database/role-lookup.js';
 import { newId } from '../../src/database/schema/columns.js';
 import {
+  betSelections,
+  bets,
   houses,
   projectMembers,
   projects,
   stages,
   users,
+  type BetRow,
+  type BetSelectionRow,
   type HouseRow,
+  type NewBet,
+  type NewBetSelection,
   type NewHouse,
   type NewProject,
   type NewStage,
@@ -121,4 +127,51 @@ export async function insertHouse(
     .values({ name: `Casa de prueba ${newId()}`, ...overrides })
     .returning();
   return house!;
+}
+
+/**
+ * Inserta una apuesta de prueba (por defecto: simple, pendiente, stake 1.00, cuota 1.95, sin
+ * monto oficial) junto con al menos una selección. No genera ninguna fila del ledger (§107.3):
+ * si el escenario necesita una apuesta liquidada, pásala ya con `status`/`officialRealizedReturn`
+ * y crea las filas de `financial_movements` aparte, como haría `BetsService.settle`.
+ */
+export async function insertBet(
+  db: DbExecutor,
+  overrides: Partial<NewBet> & {
+    projectId: string;
+    stageId: string;
+    houseId: string;
+    createdBy: string;
+    selections?: (Partial<NewBetSelection> & { eventGroup?: number; position?: number })[];
+  },
+): Promise<{ bet: BetRow; selections: BetSelectionRow[] }> {
+  const { selections: selectionOverrides, ...betOverrides } = overrides;
+  const [bet] = await db
+    .insert(bets)
+    .values({
+      betType: 'SIMPLE',
+      stakeAmount: '1.00',
+      visibleTotalOdds: '1.95',
+      placedAt: new Date(),
+      ...betOverrides,
+    })
+    .returning();
+  const rows = selectionOverrides ?? [
+    { event: 'Equipo A vs. Equipo B', selection: 'Equipo A gana', visibleOdds: '1.95' },
+  ];
+  const selections = await db
+    .insert(betSelections)
+    .values(
+      rows.map((row, index) => ({
+        betId: bet!.id,
+        eventGroup: 0,
+        position: index,
+        event: 'Equipo A vs. Equipo B',
+        selection: 'Equipo A gana',
+        visibleOdds: '1.95',
+        ...row,
+      })),
+    )
+    .returning();
+  return { bet: bet!, selections };
 }
