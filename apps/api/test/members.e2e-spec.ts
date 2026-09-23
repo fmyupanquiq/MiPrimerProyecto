@@ -195,6 +195,10 @@ describe('miembros del proyecto (e2e, PostgreSQL real)', () => {
         'stages.view',
         'houses.view',
         'movements.view',
+        'bets.view',
+        'bets.create',
+        'bets.update_own',
+        'bets.trash_own',
       ]);
       const reader = await customRole('Lector con nota', ['project.view']);
       await ctx.t.pool.query(
@@ -329,6 +333,10 @@ describe('miembros del proyecto (e2e, PostgreSQL real)', () => {
         'stages.view',
         'houses.view',
         'movements.view',
+        'bets.view',
+        'bets.create',
+        'bets.update_own',
+        'bets.trash_own',
       ]);
       await ctx.t.pool.query(
         `UPDATE project_members SET role_id = $1 WHERE project_id = $2 AND user_id = $3`,
@@ -447,6 +455,7 @@ describe('miembros del proyecto (e2e, PostgreSQL real)', () => {
         'stages.view',
         'houses.view',
         'movements.view',
+        'bets.view',
       ]);
       await ctx.t.pool.query(
         `UPDATE project_members SET role_id = $1 WHERE project_id = $2 AND user_id = $3`,

@@ -63,6 +63,19 @@ export const PERMISSIONS = {
     scope: 'PROJECT',
     description: 'Aprobar o rechazar una solicitud de retiro',
   },
+
+  // --- Apuestas (Fase 4, §18-§27, §90, §107) ---
+  'bets.view': { scope: 'PROJECT', description: 'Ver las apuestas del proyecto' },
+  'bets.create': { scope: 'PROJECT', description: 'Registrar una apuesta' },
+  'bets.update_own': { scope: 'PROJECT', description: 'Editar las apuestas propias' },
+  'bets.update_any': { scope: 'PROJECT', description: 'Editar cualquier apuesta del proyecto' },
+  'bets.trash_own': { scope: 'PROJECT', description: 'Enviar a la papelera las apuestas propias' },
+  'bets.trash_any': {
+    scope: 'PROJECT',
+    description: 'Enviar a la papelera cualquier apuesta del proyecto',
+  },
+  'bets.restore': { scope: 'PROJECT', description: 'Restaurar una apuesta desde la papelera' },
+  'bets.move_stage': { scope: 'PROJECT', description: 'Mover una apuesta a otra etapa' },
 } as const satisfies Record<string, PermissionDefinition>;
 
 export type PermissionCode = keyof typeof PERMISSIONS;
@@ -162,6 +175,15 @@ export const SYSTEM_ROLE_DEFINITIONS: readonly SystemRoleDefinition[] = [
       'movements.extraordinary',
       'withdrawals.request',
       'withdrawals.approve',
+      // Apuestas (Fase 4, §88: "crear/editar apuestas según reglas... gestionar papelera").
+      'bets.view',
+      'bets.create',
+      'bets.update_own',
+      'bets.update_any',
+      'bets.trash_own',
+      'bets.trash_any',
+      'bets.restore',
+      'bets.move_stage',
     ],
   },
   {
@@ -172,7 +194,18 @@ export const SYSTEM_ROLE_DEFINITIONS: readonly SystemRoleDefinition[] = [
     assignable: true,
     // Solo consulta de finanzas (§88: "información operativa necesaria para colaborar"; D8).
     // Incluye stages.view porque §50 exige mostrar la etapa activa en la cabecera a todo miembro.
-    permissions: ['project.view', 'members.view', 'stages.view', 'houses.view', 'movements.view'],
+    // Apuestas (§4.3, §88): puede crear y ver, y editar/eliminar únicamente las propias.
+    permissions: [
+      'project.view',
+      'members.view',
+      'stages.view',
+      'houses.view',
+      'movements.view',
+      'bets.view',
+      'bets.create',
+      'bets.update_own',
+      'bets.trash_own',
+    ],
   },
   {
     key: 'READER',
@@ -180,7 +213,14 @@ export const SYSTEM_ROLE_DEFINITIONS: readonly SystemRoleDefinition[] = [
     name: 'Lector',
     description: 'Acceso de consulta, sin capacidad de modificación.',
     assignable: true,
-    permissions: ['project.view', 'members.view', 'stages.view', 'houses.view', 'movements.view'],
+    permissions: [
+      'project.view',
+      'members.view',
+      'stages.view',
+      'houses.view',
+      'movements.view',
+      'bets.view',
+    ],
   },
 ];
 

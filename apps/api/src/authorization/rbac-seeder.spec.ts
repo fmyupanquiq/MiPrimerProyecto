@@ -91,7 +91,14 @@ describe('sembrado del catálogo RBAC (PostgreSQL real)', () => {
 
     expect(await codesOf('USER')).toEqual(['projects.create']);
     expect(await codesOf('READER')).toEqual(
-      ['houses.view', 'members.view', 'movements.view', 'project.view', 'stages.view'].sort(),
+      [
+        'bets.view',
+        'houses.view',
+        'members.view',
+        'movements.view',
+        'project.view',
+        'stages.view',
+      ].sort(),
     );
     const [reader] = await t.db.select().from(roles).where(eq(roles.id, lector));
     expect(reader!.name).toBe('Lector');

@@ -72,6 +72,14 @@ describe('matriz de roles de sistema (§105.2)', () => {
         'movements.extraordinary',
         'withdrawals.request',
         'withdrawals.approve',
+        'bets.view',
+        'bets.create',
+        'bets.update_own',
+        'bets.update_any',
+        'bets.trash_own',
+        'bets.trash_any',
+        'bets.restore',
+        'bets.move_stage',
       ].sort(),
     );
     const readOnlyFinance = [
@@ -81,8 +89,12 @@ describe('matriz de roles de sistema (§105.2)', () => {
       'houses.view',
       'movements.view',
     ];
-    expect([...perms('COLLABORATOR')].sort()).toEqual([...readOnlyFinance].sort());
-    expect([...perms('READER')].sort()).toEqual([...readOnlyFinance].sort());
+    // El Colaborador (§4.3, §88, Fase 4): solo consulta de etapas/casas/movimientos, pero
+    // puede crear apuestas y editar/eliminar únicamente las propias (D-B5).
+    expect([...perms('COLLABORATOR')].sort()).toEqual(
+      [...readOnlyFinance, 'bets.view', 'bets.create', 'bets.update_own', 'bets.trash_own'].sort(),
+    );
+    expect([...perms('READER')].sort()).toEqual([...readOnlyFinance, 'bets.view'].sort());
   });
 
   it('el Administrador de Proyecto no puede reabrir, enviar a papelera ni restaurar (§87)', () => {
@@ -92,12 +104,24 @@ describe('matriz de roles de sistema (§105.2)', () => {
     }
   });
 
-  it('colaboradores y lectores solo consultan: nada de crear, cambiar ni aprobar', () => {
-    for (const role of ['COLLABORATOR', 'READER'] as const) {
-      for (const permission of perms(role)) {
-        expect(PERMISSIONS[permission].scope).toBe('PROJECT');
-        expect(permission.endsWith('.view')).toBe(true);
-      }
+  it('el Lector solo consulta: nada de crear, cambiar ni aprobar', () => {
+    for (const permission of perms('READER')) {
+      expect(PERMISSIONS[permission].scope).toBe('PROJECT');
+      expect(permission.endsWith('.view')).toBe(true);
+    }
+  });
+
+  it('el Colaborador solo opera sobre sus propias apuestas, nada más (§4.3, §88, D-B5)', () => {
+    const nonView = perms('COLLABORATOR').filter((permission) => !permission.endsWith('.view'));
+    expect(nonView.sort()).toEqual(['bets.create', 'bets.trash_own', 'bets.update_own'].sort());
+    for (const forbidden of [
+      'bets.update_any',
+      'bets.trash_any',
+      'bets.restore',
+      'bets.move_stage',
+      'withdrawals.approve',
+    ] as const) {
+      expect(perms('COLLABORATOR')).not.toContain(forbidden);
     }
   });
 

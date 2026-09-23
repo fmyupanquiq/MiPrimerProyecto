@@ -305,6 +305,7 @@ describe('proyectos: crear, listar, ver y editar (e2e, PostgreSQL real)', () => 
       expect(detail).toMatchObject({ myRole: 'READER', isOwner: false });
       expect(detail.myPermissions).toEqual(
         [
+          'bets.view',
           'houses.view',
           'members.view',
           'movements.view',

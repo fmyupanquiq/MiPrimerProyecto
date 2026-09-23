@@ -163,6 +163,14 @@ export const OWNER_PERMISSIONS = [
   'movements.extraordinary',
   'withdrawals.request',
   'withdrawals.approve',
+  'bets.view',
+  'bets.create',
+  'bets.update_own',
+  'bets.update_any',
+  'bets.trash_own',
+  'bets.trash_any',
+  'bets.restore',
+  'bets.move_stage',
 ];
 
 export function projectDetail(overrides: Record<string, unknown> = {}) {
