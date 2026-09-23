@@ -121,6 +121,20 @@ export function moneyInputSchema(options: { positive?: boolean } = {}) {
   );
 }
 
+/**
+ * `numerator ÷ denominator × 100`, redondeado a 2 decimales (`ROUND_HALF_UP`). Para Yield, ROI y
+ * drawdown porcentual (§108.1, §108.4, Fase 5): puede dar negativo (una pérdida). `null` cuando
+ * `denominator` es cero (nada apostado/invertido todavía: la razón no está definida, no es 0%).
+ */
+export function percentageOf(
+  numerator: MoneyString | Decimal,
+  denominator: MoneyString | Decimal,
+): MoneyString | null {
+  const denominatorDecimal = toDecimal(denominator);
+  if (denominatorDecimal.isZero()) return null;
+  return roundMoney(toDecimal(numerator).dividedBy(denominatorDecimal).times(100));
+}
+
 /** Formato de presentación en soles, p. ej. `"S/ 1,234.50"`. Solo para mostrar; nunca para calcular. */
 export function formatPEN(value: MoneyString): string {
   const decimal = toDecimal(value);

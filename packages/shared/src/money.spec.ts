@@ -9,6 +9,7 @@ import {
   isZeroMoney,
   moneyInputSchema,
   multiplyMoney,
+  percentageOf,
   roundMoney,
   subtractMoney,
   sumMoney,
@@ -120,6 +121,22 @@ describe('moneyInputSchema', () => {
     const schema = moneyInputSchema({ positive: true });
     expect(schema.safeParse('0').success).toBe(false);
     expect(schema.safeParse('0.01').success).toBe(true);
+  });
+});
+
+describe('percentageOf (Yield, ROI, drawdown %, §108.1, §108.4)', () => {
+  it('numerator ÷ denominator × 100, redondeado a 2 decimales', () => {
+    expect(percentageOf('19.00', '100.00')).toBe('19.00');
+    expect(percentageOf('1.00', '3.00')).toBe('33.33');
+  });
+
+  it('puede dar negativo (una pérdida)', () => {
+    expect(percentageOf('-25.00', '100.00')).toBe('-25.00');
+  });
+
+  it('null cuando el denominador es cero (razón indefinida, no 0%)', () => {
+    expect(percentageOf('50.00', '0.00')).toBeNull();
+    expect(percentageOf('0.00', '0.00')).toBeNull();
   });
 });
 
