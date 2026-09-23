@@ -1,12 +1,18 @@
-import { addMoney, subtractMoney, ZERO_MONEY, type MoneyString } from '@letfer/shared';
-import { and, eq } from 'drizzle-orm';
+import {
+  addMoney,
+  multiplyMoney,
+  subtractMoney,
+  ZERO_MONEY,
+  type MoneyString,
+} from '@letfer/shared';
+import { and, eq, isNull } from 'drizzle-orm';
 import type { DbExecutor } from '../database/database.types.js';
-import { financialMovements, withdrawalRequests } from '../database/schema/index.js';
+import { bets, financialMovements, stages, withdrawalRequests } from '../database/schema/index.js';
 
 export interface HouseBalance {
   /** Reconstruido desde el ledger (D3): nunca es una segunda fuente de verdad (§72). */
   balance: MoneyString;
-  /** Reservado por retiros pendientes (§17, §92; los de apuestas llegan en la Fase 4). */
+  /** Reservado por retiros y apuestas pendientes (§17, §92, §107.3). */
   committed: MoneyString;
   /** `balance - committed`; nunca negativo en la práctica (§17). */
   available: MoneyString;
@@ -58,18 +64,35 @@ export async function computeHouseBalances(
     }
   }
 
-  const pending = await executor
+  const pendingWithdrawals = await executor
     .select({ houseId: withdrawalRequests.houseId, amount: withdrawalRequests.amount })
     .from(withdrawalRequests)
     .where(
       and(eq(withdrawalRequests.projectId, projectId), eq(withdrawalRequests.status, 'PENDING')),
     );
   const committed = new Map<string, MoneyString>();
-  for (const request of pending) {
+  for (const request of pendingWithdrawals) {
     committed.set(
       request.houseId,
       addMoney(committed.get(request.houseId) ?? ZERO_MONEY, request.amount),
     );
+  }
+
+  // Apuestas pendientes (§17, §92, §107.3): su monto se refleja en vivo, sin fila del ledger
+  // todavía (D-B7); oficial si existe, si no `stake × unidad` de su etapa (§76).
+  const pendingBets = await executor
+    .select({
+      houseId: bets.houseId,
+      officialAmount: bets.officialAmount,
+      stake: bets.stakeAmount,
+      unitStake: stages.unitStake,
+    })
+    .from(bets)
+    .innerJoin(stages, eq(stages.id, bets.stageId))
+    .where(and(eq(bets.projectId, projectId), eq(bets.status, 'PENDING'), isNull(bets.deletedAt)));
+  for (const bet of pendingBets) {
+    const effectiveAmount = bet.officialAmount ?? multiplyMoney(bet.unitStake, bet.stake);
+    committed.set(bet.houseId, addMoney(committed.get(bet.houseId) ?? ZERO_MONEY, effectiveAmount));
   }
 
   const houseIds = new Set([...balances.keys(), ...committed.keys()]);

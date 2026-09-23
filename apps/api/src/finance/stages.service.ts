@@ -8,7 +8,7 @@ import {
   type StageSummary,
   type StageUnitCorrectionPreview,
 } from '@letfer/shared';
-import { and, count, desc, eq, ne } from 'drizzle-orm';
+import { and, count, desc, eq, isNull, ne } from 'drizzle-orm';
 import { AuditService } from '../audit/audit.service.js';
 import type { ProjectAccess } from '../authorization/authorization.service.js';
 import { Clock } from '../common/clock.js';
@@ -17,7 +17,7 @@ import { nextVersion } from '../database/concurrency.js';
 import { DATABASE } from '../database/database.constants.js';
 import type { Database } from '../database/database.module.js';
 import type { DbExecutor } from '../database/database.types.js';
-import { stages, type StageRow, type UserRow } from '../database/schema/index.js';
+import { bets, stages, type StageRow, type UserRow } from '../database/schema/index.js';
 import { assertProjectActive, financeConflict, financeNotFound } from './finance-errors.js';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -114,8 +114,11 @@ export class StagesService {
 
   /**
    * Vista previa (por defecto) o aplicación (`confirm: true`) de la corrección de unidad
-   * (§12.1, §73). Sin apuestas todavía (Fase 4), ninguna corrección puede quedar bloqueada por
-   * saldo insuficiente y siempre son 0 las apuestas afectadas.
+   * (§12.1, §73). `affectedBets` cuenta las apuestas `PENDING` de la etapa sin monto oficial
+   * (§107.5): su monto calculado cambiará en la siguiente lectura, sin ningún job de
+   * recálculo (D-B7), porque nunca se guardó. La propia corrección **no** rechaza de forma
+   * proactiva un comprometido resultante superior al saldo (§107.5): eso se detecta en la
+   * siguiente creación o liquidación de apuesta sobre esa casa, que sí revalida disponible.
    */
   async correctUnit(
     access: ProjectAccess,
@@ -130,11 +133,15 @@ export class StagesService {
     }
 
     if (!input.confirm) {
+      const affectedBets = await this.countAffectedBets(this.db, stage.id);
       return {
         currentUnitStake: stage.unitStake,
         newUnitStake: input.unitStake,
-        affectedBets: 0,
-        impact: 'Todavía no hay apuestas registradas: no se recalcula ningún valor derivado.',
+        affectedBets,
+        impact:
+          affectedBets === 0
+            ? 'No hay apuestas pendientes sin monto oficial en esta etapa: no se recalcula ningún valor.'
+            : `${affectedBets} apuesta(s) pendiente(s) sin monto oficial recalcularán su monto calculado en la siguiente consulta.`,
       };
     }
 
@@ -243,5 +250,21 @@ export class StagesService {
       .limit(1);
     if (!stage) throw financeNotFound('Etapa no encontrada.');
     return stage;
+  }
+
+  /** Apuestas `PENDING` sin monto oficial de la etapa (§73, §107.5, Fase 4). */
+  private async countAffectedBets(executor: DbExecutor, stageId: string): Promise<number> {
+    const [row] = await executor
+      .select({ total: count() })
+      .from(bets)
+      .where(
+        and(
+          eq(bets.stageId, stageId),
+          eq(bets.status, 'PENDING'),
+          isNull(bets.officialAmount),
+          isNull(bets.deletedAt),
+        ),
+      );
+    return row?.total ?? 0;
   }
 }
