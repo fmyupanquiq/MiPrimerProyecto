@@ -2454,3 +2454,85 @@ y la corrección de campos financieros (`status`, `official_amount`,
 liquidada** (§77 completo: comparar retorno calculado vs. oficial y
 recalcular tras liquidar) — mientras tanto, volver a liquidar o
 cambiar esos campos de una apuesta liquidada responde 409.
+
+## 108. Dashboard, métricas y gráficos (Fase 5)
+
+**Estado:** Aprobada.\
+Precisa y completa los §33, §34, §59 a §60, §91 y §92 con las
+decisiones de la Fase 5 (D-M1 a D-M10). Si alguna regla anterior las
+contradice, prevalece este apartado.
+
+### 108.1 Yield y ROI (D-M1)
+
+Son dos métricas distintas, no sinónimos:
+
+-   **Yield** = P/L de apuestas ÷ monto efectivo total apostado en las
+    apuestas liquidadas del filtro × 100. Mide el margen por cada sol
+    arriesgado.
+-   **ROI** = P/L de apuestas ÷ capital invertido × 100, donde capital
+    invertido es la banca inicial más los depósitos netos del periodo
+    filtrado. Mide el retorno sobre el capital comprometido.
+
+### 108.2 Ubicación (D-M2)
+
+El Dashboard **amplía la pantalla "Resumen"** existente (§49): no es
+una pestaña nueva. La tarjeta de datos del proyecto se conserva; debajo
+se añaden el estado financiero actual, los filtros, los indicadores y
+los gráficos.
+
+### 108.3 Dos series temporales distintas (D-M3, precisa el §91)
+
+-   **Evolución de banca real**: incluye todo (capital inicial,
+    depósitos, retiros, transferencias, liquidaciones de apuestas,
+    extraordinarios). No reinicia al cambiar de etapa; los cambios de
+    etapa aparecen como marcadores (§34).
+-   **Curva de rendimiento**: acumulado exclusivo de las liquidaciones
+    de apuestas (§91: excluye depósitos, retiros, transferencias y
+    extraordinarios). Es la base del drawdown: mezclar capital
+    aportado con rendimiento invalidaría la métrica.
+
+### 108.4 Drawdown (D-M6)
+
+Sobre la curva de rendimiento: en cada punto, `pico histórico hasta ese
+punto − valor en ese punto`. Se expresa tanto en soles como en
+porcentaje del pico (`drawdown ÷ pico × 100`). El drawdown máximo del
+periodo filtrado es el mayor valor de esa serie.
+
+### 108.5 Apuestas múltiples en los desgloses por deporte/mercado (D-M4)
+
+Si todas las selecciones de una apuesta comparten el mismo
+deporte/mercado, se agrupa normalmente. Si no, la apuesta cuenta en un
+grupo **"Mixto"** separado: nunca se cuenta su P/L más de una vez en
+distintos grupos (§92, evitar doble conteo).
+
+### 108.6 Estados de apuesta en los conteos (D-M5)
+
+Los conteos del dashboard distinguen Pendiente, Ganada, Perdida,
+Anulada y **Cash Out** como bucket propio (el §33 no lo menciona
+porque es anterior a la Fase 4; el estado ya existe desde entonces,
+§21/§78, y agruparlo dentro de Ganada/Perdida según el signo de su P/L
+perdería información).
+
+### 108.7 Agrupación temporal (D-M7)
+
+El rendimiento por periodo se agrupa por `settled_at` (cuándo se supo
+el resultado, no cuándo se colocó la apuesta), en la zona horaria del
+proyecto (§93). `placed_at` sigue siendo un filtro de fecha disponible,
+pero no el eje de la agrupación temporal.
+
+### 108.8 Permisos (D-M8)
+
+No se crea un permiso `dashboard.view`. Los endpoints del dashboard
+exigen la combinación `bets.view` + `houses.view` + `movements.view`:
+todo rol de proyecto existente (Administrador, Colaborador, Lector) ya
+la tiene, porque el dashboard solo deriva datos que esos permisos ya
+permiten consultar por separado.
+
+### 108.9 Sin tablas de resumen materializadas (D-M10)
+
+Todas las métricas se calculan en consulta mediante SQL agregado
+(`SUM`/`COUNT`/`GROUP BY`, funciones de ventana para las series
+temporales y el drawdown), igual que los saldos de casa (D3, Fase 3) y
+los montos/retornos de apuestas (D-B7, Fase 4). No se crea ninguna
+tabla ni columna nueva: el dashboard deriva enteramente de `bets`,
+`bet_selections`, `financial_movements`, `stages` y `houses`.
