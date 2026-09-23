@@ -2328,3 +2328,129 @@ activación de etapas, la corrección de unidad, la creación y
 desactivación/reactivación de casas, todo movimiento financiero
 (depósito, transferencia, extraordinario) y cada cambio de estado de
 una solicitud de retiro (solicitud, aprobación, rechazo, cancelación).
+
+## 107. Apuestas, selecciones y liquidaciones (Fase 4)
+
+**Estado:** Aprobada.\
+Precisa y completa los §18 a §27, §71, §73 a §78, §90 con las
+decisiones de la Fase 4. Si alguna regla anterior las contradice,
+prevalece este apartado.
+
+### 107.1 Alcance y fuentes externas de decisión (D-T1)
+
+La Fase 4 no modela tipster, señal externa ni recomendación previa: una
+apuesta representa únicamente la decisión ya ejecutada por el usuario.
+No existen tablas de tipsters ni de señales, ni campos de origen de la
+apuesta. Analizar fuentes externas de decisión, si se necesita en el
+futuro, será una extensión separada con su propio cambio de esta
+especificación.
+
+### 107.2 Estados de liquidación (D-B1, D-B2)
+
+Los estados de una apuesta son `PENDING`, `WON`, `LOST`, `VOID` y
+`CASHOUT`. **`VOID` es el único estado para "Anulada/Cancelada"**: ambos
+representan financieramente una apuesta inválida sin ganancia ni
+pérdida (retorno = monto oficial, §21.4).
+
+Una apuesta `LOST` **no genera una fila `BET_SETTLEMENT`** en el
+ledger: el `BET_PLACEMENT` ya representa la salida del dinero, y la
+pérdida se determina por la ausencia de un retorno positivo asociado a
+esa apuesta, no por un movimiento de $0.
+
+### 107.3 Reserva de una apuesta pendiente y ledger (§17, §72)
+
+Mientras una apuesta está `PENDING`, su monto (oficial si existe, si no
+el calculado según §107.5) se refleja en el **comprometido** de la casa
+(§17, §92) mediante una consulta en vivo sobre `bets`, igual que los
+retiros pendientes (D5, Fase 3) — **no genera todavía ninguna fila del
+ledger**.
+
+Las filas `BET_PLACEMENT` (débito) y, cuando corresponda (§107.2),
+`BET_SETTLEMENT` (crédito) se insertan **juntas, en la misma
+transacción, al liquidar la apuesta**, cada una con el `occurredAt` que
+le corresponde realmente (`placed_at` y `settled_at`), aunque ambas se
+graben en la base de datos en ese mismo instante. El monto que queda
+registrado en `BET_PLACEMENT` es el monto oficial si existe, o si no el
+monto calculado vigente **en el momento de liquidar** — a partir de ahí
+queda congelado (ledger inmutable, D2): una corrección posterior de la
+unidad de la etapa ya no lo modifica.
+
+### 107.4 Selecciones y tipo de apuesta (§19, §20, §90, D-B3)
+
+Cada selección pertenece a un grupo de evento (`eventGroup`, entero):
+selecciones con el mismo `eventGroup` pertenecen al mismo evento. El
+backend valida `betType` contra la estructura real:
+
+-   **Simple:** un único grupo de evento con una única selección.
+-   **Creada:** un único grupo de evento con más de una selección.
+-   **Múltiple:** más de un grupo de evento (cada uno con una o más
+    selecciones; un grupo con varias reproduce internamente la
+    estructura "Creada" sin cambiar la clasificación principal, §20).
+
+### 107.5 Montos y retornos derivados (§54, §76, §77, D-B7)
+
+`calculated_amount` y `derived_profit_loss` **no se almacenan**: se
+calculan en cada lectura, igual que los saldos de casa (D3, Fase 3).
+
+-   Monto efectivo = `official_amount` si existe; si no,
+    `stake × stage.unit_stake` (redondeado, ADR 0004).
+-   Retorno: `official_realized_return` si la apuesta está liquidada
+    con retorno positivo (`WON`/`VOID`/`CASHOUT`); ausente si `LOST`
+    (§107.2) o si sigue `PENDING`.
+-   Ganancia/pérdida: sin liquidar, ninguna; `LOST`, `−monto efectivo`;
+    en los demás casos liquidados, `retorno oficial − monto efectivo`.
+-   Cuota efectiva derivada = `retorno oficial ÷ monto efectivo`
+    (diagnóstica, nunca sustituye a `visible_total_odds`, regla crítica
+    6).
+
+Una corrección de unidad de etapa (§73) recalcula automáticamente el
+monto efectivo de las apuestas `PENDING` sin monto oficial, sin ningún
+job de migración, porque nada quedó guardado. **Queda pendiente de
+definir** (no resuelto en esta fase) si la corrección debe además
+rechazarse de forma proactiva cuando dejaría a una casa con
+comprometido superior a su saldo; por ahora, esa situación se detecta
+en la siguiente creación o liquidación de apuesta sobre esa casa (que sí
+revalida disponible), no en la propia corrección de unidad.
+
+### 107.6 Horas desconocidas y orden (§18, §55, §71, §93, D-B4)
+
+`placed_at`/`settled_at` van acompañados de `placed_time_known`/
+`settled_time_known` (booleanos): si la hora exacta no se conoce, el
+componente de hora del timestamp no tiene autoridad y no debe
+mostrarse ni tratarse como oficial. El criterio de desempate estable
+cuando falta la hora es `created_at` y, si aún empata, `id`.
+
+### 107.7 Permisos (§4.3, §88, D-B5, D-B6)
+
+Ocho permisos nuevos: `bets.view`, `bets.create`, `bets.update_own`,
+`bets.update_any`, `bets.trash_own`, `bets.trash_any`, `bets.restore`,
+`bets.move_stage`. Una acción sobre una apuesta ajena exige el permiso
+`_any`; sobre la propia (`created_by` = actor), basta el `_own`. Mover
+de etapa y restaurar no tienen variante "propia" (§25, §26: siempre
+administradores). El Colaborador recibe `view`, `create`, `update_own`
+y `trash_own`; el Administrador de Proyecto y el propietario, los
+ocho; el Lector, solo `view`.
+
+El límite diario de eliminaciones del Colaborador (máximo 5 por acción,
+máximo 10 al día, huso horario del proyecto, §26, §88) se calcula
+contando sus acciones `bet.trashed` de auditoría del día, sin una tabla
+de contadores separada. No existe un endpoint de papelera masiva: el
+límite se aplica sobre llamadas repetidas al endpoint individual.
+
+### 107.8 Redondeo pendiente de confirmar (D-B8)
+
+La política `ROUND_HALF_UP` para montos y retornos calculados de
+apuestas sigue siendo provisional (ADR 0004): se ajustará cuando existan
+tickets reales de Betano/Betsafe que confirmen si la casa redondea o
+trunca.
+
+### 107.9 Fuera de esta fase
+
+No forman parte de la Fase 4: tickets e IA (`ticket_file_id` no se
+reserva todavía, Fase 7, D-B11), el estado "requiere nueva
+conciliación" en `houses` (Fase 6, D-B12), dashboards/gráficos (Fase 5)
+y la corrección de campos financieros (`status`, `official_amount`,
+`official_realized_return`, `settled_at`) de una apuesta **ya
+liquidada** (§77 completo: comparar retorno calculado vs. oficial y
+recalcular tras liquidar) — mientras tanto, volver a liquidar o
+cambiar esos campos de una apuesta liquidada responde 409.
