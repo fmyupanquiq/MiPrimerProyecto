@@ -32,9 +32,12 @@ function betIdOrNotFound(betId: string): string {
 }
 
 /**
- * Apuestas (§18-§27, §90, §107). Las acciones que dependen de la propiedad (editar, liquidar,
- * papelera) se protegen aquí con el permiso mínimo (`bets.view`); el servicio aplica la regla
- * real de `_own`/`_any` (D-B5) porque necesita conocer quién creó la apuesta.
+ * Apuestas (§18-§27, §90, §107). Las acciones que dependen de la propiedad (editar, papelera)
+ * se protegen aquí con el permiso mínimo (`bets.view`); el servicio aplica la regla real de
+ * `_own`/`_any` (D-B5) porque necesita conocer quién creó la apuesta. Liquidar (`settle`) es una
+ * operación financiera con efecto real en el ledger: se protege con su propio permiso
+ * (`bets.settle`), sin variante `_own`, igual que el resto de acciones que tocan el ledger
+ * (revisión de arquitectura previa a integrar la Fase 4).
  */
 @Controller('projects/:projectId/bets')
 export class BetsController {
@@ -87,9 +90,10 @@ export class BetsController {
     return this.bets.update(access, auth.user, betIdOrNotFound(betId), body);
   }
 
+  /** Operación financiera (inserta en el ledger): de administrador, no depende de la propiedad. */
   @Post(':betId/settle')
   @HttpCode(200)
-  @ProjectRoute('bets.view')
+  @ProjectRoute('bets.settle')
   @Header('Cache-Control', 'no-store')
   settle(
     @CurrentAuth() auth: AuthContext,

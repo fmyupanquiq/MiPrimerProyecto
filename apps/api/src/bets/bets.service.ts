@@ -127,14 +127,32 @@ export class BetsService {
     return this.detailOf(this.db, bet);
   }
 
-  /** Registra una apuesta manual (§18-§20). Valida saldo disponible antes de crearla (§75). */
+  /**
+   * Registra una apuesta manual (§18-§20). Valida saldo disponible antes de crearla (§75).
+   * Solo quien puede mover apuestas de etapa (§25, `bets.move_stage`) puede indicar `stageId`
+   * explícitamente; sin ese permiso, solo puede crear en la etapa activa, y se rechaza si pidió
+   * explícitamente otra distinta (revisión de arquitectura previa a integrar la Fase 4: crear
+   * directamente en otra etapa no debe servir para evadir la restricción de administrador que sí
+   * aplica a moverla; se rechaza en vez de ignorar el `stageId` en silencio).
+   */
   async create(access: ProjectAccess, actor: UserRow, input: CreateBetInput): Promise<BetDetail> {
     assertFinanceReady(access);
     const betType = deriveBetType(input.selections);
+    const canChooseStage = access.permissions.has('bets.move_stage');
     const created = await this.db.transaction(async (tx) => {
       await lockByKey(tx, `finance:${access.project.id}`);
       const house = await this.assertActiveHouse(tx, access.project.id, input.houseId);
-      const stage = await this.resolveStage(tx, access.project.id, input.stageId);
+      if (input.stageId !== undefined && !canChooseStage) {
+        const active = await this.resolveStage(tx, access.project.id, undefined);
+        if (input.stageId !== active.id) {
+          throw betForbidden('Solo puedes registrar apuestas en la etapa activa.');
+        }
+      }
+      const stage = await this.resolveStage(
+        tx,
+        access.project.id,
+        canChooseStage ? input.stageId : undefined,
+      );
 
       const effectiveAmount = input.officialAmount ?? multiplyMoney(stage.unitStake, input.stake);
       const balances = await computeHouseBalances(tx, access.project.id);
@@ -193,6 +211,7 @@ export class BetsService {
     const updated = await this.db.transaction(async (tx) => {
       await lockByKey(tx, `finance:${access.project.id}`);
       const bet = await this.lockOwned(tx, access.project.id, betId);
+      this.assertNotTrashed(bet);
       this.assertOwnOrAny(access, bet, actor, 'bets.update_any', 'bets.update_own');
 
       const patch: Partial<NewBet> = {};
@@ -299,7 +318,9 @@ export class BetsService {
 
   /**
    * Liquida una apuesta pendiente (§21, §77, §78). Inserta `BET_PLACEMENT` y, si hay un retorno
-   * positivo (D-B2), `BET_SETTLEMENT`, ambos con su `occurredAt` real (§107.3).
+   * positivo (D-B2), `BET_SETTLEMENT`, ambos con su `occurredAt` real (§107.3). Operación
+   * financiera protegida por `bets.settle` (revisión de arquitectura previa a integrar la
+   * Fase 4): no depende de la propiedad de la apuesta, el controlador ya exigió el permiso.
    */
   async settle(
     access: ProjectAccess,
@@ -310,7 +331,7 @@ export class BetsService {
     const updated = await this.db.transaction(async (tx) => {
       await lockByKey(tx, `finance:${access.project.id}`);
       const bet = await this.lockOwned(tx, access.project.id, betId);
-      this.assertOwnOrAny(access, bet, actor, 'bets.update_any', 'bets.update_own');
+      this.assertNotTrashed(bet);
       if (bet.status !== 'PENDING') throw betConflict('Esta apuesta ya está liquidada.');
 
       const stage = await this.stageById(tx, bet.stageId);
@@ -396,6 +417,7 @@ export class BetsService {
     const updated = await this.db.transaction(async (tx) => {
       await lockByKey(tx, `finance:${access.project.id}`);
       const bet = await this.lockOwned(tx, access.project.id, betId);
+      this.assertNotTrashed(bet);
       const newStage = await this.resolveStage(tx, access.project.id, input.stageId);
       if (newStage.id === bet.stageId) throw betConflict('La apuesta ya está en esa etapa.');
 
@@ -484,6 +506,18 @@ export class BetsService {
   }
 
   // --- Helpers privados --------------------------------------------------------------------
+
+  /**
+   * Una apuesta en la papelera no admite ninguna operación financiera ni edición (revisión de
+   * arquitectura previa a integrar la Fase 4): hay que restaurarla primero. `trash()` ya
+   * comprueba esto por su cuenta (con un mensaje propio, "ya está en la papelera"); `restore()`
+   * es la única acción que opera sobre una apuesta en este estado.
+   */
+  private assertNotTrashed(bet: BetRow): void {
+    if (bet.deletedAt !== null) {
+      throw betConflict('Esta apuesta está en la papelera: restáurala antes de continuar.');
+    }
+  }
 
   /** `any` permite actuar sobre cualquier apuesta; sin él, hace falta `own` y ser quien la creó. */
   private assertOwnOrAny(

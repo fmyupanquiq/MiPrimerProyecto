@@ -138,6 +138,34 @@ describe('apuestas, selecciones y liquidaciones (§18-§27, §107)', () => {
     expect(screen.queryByRole('button', { name: 'Liquidar' })).toBeNull();
   });
 
+  it('con permiso de editar la propia pero sin bets.settle, no se ofrece Liquidar (revisión de arquitectura)', async () => {
+    open({
+      [`GET ${URL}`]: {
+        status: 200,
+        body: projectDetail({
+          isOwner: false,
+          myRole: 'COLLABORATOR',
+          myPermissions: [
+            'project.view',
+            'stages.view',
+            'houses.view',
+            'movements.view',
+            'bets.view',
+            'bets.create',
+            'bets.update_own',
+            'bets.trash_own',
+          ],
+        }),
+      },
+    });
+    renderApp(BETS_URL);
+    await screen.findByText('Pendiente');
+    // Autora de la apuesta (bet.createdBy = ANA.id, la sesión activa): puede editar la propia...
+    expect(screen.getByRole('button', { name: 'Editar' })).toBeTruthy();
+    // ...pero liquidar no depende de la propiedad: sin bets.settle, no se ofrece.
+    expect(screen.queryByRole('button', { name: 'Liquidar' })).toBeNull();
+  });
+
   it('registra una apuesta simple', async () => {
     const { calls } = open({
       [`POST ${BETS_URL}`]: { status: 201, body: bet({ id: 'nueva' }) },

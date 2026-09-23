@@ -76,6 +76,7 @@ describe('matriz de roles de sistema (§105.2)', () => {
         'bets.create',
         'bets.update_own',
         'bets.update_any',
+        'bets.settle',
         'bets.trash_own',
         'bets.trash_any',
         'bets.restore',
@@ -116,6 +117,7 @@ describe('matriz de roles de sistema (§105.2)', () => {
     expect(nonView.sort()).toEqual(['bets.create', 'bets.trash_own', 'bets.update_own'].sort());
     for (const forbidden of [
       'bets.update_any',
+      'bets.settle',
       'bets.trash_any',
       'bets.restore',
       'bets.move_stage',

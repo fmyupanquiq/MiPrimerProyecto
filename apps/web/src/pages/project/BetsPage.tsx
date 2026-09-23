@@ -459,6 +459,9 @@ function BetRow({
   const isOwn = user?.id === bet.createdBy.id;
   const canEdit = can('bets.update_any') || (can('bets.update_own') && isOwn);
   const canTrash = can('bets.trash_any') || (can('bets.trash_own') && isOwn);
+  // Liquidar es una operación financiera (inserta en el ledger): permiso propio, no depende de
+  // la propiedad de la apuesta (revisión de arquitectura previa a integrar la Fase 4).
+  const canSettle = can('bets.settle');
 
   async function trash() {
     setBusy(true);
@@ -521,7 +524,7 @@ function BetRow({
                 Editar
               </button>
             )}
-            {canEdit && bet.status === 'PENDING' && mode === 'view' && (
+            {canSettle && bet.status === 'PENDING' && mode === 'view' && (
               <button type="button" className={btnPrimary} onClick={() => setMode('settle')}>
                 Liquidar
               </button>

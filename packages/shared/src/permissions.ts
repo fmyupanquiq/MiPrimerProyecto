@@ -69,6 +69,15 @@ export const PERMISSIONS = {
   'bets.create': { scope: 'PROJECT', description: 'Registrar una apuesta' },
   'bets.update_own': { scope: 'PROJECT', description: 'Editar las apuestas propias' },
   'bets.update_any': { scope: 'PROJECT', description: 'Editar cualquier apuesta del proyecto' },
+  /**
+   * Liquidar tiene efecto real en el ledger (inserta BET_PLACEMENT/BET_SETTLEMENT con un monto
+   * y retorno que declara quien liquida, sin verificación de ticket en esta fase): es una
+   * operación financiera, no una simple edición, y se protege como tal (revisión de
+   * arquitectura previa a integrar la Fase 4). No depende de la propiedad de la apuesta: como
+   * el resto de acciones que tocan el ledger (movements.*, withdrawals.approve), es de
+   * administrador, nunca del Colaborador por defecto.
+   */
+  'bets.settle': { scope: 'PROJECT', description: 'Liquidar una apuesta pendiente' },
   'bets.trash_own': { scope: 'PROJECT', description: 'Enviar a la papelera las apuestas propias' },
   'bets.trash_any': {
     scope: 'PROJECT',
@@ -180,6 +189,7 @@ export const SYSTEM_ROLE_DEFINITIONS: readonly SystemRoleDefinition[] = [
       'bets.create',
       'bets.update_own',
       'bets.update_any',
+      'bets.settle',
       'bets.trash_own',
       'bets.trash_any',
       'bets.restore',

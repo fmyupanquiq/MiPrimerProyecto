@@ -249,6 +249,139 @@ describe('etapas del proyecto (e2e, PostgreSQL real, §11, §12, §86)', () => {
     });
   });
 
+  describe('corrección de unidad y comprometido de apuestas pendientes (§73, revisión de arquitectura)', () => {
+    async function houseId(): Promise<string> {
+      const list = (
+        await request(ctx.server)
+          .get(`/api/projects/${projectId}/houses`)
+          .set('Cookie', cookies.owner)
+          .expect(200)
+      ).body as { id: string }[];
+      return list[0]!.id;
+    }
+
+    it('rechaza de forma proactiva si el nuevo comprometido dejaría disponible negativo', async () => {
+      const house = await houseId();
+      await request(ctx.server)
+        .post(`/api/projects/${projectId}/movements/deposits`)
+        .set('Cookie', cookies.admin)
+        .send({ houseId: house, amount: '100.00' })
+        .expect(201);
+      // Pendiente sin monto oficial: 5 × 10.00 = 50.00 comprometido; disponible 50.00.
+      await request(ctx.server)
+        .post(`/api/projects/${projectId}/bets`)
+        .set('Cookie', cookies.collab)
+        .send({
+          houseId: house,
+          stake: '5',
+          visibleTotalOdds: '1.90',
+          placedAt: '2026-06-01T20:00:00.000Z',
+          selections: [
+            {
+              eventGroup: 0,
+              position: 0,
+              event: 'Partido',
+              selection: 'Local',
+              visibleOdds: '1.90',
+            },
+          ],
+        })
+        .expect(201);
+
+      // Subir la unidad a 30.00 exigiría 5 × 30.00 = 150.00, muy por encima del saldo (100.00).
+      const denied = await correctUnit('admin', firstStageId, {
+        unitStake: '30.00',
+        confirm: true,
+      });
+      expect(denied.status).toBe(409);
+      expect(bodyOf(denied).code).toBe('INVALID_STATE');
+      // No se aplicó el cambio.
+      expect((await stageRow(firstStageId)).unitStake).toBe('10.00');
+    });
+
+    it('permite la corrección cuando el nuevo comprometido sigue cabiendo en el disponible', async () => {
+      const house = await houseId();
+      await request(ctx.server)
+        .post(`/api/projects/${projectId}/movements/deposits`)
+        .set('Cookie', cookies.admin)
+        .send({ houseId: house, amount: '100.00' })
+        .expect(201);
+      await request(ctx.server)
+        .post(`/api/projects/${projectId}/bets`)
+        .set('Cookie', cookies.collab)
+        .send({
+          houseId: house,
+          stake: '5',
+          visibleTotalOdds: '1.90',
+          placedAt: '2026-06-01T20:00:00.000Z',
+          selections: [
+            {
+              eventGroup: 0,
+              position: 0,
+              event: 'Partido',
+              selection: 'Local',
+              visibleOdds: '1.90',
+            },
+          ],
+        })
+        .expect(201);
+
+      // 5 × 15.00 = 75.00, cabe en el saldo de 100.00.
+      const applied = await correctUnit('admin', firstStageId, {
+        unitStake: '15.00',
+        confirm: true,
+      }).expect(200);
+      expect((applied.body as StageBody).unitStake).toBe('15.00');
+
+      const houseAfter = (
+        await request(ctx.server)
+          .get(`/api/projects/${projectId}/houses`)
+          .set('Cookie', cookies.owner)
+          .expect(200)
+      ).body as { id: string; committed: string; available: string }[];
+      const updatedHouse = houseAfter.find((h) => h.id === house)!;
+      expect(updatedHouse.committed).toBe('75.00');
+      expect(updatedHouse.available).toBe('25.00');
+    });
+
+    it('una apuesta con monto oficial confirmado no cuenta para el rechazo (§73: nunca se sobrescribe)', async () => {
+      const house = await houseId();
+      await request(ctx.server)
+        .post(`/api/projects/${projectId}/movements/deposits`)
+        .set('Cookie', cookies.admin)
+        .send({ houseId: house, amount: '100.00' })
+        .expect(201);
+      // Monto oficial fijo de 90.00: no depende de la unidad, así que una unidad más alta no
+      // debe hacer que esta apuesta, por sí sola, bloquee la corrección.
+      await request(ctx.server)
+        .post(`/api/projects/${projectId}/bets`)
+        .set('Cookie', cookies.collab)
+        .send({
+          houseId: house,
+          stake: '5',
+          officialAmount: '90.00',
+          visibleTotalOdds: '1.90',
+          placedAt: '2026-06-01T20:00:00.000Z',
+          selections: [
+            {
+              eventGroup: 0,
+              position: 0,
+              event: 'Partido',
+              selection: 'Local',
+              visibleOdds: '1.90',
+            },
+          ],
+        })
+        .expect(201);
+
+      const applied = await correctUnit('admin', firstStageId, {
+        unitStake: '50.00',
+        confirm: true,
+      }).expect(200);
+      expect((applied.body as StageBody).unitStake).toBe('50.00');
+    });
+  });
+
   describe('papelera de etapas', () => {
     it('no se puede enviar a la papelera la etapa activa', async () => {
       const response = await trash('admin', firstStageId).expect(409);

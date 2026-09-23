@@ -167,6 +167,7 @@ export const OWNER_PERMISSIONS = [
   'bets.create',
   'bets.update_own',
   'bets.update_any',
+  'bets.settle',
   'bets.trash_own',
   'bets.trash_any',
   'bets.restore',

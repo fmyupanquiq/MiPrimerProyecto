@@ -1,14 +1,20 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
+  addMoney,
   defaultStageName,
+  isNegativeMoney,
+  multiplyMoney,
+  subtractMoney,
   PROJECT_TRASH_RETENTION_DAYS,
+  ZERO_MONEY,
   type CorrectStageUnitInput,
   type CreateStageInput,
+  type MoneyString,
   type StageStatus,
   type StageSummary,
   type StageUnitCorrectionPreview,
 } from '@letfer/shared';
-import { and, count, desc, eq, isNull, ne } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, isNull, ne } from 'drizzle-orm';
 import { AuditService } from '../audit/audit.service.js';
 import type { ProjectAccess } from '../authorization/authorization.service.js';
 import { Clock } from '../common/clock.js';
@@ -17,7 +23,8 @@ import { nextVersion } from '../database/concurrency.js';
 import { DATABASE } from '../database/database.constants.js';
 import type { Database } from '../database/database.module.js';
 import type { DbExecutor } from '../database/database.types.js';
-import { bets, stages, type StageRow, type UserRow } from '../database/schema/index.js';
+import { bets, houses, stages, type StageRow, type UserRow } from '../database/schema/index.js';
+import { computeHouseBalances } from './balances.js';
 import { assertProjectActive, financeConflict, financeNotFound } from './finance-errors.js';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -116,9 +123,10 @@ export class StagesService {
    * Vista previa (por defecto) o aplicación (`confirm: true`) de la corrección de unidad
    * (§12.1, §73). `affectedBets` cuenta las apuestas `PENDING` de la etapa sin monto oficial
    * (§107.5): su monto calculado cambiará en la siguiente lectura, sin ningún job de
-   * recálculo (D-B7), porque nunca se guardó. La propia corrección **no** rechaza de forma
-   * proactiva un comprometido resultante superior al saldo (§107.5): eso se detecta en la
-   * siguiente creación o liquidación de apuesta sobre esa casa, que sí revalida disponible.
+   * recálculo (D-B7), porque nunca se guardó. Antes de confirmar, se rechaza de forma
+   * proactiva si el nuevo comprometido dejaría a alguna casa con disponible negativo (§73,
+   * revisión de arquitectura previa a integrar la Fase 4): la comprobación corre dentro de la
+   * misma transacción que aplica el cambio, bajo el mismo candado de Finanzas.
    */
   async correctUnit(
     access: ProjectAccess,
@@ -147,6 +155,13 @@ export class StagesService {
 
     const updated = await this.db.transaction(async (tx) => {
       await lockByKey(tx, `finance:${access.project.id}`);
+      await this.assertUnitCorrectionFits(
+        tx,
+        access.project.id,
+        stage.id,
+        stage.unitStake,
+        input.unitStake,
+      );
       const [updated] = await tx
         .update(stages)
         .set({ unitStake: input.unitStake, version: nextVersion(stages.version) })
@@ -266,5 +281,59 @@ export class StagesService {
         ),
       );
     return row?.total ?? 0;
+  }
+
+  /**
+   * Rechaza la corrección si dejaría a alguna casa con disponible negativo (§73, revisión de
+   * arquitectura previa a integrar la Fase 4). Solo las apuestas `PENDING` sin monto oficial de
+   * esta etapa cambian de monto calculado con la unidad nueva (D-B7); se agrupa por casa el
+   * delta entre su monto con la unidad actual y con la nueva, y se compara contra el disponible
+   * vigente (que ya incluye su aporte actual al comprometido, calculado con la unidad actual).
+   */
+  private async assertUnitCorrectionFits(
+    executor: DbExecutor,
+    projectId: string,
+    stageId: string,
+    currentUnitStake: string,
+    newUnitStake: string,
+  ): Promise<void> {
+    const affected = await executor
+      .select({ houseId: bets.houseId, stakeAmount: bets.stakeAmount })
+      .from(bets)
+      .where(
+        and(
+          eq(bets.stageId, stageId),
+          eq(bets.status, 'PENDING'),
+          isNull(bets.officialAmount),
+          isNull(bets.deletedAt),
+        ),
+      );
+    if (affected.length === 0) return;
+
+    const deltaByHouse = new Map<string, MoneyString>();
+    for (const bet of affected) {
+      const oldAmount = multiplyMoney(currentUnitStake, bet.stakeAmount);
+      const newAmount = multiplyMoney(newUnitStake, bet.stakeAmount);
+      const delta = subtractMoney(newAmount, oldAmount);
+      deltaByHouse.set(bet.houseId, addMoney(deltaByHouse.get(bet.houseId) ?? ZERO_MONEY, delta));
+    }
+
+    const balances = await computeHouseBalances(executor, projectId);
+    const conflictedHouseIds: string[] = [];
+    for (const [houseId, delta] of deltaByHouse) {
+      const available = balances.get(houseId)?.available ?? ZERO_MONEY;
+      const newAvailable = subtractMoney(available, delta);
+      if (isNegativeMoney(newAvailable)) conflictedHouseIds.push(houseId);
+    }
+    if (conflictedHouseIds.length === 0) return;
+
+    const conflictedHouses = await executor
+      .select({ name: houses.name })
+      .from(houses)
+      .where(inArray(houses.id, conflictedHouseIds));
+    const names = conflictedHouses.map((house) => house.name).join(', ');
+    throw financeConflict(
+      `Esta corrección dejaría sin saldo disponible suficiente a: ${names}. Liquida o ajusta las apuestas pendientes de esa(s) casa(s) antes de corregir la unidad.`,
+    );
   }
 }

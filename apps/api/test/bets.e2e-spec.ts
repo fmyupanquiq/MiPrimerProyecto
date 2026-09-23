@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { auditLogs, financialMovements, type UserRow } from '../src/database/schema/index.js';
+import { auditLogs, bets, financialMovements, type UserRow } from '../src/database/schema/index.js';
 import {
   bodyOf,
   createTestApp,
@@ -31,6 +31,7 @@ interface SelectionBody {
 }
 interface BetBody {
   id: string;
+  stageId: string;
   betType: string;
   stake: string;
   officialAmount: string | null;
@@ -286,6 +287,43 @@ describe('apuestas, selecciones y liquidaciones (e2e, PostgreSQL real, §18-§27
       expect(log?.entityId).toBe(created.id);
       expect(log?.actorUserId).toBe(people.collab.id);
     });
+
+    describe('restricción de etapa al crear (§25, revisión de arquitectura)', () => {
+      it('sin bets.move_stage, un stageId distinto de la activa responde 403', async () => {
+        const closedStageId = stageId; // la etapa del beforeEach queda cerrada tras crear la 2ª
+        const second = await request(ctx.server)
+          .post(`/api/projects/${projectId}/stages`)
+          .set('Cookie', cookies.owner)
+          .send({ unitStake: '20.00' })
+          .expect(201);
+        const activeStageId = (second.body as { id: string }).id;
+
+        const denied = await createBet('collab', simpleBet({ stageId: closedStageId }));
+        expect(denied.status).toBe(403);
+
+        // Sin indicar stageId, o indicando exactamente la activa, sí se puede (no es un cambio real).
+        const implicit = (await createBet('collab', simpleBet()).expect(201)).body as BetBody;
+        expect(implicit.stageId).toBe(activeStageId);
+        const explicitActive = (
+          await createBet('collab', simpleBet({ stageId: activeStageId })).expect(201)
+        ).body as BetBody;
+        expect(explicitActive.stageId).toBe(activeStageId);
+      });
+
+      it('con bets.move_stage, un administrador sí puede crear directamente en otra etapa', async () => {
+        const closedStageId = stageId;
+        await request(ctx.server)
+          .post(`/api/projects/${projectId}/stages`)
+          .set('Cookie', cookies.owner)
+          .send({ unitStake: '20.00' })
+          .expect(201);
+
+        const created = (
+          await createBet('admin', simpleBet({ stageId: closedStageId })).expect(201)
+        ).body as BetBody;
+        expect(created.stageId).toBe(closedStageId);
+      });
+    });
   });
 
   describe('editar (§24)', () => {
@@ -415,13 +453,25 @@ describe('apuestas, selecciones y liquidaciones (e2e, PostgreSQL real, §18-§27
       expect(response.status).toBe(409);
     });
 
-    it('el Colaborador puede liquidar su propia apuesta (edición de sus propios campos)', async () => {
+    it('el Colaborador NO puede liquidar, ni siquiera su propia apuesta (revisión de arquitectura: bets.settle es de administrador)', async () => {
       const created = (await createBet('collab', simpleBet()).expect(201)).body as BetBody;
-      await settleBet('collab', created.id, {
+      const response = await settleBet('collab', created.id, {
         status: 'LOST',
         settledAt: '2026-06-02T22:00:00.000Z',
         version: created.version,
-      }).expect(200);
+      });
+      expect(response.status).toBe(403);
+      const [bet] = await ctx.t.db.select().from(bets).where(eq(bets.id, created.id));
+      expect(bet!.status).toBe('PENDING');
+    });
+
+    it('el Lector no puede liquidar (403)', async () => {
+      const created = (await createBet('collab', simpleBet()).expect(201)).body as BetBody;
+      await settleBet('reader', created.id, {
+        status: 'LOST',
+        settledAt: '2026-06-02T22:00:00.000Z',
+        version: created.version,
+      }).expect(403);
     });
 
     it('LOST con officialRealizedReturn responde 400 (validación, D-B2)', async () => {
@@ -513,6 +563,52 @@ describe('apuestas, selecciones y liquidaciones (e2e, PostgreSQL real, §18-§27
       await restoreBet('admin', created.id).expect(200);
       const list = (await listBets('admin').expect(200)).body as BetBody[];
       expect(list.map((b) => b.id)).toContain(created.id);
+    });
+  });
+
+  describe('una apuesta en la papelera no admite operaciones (revisión de arquitectura)', () => {
+    it('bloquea editar, liquidar y mover de etapa; restaurar sí funciona y las desbloquea', async () => {
+      const created = (await createBet('collab', simpleBet()).expect(201)).body as BetBody;
+      await trashBet('collab', created.id).expect(200);
+
+      const updateDenied = await updateBet('admin', created.id, {
+        reason: 'intento',
+        version: created.version,
+      });
+      expect(updateDenied.status).toBe(409);
+
+      const settleDenied = await settleBet('admin', created.id, {
+        status: 'LOST',
+        settledAt: '2026-06-02T22:00:00.000Z',
+        version: created.version,
+      });
+      expect(settleDenied.status).toBe(409);
+
+      const second = await request(ctx.server)
+        .post(`/api/projects/${projectId}/stages`)
+        .set('Cookie', cookies.owner)
+        .send({ unitStake: '20.00' })
+        .expect(201);
+      await reauthAs('admin');
+      const moveDenied = await moveBetStage('admin', created.id, {
+        stageId: (second.body as { id: string }).id,
+        version: created.version,
+      });
+      expect(moveDenied.status).toBe(409);
+
+      // Nada de lo anterior cambió el estado ni la versión de la apuesta (fallaron antes del UPDATE).
+      const [stillTrashed] = await ctx.t.db.select().from(bets).where(eq(bets.id, created.id));
+      expect(stillTrashed!.deletedAt).not.toBeNull();
+      expect(stillTrashed!.version).toBe(2); // 1 al crear, 2 al enviar a la papelera
+
+      // Restaurar sí funciona, y a partir de ahí las operaciones vuelven a admitirse.
+      await restoreBet('admin', created.id).expect(200);
+      const [restored] = await ctx.t.db.select().from(bets).where(eq(bets.id, created.id));
+      expect(restored!.deletedAt).toBeNull();
+      await updateBet('admin', created.id, {
+        reason: 'ya restaurada',
+        version: restored!.version,
+      }).expect(200);
     });
   });
 
