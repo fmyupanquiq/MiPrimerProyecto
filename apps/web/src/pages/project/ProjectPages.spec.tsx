@@ -70,12 +70,14 @@ describe('diseño del proyecto', () => {
     expect(screen.getByText(/DD\/MM\/AAAA/)).toBeTruthy();
   });
 
-  it('el resumen ya no anuncia etapas, banca y casas como pendientes de fases futuras', async () => {
+  it('el resumen ya no anuncia ninguna sección como pendiente de fases futuras (Fase 5)', async () => {
     open(URL, detail());
     renderApp(URL);
 
     await screen.findByRole('heading', { name: 'Grupo Norte' });
-    expect(screen.getByText('Las apuestas se configuran en la fase siguiente.')).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Estado financiero actual' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Análisis filtrado' })).toBeTruthy();
+    expect(screen.queryByText(/se configuran? en la fase/)).toBeNull();
     expect(screen.queryByText(/etapas, la banca, las casas/)).toBeNull();
   });
 
