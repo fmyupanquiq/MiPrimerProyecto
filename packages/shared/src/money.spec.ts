@@ -8,6 +8,7 @@ import {
   isPositiveMoney,
   isZeroMoney,
   moneyInputSchema,
+  multiplyMoney,
   roundMoney,
   subtractMoney,
   sumMoney,
@@ -66,6 +67,18 @@ describe('subtractMoney', () => {
   it('resta y puede dar negativo (el servicio decide si es un error)', () => {
     expect(subtractMoney('100.00', '30.00')).toBe('70.00');
     expect(subtractMoney('30.00', '100.00')).toBe('-70.00');
+  });
+});
+
+describe('multiplyMoney (monto teórico de una apuesta: stake × unidad, §12, §76)', () => {
+  it('multiplica y redondea a 2 decimales', () => {
+    expect(multiplyMoney('10.00', '1.5')).toBe('15.00');
+    expect(multiplyMoney('10.00', '0.25')).toBe('2.50');
+  });
+
+  it('redondea ROUND_HALF_UP el resultado, no los factores', () => {
+    expect(multiplyMoney('10.00', '1.005')).toBe('10.05'); // 10.05 exacto
+    expect(multiplyMoney('3.33', '3')).toBe('9.99');
   });
 });
 

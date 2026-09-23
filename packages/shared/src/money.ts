@@ -72,6 +72,19 @@ export function subtractMoney(a: MoneyString | Decimal, b: MoneyString | Decimal
   return roundMoney(toDecimal(a).minus(toDecimal(b)));
 }
 
+/**
+ * `amount × factor`, redondeado a 2 decimales (`ROUND_HALF_UP`). Para el monto teórico de una
+ * apuesta: `stake × unidad de la etapa` (§12, §76); `factor` no es necesariamente dinero (p. ej.
+ * un stake, `NUMERIC(10,4)`), por eso se acepta como cadena decimal genérica.
+ */
+export function multiplyMoney(
+  amount: MoneyString | Decimal,
+  factor: string | Decimal,
+): MoneyString {
+  const factorDecimal = factor instanceof Decimal ? factor : new MoneyDecimal(factor);
+  return roundMoney(toDecimal(amount).times(factorDecimal));
+}
+
 /** Compara dos cifras de dinero: -1 si `a < b`, 0 si son iguales, 1 si `a > b`. */
 export function compareMoney(a: MoneyString | Decimal, b: MoneyString | Decimal): -1 | 0 | 1 {
   const result = toDecimal(a).comparedTo(toDecimal(b));
