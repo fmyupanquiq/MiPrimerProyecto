@@ -2536,3 +2536,141 @@ temporales y el drawdown), igual que los saldos de casa (D3, Fase 3) y
 los montos/retornos de apuestas (D-B7, Fase 4). No se crea ninguna
 tabla ni columna nueva: el dashboard deriva enteramente de `bets`,
 `bet_selections`, `financial_movements`, `stages` y `houses`.
+
+## 109. Confianza y recuperación (Fase 5.5)
+
+**Estado:** Aprobada.\
+Precisa y completa los §32, §37, §38, §72, §74, §80 y §82 con las
+decisiones de la etapa "Confianza y recuperación", previa a la Fase 6
+numerada (que queda contenida en el §109.1) y a cualquier uso con datos
+reales. Si alguna regla anterior las contradice, prevalece este
+apartado. Fuera de alcance: PITR, almacenamiento cloud específico,
+coordinación con archivos/tickets e infraestructura definitiva de
+producción (siguen en la Fase 11, §82).
+
+### 109.1 Conciliación (D-C1 a D-C7, precisa §32 y §80)
+
+Un checkpoint de conciliación se registra **siempre** que alguien la
+intenta, coincida o no (D-C1): es un registro histórico de
+comparación, nunca un ajuste financiero. No modifica saldos, no crea
+movimientos y no corrige datos automáticamente. Su `status` es
+`MATCHED` (diferencia 0) o `DISCREPANCY` (no coincide); un tercer
+estado, `INVALIDATED`, lo aplica el sistema después (§109.1.3), nunca
+la persona que concilia.
+
+Campos exactos (§80): casa, fecha/hora, saldo disponible LetFer, saldo
+disponible oficial declarado, comprometido en LetFer (diagnóstico),
+diferencia, usuario conciliador, estado.
+
+#### 109.1.1 Quién y cómo (D-C2, D-C3, D-C4, D-C7)
+
+- Un único paso: quien concilia declara el saldo oficial y LetFer
+  compara de inmediato. No hay propuesta/aprobación en dos pasos.
+- Solo Administrador de Proyecto y Administrador Global (§80); ningún
+  otro rol, salvo permiso explícito futuro.
+- Es por casa, independiente de la etapa: la banca es continua entre
+  etapas (§11).
+- El "saldo disponible LetFer" es exactamente `available` (balance menos
+  comprometido) tal como ya lo calcula `computeHouseBalances` (D3): el
+  comprometido no se sustrae dos veces, solo se muestra aparte como
+  dato diagnóstico (§80), no participa en la comparación.
+- No exige reautenticación: compara y registra, no mueve dinero ni
+  genera movimientos.
+
+#### 109.1.2 Resolución de una discrepancia (D-C5)
+
+No existe un estado "RESUELTO". La resolución es: corregir el dato real
+mediante las operaciones ya existentes (editar, liquidar, completar un
+movimiento faltante) y volver a conciliar; si coincide, se crea un
+checkpoint `MATCHED` nuevo. Un único modelo, sin un estado redundante.
+
+#### 109.1.3 Invalidación de checkpoints (§74)
+
+Una acción sobre una apuesta con efecto financiero potencial —editar,
+liquidar, mover de etapa, eliminar lógicamente o restaurar— invalida
+todo checkpoint `MATCHED` de la casa de esa apuesta cuyo `occurred_at`
+sea posterior o igual a la fecha de colocación (`placed_at`) de la
+apuesta afectada: el checkpoint asumía una fotografía que esa apuesta
+ya integraba, y esa fotografía cambió. Una apuesta colocada **después**
+del checkpoint nunca lo invalida (es actividad nueva, no una
+corrección retroactiva). Invalidar registra cuándo y por qué
+(`invalidated_at`, `invalidated_reason`), nunca borra ni reescribe el
+checkpoint original (D2).
+
+"Requiere nueva conciliación" (§74) se deriva en vivo: una casa lo
+"requiere" cuando su checkpoint `MATCHED` no invalidado más reciente ya
+no existe o quedó invalidado. Es puramente informativo (D-C6): no
+bloquea apuestas, depósitos, retiros ni ninguna otra operación.
+
+#### 109.1.4 Revisar desde última conciliación (§32.2)
+
+Vista de solo lectura: apuestas y movimientos de la casa posteriores al
+último checkpoint `MATCHED` no invalidado (o desde el origen, si nunca
+hubo uno). Reduce la búsqueda de errores sin alterar nada.
+
+### 109.2 Verificación de integridad del ledger (D-I1 a D-I3, precisa §38)
+
+Herramienta de **solo lectura**: nunca corrige datos, nunca crea
+movimientos, nunca inventa dinero (§38). Cada ejecución queda
+registrada (quién, cuándo, resultado, hallazgos) para consulta
+posterior.
+
+Comprobaciones de la versión inicial (D-I1):
+
+a. Cada casa, recalculada desde cero, no tiene disponible negativo.\
+b. Los estados de apuesta y sus liquidaciones son coherentes: `LOST`
+sin fila `BET_SETTLEMENT`; `WON`/`VOID`/`CASHOUT` con exactamente una
+(D-B2).\
+c. Ninguna apuesta `PENDING` referencia una etapa o casa en papelera.\
+d. Los movimientos del ledger referencian proyecto, etapa y casa
+existentes y consistentes con las restricciones del esquema (defensa
+en profundidad de lo que los `CHECK` ya deberían garantizar).\
+e. Todo checkpoint que debería estar `INVALIDATED` según el §109.1.3
+efectivamente lo está.
+
+Se ejecuta **manualmente, bajo demanda** (D-I2): esta etapa no
+introduce tareas programadas para esto. Dos alcances (D-I3): por
+proyecto (Administrador de Proyecto) y global, sobre todos los
+proyectos (Administrador Global).
+
+### 109.3 Backups automáticos (D-B1 a D-B4, precisa §37 y §82)
+
+El backup se dispara desde dentro del propio proceso de la API (una
+tarea programada interna), no desde un cron del sistema operativo ni un
+proveedor concreto (D-B1): funciona igual sin importar dónde se aloje
+el piloto real, todavía no decidido. El directorio de destino se
+configura por variable de entorno.
+
+Cada backup es una copia completa de PostgreSQL mediante `pg_dump` en
+formato personalizado (restaurable con `pg_restore`), nunca parcial
+(D-B2): debe poder reconstruir LetFer entero. El entorno de ejecución
+(desarrollo y producción) debe tener `pg_dump`/`pg_restore` disponibles
+en el `PATH`; no se empaqueta ni se sustituye ese requisito en esta
+etapa.
+
+El **manifiesto** de generaciones (fecha, tamaño, checksum, estado)
+vive en un archivo junto a los propios volcados, fuera de PostgreSQL
+(D-B3): si la base de datos se pierde, la lista de sus propios backups
+no debe perderse con ella. La API solo lee ese archivo para mostrarlo;
+no lo posee.
+
+Retención aproximada de 30 generaciones diarias rotativas (D-B4, §37).
+
+### 109.4 Recuperación ante fallos (D-R1, precisa §37)
+
+La restauración es una operación de mantenimiento controlada, nunca en
+caliente con la API sirviendo tráfico con normalidad (D-R1). Sigue el
+orden del §37: backup preventivo del estado actual, reautenticación,
+confirmación fuerte (escribir el identificador exacto de la generación
+a restaurar), restauración, auditoría. Solo el Administrador Global
+puede restaurarla (§37).
+
+### 109.5 Permisos nuevos
+
+De proyecto: `reconciliations.view` (todo rol de proyecto, igual que
+`bets.view`), `reconciliations.confirm`, `integrity.view` e
+`integrity.run` (Administrador de Proyecto). Globales, nuevo prefijo
+`system.*` para capacidades de administración de toda la instancia (no
+existía antes de esta etapa): `system.integrity.run` y
+`system.backups.view` / `system.backups.create` /
+`system.backups.restore`, reservados al Administrador Global.
