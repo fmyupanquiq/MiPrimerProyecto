@@ -16,6 +16,7 @@ import { IntegrityModule } from './integrity/integrity.module.js';
 import { ProjectsModule } from './projects/projects.module.js';
 import { ReconciliationsModule } from './reconciliations/reconciliations.module.js';
 import { RegistrationModule } from './registration/registration.module.js';
+import { TicketsModule } from './tickets/tickets.module.js';
 import { UsersModule } from './users/users.module.js';
 
 @Module({
@@ -35,6 +36,7 @@ import { UsersModule } from './users/users.module.js';
     ReconciliationsModule,
     IntegrityModule,
     BackupsModule,
+    TicketsModule,
     RegistrationModule,
   ],
   controllers: [HealthController],

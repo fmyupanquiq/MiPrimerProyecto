@@ -179,6 +179,7 @@ describe('invitaciones: crear, listar y deshabilitar (e2e, PostgreSQL real)', ()
         'bets.view',
         'reconciliations.view',
         'integrity.view',
+        'tickets.view',
       ]) {
         await ctx.t.pool.query(
           'INSERT INTO role_permissions (role_id, permission_code) VALUES ($1, $2)',

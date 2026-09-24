@@ -74,6 +74,15 @@ const envSchema = z.object({
   // depender de que estén en el PATH.
   PG_DUMP_PATH: z.string().min(1).default('pg_dump'),
   PG_RESTORE_PATH: z.string().min(1).default('pg_restore'),
+  // Tickets: los backups también empaquetan este directorio con `tar` (ADR 0017).
+  TAR_PATH: z.string().min(1).default('tar'),
+
+  // Tickets e IA (§28-§31, §110, D-T2 a D-T6, ADR 0017)
+  TICKETS_DIR: z.string().min(1).default('.data/tickets'),
+  ANTHROPIC_API_KEY: z.string().min(1).optional(),
+  ANTHROPIC_MODEL: z.string().min(1).default('claude-sonnet-5'),
+  AI_MAX_ANALYSES_PER_TICKET: positiveInt(5),
+  AI_MAX_ANALYSES_PER_PROJECT_DAY: positiveInt(50),
 });
 
 export interface AppConfig {
@@ -112,6 +121,16 @@ export interface AppConfig {
     schedulerEnabled: boolean;
     pgDumpPath: string;
     pgRestorePath: string;
+    /** Empaqueta `tickets.dir` junto al volcado en cada generación (ADR 0017). */
+    tarPath: string;
+  };
+  tickets: {
+    dir: string;
+    anthropicApiKey: string | undefined;
+    anthropicModel: string;
+    /** D-T6/§110.4: límites de análisis IA, contados sobre `ticket_analyses` (sin tabla aparte). */
+    maxAnalysesPerTicket: number;
+    maxAnalysesPerProjectDay: number;
   };
 }
 
@@ -147,6 +166,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     throw new ConfigError(
       'Configuración inválida. Revisa el archivo .env:\n' +
         '  - COOKIE_SECURE: en producción la cookie de sesión debe ser Secure (§41)',
+    );
+  }
+  if (isProduction && !values.ANTHROPIC_API_KEY) {
+    throw new ConfigError(
+      'Configuración inválida. Revisa el archivo .env:\n' +
+        '  - ANTHROPIC_API_KEY: obligatoria en producción para analizar tickets (D-T1)',
     );
   }
 
@@ -196,6 +221,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       schedulerEnabled: values.BACKUP_SCHEDULER_ENABLED,
       pgDumpPath: values.PG_DUMP_PATH,
       pgRestorePath: values.PG_RESTORE_PATH,
+      tarPath: values.TAR_PATH,
+    },
+    tickets: {
+      dir: values.TICKETS_DIR,
+      anthropicApiKey: values.ANTHROPIC_API_KEY,
+      anthropicModel: values.ANTHROPIC_MODEL,
+      maxAnalysesPerTicket: values.AI_MAX_ANALYSES_PER_TICKET,
+      maxAnalysesPerProjectDay: values.AI_MAX_ANALYSES_PER_PROJECT_DAY,
     },
   };
 }

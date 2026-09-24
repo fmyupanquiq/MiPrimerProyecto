@@ -7,6 +7,7 @@ import request from 'supertest';
 import { vi } from 'vitest';
 import { AppModule } from '../../src/app.module.js';
 import { configureApp } from '../../src/app.setup.js';
+import { TICKET_READER } from '../../src/ai/ticket-reader.js';
 import { PasswordHasher } from '../../src/auth/password-hasher.js';
 import { Clock } from '../../src/common/clock.js';
 import { MailService } from '../../src/mail/mail.service.js';
@@ -14,6 +15,7 @@ import { InMemoryMailService } from './in-memory-mail.js';
 import type { UserRow } from '../../src/database/schema/index.js';
 import { insertUser } from './factories.js';
 import { FakeClock } from './fake-clock.js';
+import { FakeTicketReader } from './fake-ticket-reader.js';
 import { createTestDatabase, truncateAll, type TestDatabase } from './test-database.js';
 
 export const TEST_PASSWORD = 'clave-de-prueba-2026';
@@ -23,6 +25,7 @@ export interface TestApp {
   server: Server;
   clock: FakeClock;
   mail: InMemoryMailService;
+  ticketReader: FakeTicketReader;
   t: TestDatabase;
   hasher: PasswordHasher;
   /** Crea un usuario con contraseña real (hash argon2id). */
@@ -50,6 +53,7 @@ export async function createTestApp(options: CreateTestAppOptions = {}): Promise
 
   const clock = new FakeClock('2026-06-01T12:00:00.000Z');
   const mail = new InMemoryMailService();
+  const ticketReader = new FakeTicketReader();
   let builder = Test.createTestingModule({
     imports: [AppModule],
     controllers: options.controllers ?? [],
@@ -57,7 +61,9 @@ export async function createTestApp(options: CreateTestAppOptions = {}): Promise
     .overrideProvider(Clock)
     .useValue(clock)
     .overrideProvider(MailService)
-    .useValue(mail);
+    .useValue(mail)
+    .overrideProvider(TICKET_READER)
+    .useValue(ticketReader);
   if (options.customize) builder = options.customize(builder);
   const moduleRef = await builder.compile();
 
@@ -74,6 +80,7 @@ export async function createTestApp(options: CreateTestAppOptions = {}): Promise
     server: app.getHttpServer(),
     clock,
     mail,
+    ticketReader,
     t,
     hasher,
     createUser: async ({ password = TEST_PASSWORD, ...overrides } = {}) =>
@@ -82,6 +89,7 @@ export async function createTestApp(options: CreateTestAppOptions = {}): Promise
       await truncateAll(t.pool);
       clock.set('2026-06-01T12:00:00.000Z');
       mail.clear();
+      ticketReader.reset();
     },
     close: async () => {
       await app.close();

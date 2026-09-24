@@ -85,6 +85,9 @@ describe('matriz de roles de sistema (§105.2)', () => {
         'reconciliations.confirm',
         'integrity.view',
         'integrity.run',
+        'tickets.view',
+        'tickets.upload',
+        'tickets.analyze',
       ].sort(),
     );
     const readOnlyFinance = [
@@ -97,11 +100,23 @@ describe('matriz de roles de sistema (§105.2)', () => {
       'integrity.view',
     ];
     // El Colaborador (§4.3, §88, Fase 4): solo consulta de etapas/casas/movimientos, pero
-    // puede crear apuestas y editar/eliminar únicamente las propias (D-B5).
+    // puede crear apuestas y editar/eliminar únicamente las propias (D-B5); Fase 7 (§110.6):
+    // mismo nivel para tickets.
     expect([...perms('COLLABORATOR')].sort()).toEqual(
-      [...readOnlyFinance, 'bets.view', 'bets.create', 'bets.update_own', 'bets.trash_own'].sort(),
+      [
+        ...readOnlyFinance,
+        'bets.view',
+        'bets.create',
+        'bets.update_own',
+        'bets.trash_own',
+        'tickets.view',
+        'tickets.upload',
+        'tickets.analyze',
+      ].sort(),
     );
-    expect([...perms('READER')].sort()).toEqual([...readOnlyFinance, 'bets.view'].sort());
+    expect([...perms('READER')].sort()).toEqual(
+      [...readOnlyFinance, 'bets.view', 'tickets.view'].sort(),
+    );
   });
 
   it('el Administrador de Proyecto no puede reabrir, enviar a papelera ni restaurar (§87)', () => {
@@ -120,7 +135,15 @@ describe('matriz de roles de sistema (§105.2)', () => {
 
   it('el Colaborador solo opera sobre sus propias apuestas, nada más (§4.3, §88, D-B5)', () => {
     const nonView = perms('COLLABORATOR').filter((permission) => !permission.endsWith('.view'));
-    expect(nonView.sort()).toEqual(['bets.create', 'bets.trash_own', 'bets.update_own'].sort());
+    expect(nonView.sort()).toEqual(
+      [
+        'bets.create',
+        'bets.trash_own',
+        'bets.update_own',
+        'tickets.upload',
+        'tickets.analyze',
+      ].sort(),
+    );
     for (const forbidden of [
       'bets.update_any',
       'bets.settle',
@@ -198,6 +221,17 @@ describe('matriz de roles de sistema (§105.2)', () => {
       expect(perms(role)).not.toContain('reconciliations.confirm');
       expect(perms(role)).not.toContain('integrity.run');
     }
+  });
+
+  it('Fase 7 (§110.6): todo rol de proyecto ve tickets; solo Administrador y Colaborador suben/analizan', () => {
+    for (const role of ['COLLABORATOR', 'READER', 'PROJECT_ADMIN'] as const) {
+      expect(perms(role)).toContain('tickets.view');
+    }
+    for (const role of ['COLLABORATOR', 'PROJECT_ADMIN'] as const) {
+      expect(perms(role)).toEqual(expect.arrayContaining(['tickets.upload', 'tickets.analyze']));
+    }
+    expect(perms('READER')).not.toContain('tickets.upload');
+    expect(perms('READER')).not.toContain('tickets.analyze');
   });
 
   it('Fase 5.5: los permisos system.* son globales y solo los tiene el Administrador Global', () => {

@@ -6,6 +6,7 @@ import {
   type BetSelectionInput,
   type BetSummary,
   type HouseSummary,
+  type TicketSummary,
 } from '@letfer/shared';
 import { type FormEvent, useState } from 'react';
 import { Link } from 'react-router';
@@ -18,6 +19,7 @@ import { useLoad } from '../../hooks/useLoad.js';
 import { BET_STATUS_LABELS, BET_TYPE_LABELS, formatDateTime } from '../../labels.js';
 import { Badge, btn, btnDanger, btnPrimary, inputClass, Notice, Section } from '../../ui.js';
 import { useProject } from './ProjectContext.js';
+import { TicketPanel } from './TicketPanel.js';
 
 const BADGE_TONE = {
   PENDING: 'amber',
@@ -308,17 +310,27 @@ function NewBetForm({
   onDone: (message: string) => void;
   onCancel: () => void;
 }) {
-  const { project } = useProject();
+  const { project, can } = useProject();
   const [houseId, setHouseId] = useState('');
   const [stake, setStake] = useState('1.00');
   const [visibleTotalOdds, setVisibleTotalOdds] = useState('');
   const [officialAmount, setOfficialAmount] = useState('');
+  const [officialPotentialReturn, setOfficialPotentialReturn] = useState('');
   const [placedAt, setPlacedAt] = useState('');
   const [placedTimeKnown, setPlacedTimeKnown] = useState(true);
   const [reason, setReason] = useState('');
   const [selections, setSelections] = useState<SelectionDraft[]>([newSelection(0, 0)]);
+  const [ticket, setTicket] = useState<TicketSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  // D-T5 (§110.3): cada campo de la propuesta de IA se aplica por separado, nunca el ticket
+  // completo de una vez; el formulario sigue siendo editable después de aplicarlo.
+  function applyField(formField: string, value: string) {
+    if (formField === 'officialAmount') setOfficialAmount(value);
+    else if (formField === 'visibleTotalOdds') setVisibleTotalOdds(value);
+    else if (formField === 'officialPotentialReturn') setOfficialPotentialReturn(value);
+  }
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -336,10 +348,13 @@ function NewBetForm({
       stake,
       visibleTotalOdds,
       officialAmount: officialAmount.trim() === '' ? undefined : officialAmount,
+      officialPotentialReturn:
+        officialPotentialReturn.trim() === '' ? undefined : officialPotentialReturn,
       placedAt: new Date(placedAt).toISOString(),
       placedTimeKnown,
       reason: reason.trim() === '' ? undefined : reason,
       selections: toSelectionInputs(selections),
+      ticketId: ticket?.id,
     });
     if (!parsed.success) {
       setError(parsed.error.issues[0]?.message ?? 'Revisa los datos ingresados.');
@@ -414,6 +429,14 @@ function NewBetForm({
           />
         </label>
         <label className="flex flex-col gap-1 text-sm font-medium">
+          Retorno potencial (opcional)
+          <input
+            value={officialPotentialReturn}
+            onChange={(event) => setOfficialPotentialReturn(event.target.value)}
+            className={inputClass}
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-sm font-medium">
           Motivo / observaciones (opcional)
           <input
             value={reason}
@@ -424,6 +447,17 @@ function NewBetForm({
       </div>
 
       <SelectionsEditor selections={selections} onChange={setSelections} />
+
+      {(can('tickets.upload') || ticket) && (
+        <TicketPanel
+          projectId={project.id}
+          tickets={ticket ? [ticket] : []}
+          onUploaded={setTicket}
+          onApplyField={applyField}
+          canUpload={can('tickets.upload') && !ticket}
+          canAnalyze={can('tickets.analyze')}
+        />
+      )}
 
       {error && <Notice tone="error">{error}</Notice>}
       <div className="flex gap-2">
@@ -453,6 +487,7 @@ function BetRow({
   const { user } = useAuth();
   const runWithReauth = useReauth();
   const [mode, setMode] = useState<'view' | 'edit' | 'settle' | 'move'>('view');
+  const [showTickets, setShowTickets] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -519,6 +554,11 @@ function BetRow({
         </div>
         {!showTrashed && (
           <div className="flex flex-wrap gap-2">
+            {can('tickets.view') && (
+              <button type="button" className={btn} onClick={() => setShowTickets((v) => !v)}>
+                {showTickets ? 'Ocultar tickets' : 'Tickets'}
+              </button>
+            )}
             {canEdit && mode === 'view' && (
               <button type="button" className={btn} onClick={() => setMode('edit')}>
                 Editar
@@ -558,6 +598,8 @@ function BetRow({
         )}
       </div>
 
+      {showTickets && <BetTicketsSection betId={bet.id} />}
+
       {mode === 'edit' && (
         <EditBetForm
           bet={bet}
@@ -594,6 +636,64 @@ function BetRow({
   );
 }
 
+/**
+ * Tickets de una apuesta ya registrada (§110). Carga el detalle (que sí trae `tickets`, a
+ * diferencia del resumen de la lista) solo cuando se abre este panel. Aplicar un campo de la
+ * propuesta de IA (D-T5) reutiliza `PATCH .../bets/:id`, el mismo endpoint de edición de
+ * siempre — nunca un camino de escritura propio para tickets/IA (§110.3).
+ */
+function BetTicketsSection({ betId }: { betId: string }) {
+  const { project, can } = useProject();
+  const detail = useLoad(`bet-detail:${betId}`, () => betsApi.detail(project.id, betId));
+  const [error, setError] = useState<string | null>(null);
+
+  async function applyField(formField: string, value: string) {
+    if (!detail.data) return;
+    setError(null);
+    try {
+      await betsApi.update(project.id, betId, {
+        [formField]: value,
+        version: detail.data.version,
+      });
+      detail.reload();
+    } catch (caught) {
+      setError(describeApiError(caught));
+    }
+  }
+
+  async function linkTicket(ticket: TicketSummary) {
+    if (!detail.data) return;
+    setError(null);
+    try {
+      await betsApi.update(project.id, betId, {
+        ticketId: ticket.id,
+        version: detail.data.version,
+      });
+      detail.reload();
+    } catch (caught) {
+      setError(describeApiError(caught));
+    }
+  }
+
+  if (detail.loading && !detail.data) {
+    return <p className="mt-3 text-xs text-slate-500">Cargando tickets…</p>;
+  }
+  if (!detail.data) return null;
+  return (
+    <div className="mt-3">
+      {error && <Notice tone="error">{error}</Notice>}
+      <TicketPanel
+        projectId={project.id}
+        tickets={detail.data.tickets}
+        onUploaded={(ticket) => void linkTicket(ticket)}
+        onApplyField={(formField, value) => void applyField(formField, value)}
+        canUpload={can('tickets.upload')}
+        canAnalyze={can('tickets.analyze')}
+      />
+    </div>
+  );
+}
+
 function EditBetForm({
   bet,
   houses,
@@ -611,6 +711,9 @@ function EditBetForm({
   const [stake, setStake] = useState(bet.stake);
   const [visibleTotalOdds, setVisibleTotalOdds] = useState(bet.visibleTotalOdds);
   const [officialAmount, setOfficialAmount] = useState(bet.officialAmount ?? '');
+  const [officialPotentialReturn, setOfficialPotentialReturn] = useState(
+    bet.officialPotentialReturn ?? '',
+  );
   const [reason, setReason] = useState(bet.reason ?? '');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -624,6 +727,8 @@ function EditBetForm({
           stake,
           visibleTotalOdds,
           officialAmount: officialAmount.trim() === '' ? undefined : officialAmount,
+          officialPotentialReturn:
+            officialPotentialReturn.trim() === '' ? undefined : officialPotentialReturn,
           reason: reason.trim() === '' ? undefined : reason,
           version: bet.version,
         }
@@ -674,11 +779,19 @@ function EditBetForm({
               className={inputClass}
             />
           </label>
-          <label className="flex flex-col gap-1 text-sm font-medium sm:col-span-3">
+          <label className="flex flex-col gap-1 text-sm font-medium">
             Monto oficial (opcional)
             <input
               value={officialAmount}
               onChange={(event) => setOfficialAmount(event.target.value)}
+              className={inputClass}
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm font-medium sm:col-span-2">
+            Retorno potencial (opcional)
+            <input
+              value={officialPotentialReturn}
+              onChange={(event) => setOfficialPotentialReturn(event.target.value)}
               className={inputClass}
             />
           </label>

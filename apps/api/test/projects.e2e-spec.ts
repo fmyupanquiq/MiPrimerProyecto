@@ -314,6 +314,7 @@ describe('proyectos: crear, listar, ver y editar (e2e, PostgreSQL real)', () => 
           'projects.create',
           'reconciliations.view',
           'stages.view',
+          'tickets.view',
         ].sort(),
       );
     });

@@ -27,4 +27,5 @@ export * from './odds.js';
 export * from './project.js';
 export * from './project-setup.js';
 export * from './stage.js';
+export * from './ticket.js';
 export * from './withdrawal.js';

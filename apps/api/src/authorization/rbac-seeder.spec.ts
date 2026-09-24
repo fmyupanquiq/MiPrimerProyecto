@@ -100,6 +100,7 @@ describe('sembrado del catálogo RBAC (PostgreSQL real)', () => {
         'project.view',
         'reconciliations.view',
         'stages.view',
+        'tickets.view',
       ].sort(),
     );
     const [reader] = await t.db.select().from(roles).where(eq(roles.id, lector));

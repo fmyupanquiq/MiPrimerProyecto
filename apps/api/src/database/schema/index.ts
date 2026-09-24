@@ -17,3 +17,5 @@ export * from './bets.js';
 export * from './bet-selections.js';
 export * from './reconciliation-checkpoints.js';
 export * from './integrity-check-runs.js';
+export * from './tickets.js';
+export * from './ticket-analyses.js';

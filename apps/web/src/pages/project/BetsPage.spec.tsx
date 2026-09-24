@@ -312,3 +312,128 @@ describe('apuestas, selecciones y liquidaciones (§18-§27, §107)', () => {
     expect(await screen.findByRole('alert')).toBeTruthy();
   });
 });
+
+describe('tickets e IA en el formulario de apuesta (§28-§31, §110)', () => {
+  const TICKET_ID = '0195f7c0-0000-7000-8000-0000000000c1';
+  const ticket = (overrides: Record<string, unknown> = {}) => ({
+    id: TICKET_ID,
+    projectId: PROJECT_ID,
+    betId: null,
+    originalFileName: 'ticket.jpg',
+    mimeType: 'image/jpeg',
+    sizeBytes: 123,
+    uploadedBy: { id: ANA.id, name: 'Ana Pérez' },
+    createdAt: '2026-06-01T20:00:00.000Z',
+    lastAnalysis: null,
+    ...overrides,
+  });
+
+  it('sube un ticket huérfano y lo vincula al registrar la apuesta', async () => {
+    const { calls } = open({
+      [`POST ${URL}/tickets`]: { status: 201, body: ticket() },
+      [`POST ${BETS_URL}`]: { status: 201, body: bet({ id: 'nueva' }) },
+    });
+    renderApp(BETS_URL);
+    fireEvent.click(await screen.findByRole('button', { name: 'Registrar apuesta' }));
+    const form = screen.getByRole('form', { name: 'Registrar apuesta' });
+    await within(form).findByRole('option', { name: 'Betano' });
+
+    const file = new File(['contenido'], 'ticket.jpg', { type: 'image/jpeg' });
+    fireEvent.change(within(form).getByLabelText('Adjuntar ticket'), { target: { files: [file] } });
+    expect(await within(form).findByText('ticket.jpg')).toBeTruthy();
+
+    fireEvent.change(within(form).getByLabelText('Casa'), { target: { value: HOUSE_A } });
+    fireEvent.change(within(form).getByLabelText('Stake'), { target: { value: '2' } });
+    fireEvent.change(within(form).getByLabelText('Cuota total visible'), {
+      target: { value: '1.95' },
+    });
+    fireEvent.change(within(form).getByLabelText('Fecha y hora de colocación'), {
+      target: { value: '2026-06-01T20:00' },
+    });
+    fireEvent.change(within(form).getByLabelText('Evento de la selección 1'), {
+      target: { value: 'Real Madrid vs. Barcelona' },
+    });
+    fireEvent.change(within(form).getByLabelText('Selección 1'), {
+      target: { value: 'Real Madrid gana' },
+    });
+    fireEvent.change(within(form).getByLabelText('Cuota de la selección 1'), {
+      target: { value: '1.95' },
+    });
+    fireEvent.click(within(form).getByRole('button', { name: 'Registrar apuesta' }));
+
+    expect(await screen.findByText('Se registró la apuesta.')).toBeTruthy();
+    const created = calls.find((c) => c.method === 'POST' && c.path === BETS_URL)!;
+    expect(created.body).toMatchObject({ ticketId: TICKET_ID });
+  });
+
+  it('analiza un ticket y aplica un campo propuesto al formulario (D-T5)', async () => {
+    open({
+      [`POST ${URL}/tickets`]: { status: 201, body: ticket() },
+      [`POST ${URL}/tickets/${TICKET_ID}/analyze`]: {
+        status: 200,
+        body: {
+          id: 'an1',
+          ticketId: TICKET_ID,
+          version: 1,
+          status: 'COMPLETED',
+          provider: 'fake',
+          model: 'fake-model',
+          extraction: { officialAmount: '25.00' },
+          confidenceByField: { officialAmount: 0.9 },
+          errorMessage: null,
+          analyzedBy: { id: ANA.id, name: 'Ana Pérez' },
+          analyzedAt: '2026-06-01T20:01:00.000Z',
+        },
+      },
+    });
+    renderApp(BETS_URL);
+    fireEvent.click(await screen.findByRole('button', { name: 'Registrar apuesta' }));
+    const form = screen.getByRole('form', { name: 'Registrar apuesta' });
+    await within(form).findByRole('option', { name: 'Betano' });
+
+    const file = new File(['contenido'], 'ticket.jpg', { type: 'image/jpeg' });
+    fireEvent.change(within(form).getByLabelText('Adjuntar ticket'), { target: { files: [file] } });
+    fireEvent.click(await within(form).findByRole('button', { name: 'Analizar con IA' }));
+
+    fireEvent.click(await within(form).findByRole('button', { name: 'Usar este valor' }));
+    expect(within(form).getByLabelText<HTMLInputElement>('Monto oficial (opcional)').value).toBe(
+      '25.00',
+    );
+  });
+
+  it('sin tickets.upload (aunque se pueda registrar apuestas), no se ofrece adjuntar (§110.6)', async () => {
+    open({
+      [`GET ${URL}`]: {
+        status: 200,
+        body: projectDetail({
+          isOwner: false,
+          myRole: 'COLLABORATOR',
+          myPermissions: [
+            'project.view',
+            'stages.view',
+            'houses.view',
+            'movements.view',
+            'bets.view',
+            'bets.create',
+          ],
+        }),
+      },
+    });
+    renderApp(BETS_URL);
+    fireEvent.click(await screen.findByRole('button', { name: 'Registrar apuesta' }));
+    const form = screen.getByRole('form', { name: 'Registrar apuesta' });
+    expect(within(form).queryByLabelText('Adjuntar ticket')).toBeNull();
+  });
+
+  it('el botón Tickets de una apuesta ya registrada carga y muestra sus tickets', async () => {
+    open({
+      [`GET ${BETS_URL}/${BET_ID}`]: {
+        status: 200,
+        body: { ...bet(), selections: [], tickets: [ticket({ originalFileName: 'antiguo.pdf' })] },
+      },
+    });
+    renderApp(BETS_URL);
+    fireEvent.click(await screen.findByRole('button', { name: 'Tickets' }));
+    expect(await screen.findByText('antiguo.pdf')).toBeTruthy();
+  });
+});

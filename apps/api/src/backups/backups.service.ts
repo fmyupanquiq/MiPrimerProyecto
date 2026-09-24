@@ -28,6 +28,7 @@ import {
   writeManifest,
 } from './backup-files.js';
 import { MaintenanceModeService } from './maintenance-mode.service.js';
+import { archiveTickets, restoreTickets, ticketsArchivePath } from './ticket-archive.js';
 
 /**
  * Backups automáticos y recuperación (§37, §82, §109.3-4, D-B1 a D-B4, D-R1). El backup se
@@ -91,16 +92,27 @@ export class BackupsService implements OnApplicationBootstrap, OnApplicationShut
     return this.createBackup('SCHEDULED');
   }
 
-  /** Copia completa mediante `pg_dump` en formato personalizado (D-B2), nunca parcial. */
+  /**
+   * Copia completa: `pg_dump` en formato personalizado (D-B2, nunca parcial) más un empaquetado
+   * de `TICKETS_DIR` con `tar` (§110.1, ADR 0017) en la misma generación. Ninguna de las dos
+   * partes es opcional: la generación solo queda `COMPLETED` si ambas tienen éxito — un backup
+   * que reconstruya la base pero no los archivos (o al revés) no es un backup completo (D-B2
+   * ampliado a la Fase 7).
+   */
   async createBackup(trigger: BackupTrigger): Promise<BackupGeneration> {
     const id = uuidv7();
     const takenAt = this.clock.now();
-    const fileName = `letfer-${takenAt.toISOString().replace(/[:.]/g, '-')}-${id}.dump`;
+    const stamp = takenAt.toISOString().replace(/[:.]/g, '-');
+    const fileName = `letfer-${stamp}-${id}.dump`;
+    const ticketsFileName = `letfer-${stamp}-${id}-tickets.tar.gz`;
     const filePath = backupFilePath(this.config.backup.dir, fileName);
+    const ticketsPath = ticketsArchivePath(this.config.backup.dir, ticketsFileName);
     const env = connectionEnv(parseConnection(this.config.databaseUrl));
 
     let sizeBytes = 0;
     let checksum = '';
+    let ticketsSizeBytes = 0;
+    let ticketsChecksum = '';
     let status: BackupGeneration['status'] = 'COMPLETED';
     let errorMessage: string | null = null;
     try {
@@ -113,6 +125,18 @@ export class BackupsService implements OnApplicationBootstrap, OnApplicationShut
       const stats = await stat(filePath);
       sizeBytes = stats.size;
       checksum = await sha256File(filePath);
+
+      const ticketsResult = await archiveTickets(
+        ticketsPath,
+        this.config.tickets.dir,
+        this.config.backup.tarPath,
+      );
+      if (ticketsResult.code !== 0) {
+        throw new Error(ticketsResult.stderr || `tar terminó con código ${ticketsResult.code}`);
+      }
+      const ticketsStats = await stat(ticketsPath);
+      ticketsSizeBytes = ticketsStats.size;
+      ticketsChecksum = await sha256File(ticketsPath);
     } catch (error) {
       status = 'FAILED';
       errorMessage = error instanceof Error ? error.message : String(error);
@@ -126,6 +150,9 @@ export class BackupsService implements OnApplicationBootstrap, OnApplicationShut
       fileName,
       sizeBytes,
       checksum,
+      ticketsFileName: status === 'COMPLETED' ? ticketsFileName : null,
+      ticketsSizeBytes: status === 'COMPLETED' ? ticketsSizeBytes : null,
+      ticketsChecksum: status === 'COMPLETED' ? ticketsChecksum : null,
       status,
       errorMessage,
     };
@@ -199,7 +226,30 @@ export class BackupsService implements OnApplicationBootstrap, OnApplicationShut
         ['--clean', '--if-exists', '-d', conn.database, filePath],
         env,
       );
-      const restored = result.code === 0;
+      const dbRestored = result.code === 0;
+
+      // Los archivos se restauran justo después de la base, dentro de la misma ventana de modo
+      // mantenimiento (§110.1): si la base ya se restauró pero los tickets no, la restauración
+      // completa se reporta como fallida — no se deja un estado a medias sin avisar.
+      let ticketsRestored = false;
+      let ticketsError: string | undefined;
+      if (dbRestored && target.ticketsFileName) {
+        const ticketsPath = ticketsArchivePath(this.config.backup.dir, target.ticketsFileName);
+        const ticketsResult = await restoreTickets(
+          ticketsPath,
+          this.config.tickets.dir,
+          this.config.backup.tarPath,
+        );
+        ticketsRestored = ticketsResult.code === 0;
+        if (!ticketsRestored) {
+          ticketsError = ticketsResult.stderr || `tar terminó con código ${ticketsResult.code}`;
+        }
+      } else if (dbRestored) {
+        // Generación de antes de la Fase 7 (sin archivo de tickets en el manifiesto): nada que
+        // restaurar ahí, no es un fallo.
+        ticketsRestored = true;
+      }
+      const restored = dbRestored && ticketsRestored;
 
       // Después de restaurar (§37: la auditoría es el último paso; --clean habría borrado un
       // registro escrito antes de la restauración).
@@ -217,11 +267,10 @@ export class BackupsService implements OnApplicationBootstrap, OnApplicationShut
       });
 
       if (!restored) {
-        throw new AppError(
-          500,
-          ErrorCode.INTERNAL_ERROR,
-          `pg_restore falló: ${result.stderr || `código ${result.code}`}`,
-        );
+        const reason = !dbRestored
+          ? `pg_restore falló: ${result.stderr || `código ${result.code}`}`
+          : `tar (tickets) falló: ${ticketsError}`;
+        throw new AppError(500, ErrorCode.INTERNAL_ERROR, reason);
       }
       return target;
     } finally {
@@ -241,6 +290,8 @@ export class BackupsService implements OnApplicationBootstrap, OnApplicationShut
       await writeManifest(this.config.backup.dir, kept);
       for (const old of removed) {
         await deleteBackupFile(this.config.backup.dir, old.fileName);
+        if (old.ticketsFileName)
+          await deleteBackupFile(this.config.backup.dir, old.ticketsFileName);
       }
     });
   }

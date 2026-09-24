@@ -12,6 +12,8 @@ import type {
   ProjectStatus,
   ReconciliationStatus,
   StageStatus,
+  TicketAnalysisStatus,
+  TicketExtraction,
   WithdrawalStatus,
 } from '@letfer/shared';
 
@@ -122,6 +124,25 @@ export const INTEGRITY_CHECK_LABELS: Record<string, string> = {
 export const BACKUP_STATUS_LABELS: Record<BackupStatus, string> = {
   COMPLETED: 'Completado',
   FAILED: 'Fallido',
+};
+
+export const TICKET_ANALYSIS_STATUS_LABELS: Record<TicketAnalysisStatus, string> = {
+  COMPLETED: 'Completado',
+  FAILED: 'Fallido',
+};
+
+/** Nombres visibles de los campos del contrato de extracción (§53), para la revisión humana. */
+export const TICKET_FIELD_LABELS: Record<keyof TicketExtraction, string> = {
+  house: 'Casa',
+  placedDate: 'Fecha de colocación',
+  placedTime: 'Hora de colocación',
+  betType: 'Tipo de apuesta',
+  selections: 'Selecciones',
+  officialTotalOdds: 'Cuota total',
+  officialAmount: 'Monto apostado',
+  officialPotentialReturn: 'Retorno potencial',
+  officialRealizedReturn: 'Retorno realizado',
+  result: 'Resultado',
 };
 
 export const DATE_FORMAT_LABELS = {

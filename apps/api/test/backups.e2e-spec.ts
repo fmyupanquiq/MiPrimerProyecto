@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { rm } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { isBinaryAvailable, readManifest, writeManifest } from '../src/backups/backup-files.js';
@@ -106,6 +107,9 @@ describe('backups y recuperación (e2e, PostgreSQL real, §37, §82, §109.3-4)'
           fileName: 'seed-1.dump',
           sizeBytes: 10,
           checksum: 'abc',
+          ticketsFileName: null,
+          ticketsSizeBytes: null,
+          ticketsChecksum: null,
           status: 'COMPLETED',
           errorMessage: null,
         },
@@ -151,6 +155,9 @@ describe('backups y recuperación (e2e, PostgreSQL real, §37, §82, §109.3-4)'
           fileName: 'seed-today.dump',
           sizeBytes: 10,
           checksum: 'abc',
+          ticketsFileName: null,
+          ticketsSizeBytes: null,
+          ticketsChecksum: null,
           status: 'COMPLETED',
           errorMessage: null,
         },
@@ -185,6 +192,9 @@ describe('backups y recuperación (e2e, PostgreSQL real, §37, §82, §109.3-4)'
           fileName: 'seed-1.dump',
           sizeBytes: 10,
           checksum: 'abc',
+          ticketsFileName: null,
+          ticketsSizeBytes: null,
+          ticketsChecksum: null,
           status: 'COMPLETED',
           errorMessage: null,
         },
@@ -211,6 +221,9 @@ describe('backups y recuperación (e2e, PostgreSQL real, §37, §82, §109.3-4)'
           fileName: 'seed-1.dump',
           sizeBytes: 10,
           checksum: 'abc',
+          ticketsFileName: null,
+          ticketsSizeBytes: null,
+          ticketsChecksum: null,
           status: 'COMPLETED',
           errorMessage: null,
         },
@@ -278,6 +291,9 @@ describe('backups y recuperación (e2e, PostgreSQL real, §37, §82, §109.3-4)'
           fileName: 'seed-1.dump',
           sizeBytes: 10,
           checksum: 'abc',
+          ticketsFileName: null,
+          ticketsSizeBytes: null,
+          ticketsChecksum: null,
           status: 'COMPLETED',
           errorMessage: null,
         },
@@ -294,16 +310,19 @@ describe.runIf(await isBinaryAvailable('pg_dump'))(
     let ctx: TestApp;
     let backups: BackupsService;
     let backupDir: string;
+    let ticketsDir: string;
     let cookie: string;
 
     beforeAll(async () => {
       backupDir = `.data/test-backups-real-${randomUUID()}`;
-      ctx = await createTestApp({ env: { BACKUP_DIR: backupDir } });
+      ticketsDir = `.data/test-tickets-real-${randomUUID()}`;
+      ctx = await createTestApp({ env: { BACKUP_DIR: backupDir, TICKETS_DIR: ticketsDir } });
       backups = ctx.app.get(BackupsService);
     });
     afterAll(async () => {
       await ctx.close();
       await rm(backupDir, { recursive: true, force: true });
+      await rm(ticketsDir, { recursive: true, force: true });
     });
     // `ctx.reset()` trunca toda la base (incluidos usuarios y sesiones): la persona
     // administradora se crea aquí, no en `beforeAll`, o quedaría borrada en el primer reset.
@@ -322,17 +341,26 @@ describe.runIf(await isBinaryAvailable('pg_dump'))(
       expect(generation.status).toBe('COMPLETED');
       expect(generation.sizeBytes).toBeGreaterThan(0);
       expect(generation.checksum).toMatch(/^[0-9a-f]{64}$/);
+      // §110.1: ninguna generación queda completa sin su archivo de tickets (requiere también
+      // `tar`, disponible en este entorno de pruebas — a diferencia de `pg_dump`/`pg_restore`).
+      expect(generation.ticketsFileName).not.toBeNull();
+      expect(generation.ticketsChecksum).toMatch(/^[0-9a-f]{64}$/);
     });
 
     it('round-trip completo: respalda, cambia datos, restaura y confirma que vuelven', async () => {
       const owner = await ctx.createUser({ email: 'owner-rt@example.com' });
       await insertProject(ctx.t.db, { owner, name: 'Antes de restaurar' });
+      // §110.1: un archivo de ticket presente antes del backup debe sobrevivir a la
+      // restauración; uno creado después no.
+      await mkdir(join(ticketsDir, 'proj-1'), { recursive: true });
+      await writeFile(join(ticketsDir, 'proj-1', 'antes.jpg'), 'antes-del-backup');
 
       const generation = await backups.createBackup('MANUAL');
       expect(generation.status).toBe('COMPLETED');
 
       // Cambia el estado tras el backup.
       await insertProject(ctx.t.db, { owner, name: 'Creado después del backup' });
+      await writeFile(join(ticketsDir, 'proj-1', 'despues.jpg'), 'despues-del-backup');
 
       const restored = await request(ctx.server)
         .post('/api/admin/backups/restore')
@@ -345,6 +373,10 @@ describe.runIf(await isBinaryAvailable('pg_dump'))(
       const projectNames = projectRows.map((p) => p.name);
       expect(projectNames).toContain('Antes de restaurar');
       expect(projectNames).not.toContain('Creado después del backup');
+
+      const antes = await readFile(join(ticketsDir, 'proj-1', 'antes.jpg'), 'utf-8');
+      expect(antes).toBe('antes-del-backup');
+      await expect(readFile(join(ticketsDir, 'proj-1', 'despues.jpg'))).rejects.toThrow();
     });
   },
 );

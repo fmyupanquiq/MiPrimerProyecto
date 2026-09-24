@@ -65,3 +65,43 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
   }
   return payload as T;
 }
+
+/**
+ * Sube un archivo (`multipart/form-data`, §28): nunca se fija `Content-Type` a mano, el
+ * navegador añade el límite (`boundary`) correcto al construirlo desde `FormData`.
+ */
+export async function apiUpload<T>(path: string, file: File): Promise<T> {
+  const form = new FormData();
+  form.append('file', file);
+  const response = await fetch(`/api${path}`, {
+    method: 'POST',
+    credentials: 'same-origin',
+    body: form,
+  });
+
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch {
+    payload = undefined;
+  }
+
+  if (!response.ok) {
+    throw new ApiError(
+      response.status,
+      isApiErrorBody(payload)
+        ? payload
+        : {
+            statusCode: response.status,
+            code: ErrorCode.INTERNAL_ERROR,
+            message: 'La respuesta del servidor no es válida.',
+          },
+    );
+  }
+  return payload as T;
+}
+
+/** URL del archivo de un ticket (§42): siempre autenticada, nunca pública ni permanente. */
+export function ticketFileUrl(projectId: string, ticketId: string): string {
+  return `/api/projects/${projectId}/tickets/${ticketId}/file`;
+}

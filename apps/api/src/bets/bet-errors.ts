@@ -19,3 +19,7 @@ export const betInsufficientBalance = (): AppError =>
 
 export const invalidBetStructure = (message: string): AppError =>
   new AppError(400, ErrorCode.VALIDATION_FAILED, message);
+
+/** Vincular un `ticketId` inexistente, de otro proyecto, o ya vinculado a otra apuesta (§110.3). */
+export const ticketNotFound = (): AppError =>
+  new AppError(404, ErrorCode.NOT_FOUND, 'Ticket no encontrado.');

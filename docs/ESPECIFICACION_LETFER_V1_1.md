@@ -2674,3 +2674,79 @@ De proyecto: `reconciliations.view` (todo rol de proyecto, igual que
 existía antes de esta etapa): `system.integrity.run` y
 `system.backups.view` / `system.backups.create` /
 `system.backups.restore`, reservados al Administrador Global.
+
+## 110. Tickets e IA (Fase 7)
+
+**Estado:** Aprobada.\
+Precisa y completa los §28 a §31, §36, §37, §41, §42, §44, §51 a §53,
+§90 y §97 con las decisiones de la Fase 7 (D-T1 a D-T6, ADR 0017). Si
+alguna regla anterior las contradice, prevalece este apartado. Fuera de
+alcance: eliminación independiente de tickets, object storage real
+(S3/R2/MinIO) y cualquier autoridad automática de la IA sobre `betType`
+o los datos financieros.
+
+### 110.1 Proveedor de IA y almacenamiento (D-T1, D-T2)
+
+Anthropic es el proveedor inicial de lectura de tickets, detrás de una
+interfaz `TicketReader` (§52) que no debe filtrarse al resto del
+sistema: `TicketsController`, `BetsService` y la web no conocen el
+proveedor concreto. El almacenamiento de archivos es sistema de
+archivos local inicialmente, detrás de una interfaz `FileStorage`,
+preparada para migrar a un object storage real sin rediseñar el resto.
+Los tickets nunca tienen URL pública; todo acceso es autenticado y
+verifica pertenencia al proyecto (§42).
+
+Los tickets se incorporan al sistema de backups de la Fase 5.5 (§109.3,
+§109.4) en esta misma fase, no después: una generación de backup
+`COMPLETED` debe poder reconstruir LetFer entero, archivos incluidos
+(§37). No se acepta un backup que cubra la base de datos pero deje
+fuera los archivos.
+
+### 110.2 Validación de archivos (D-T3)
+
+JPG/JPEG/PNG/PDF (PDF multipágina permitido); máximo 10 MB por
+archivo. Se valida extensión, tipo MIME real del contenido (no el
+`Content-Type` declarado por el cliente) y tamaño, antes de aceptar el
+archivo y antes de enviarlo a la IA (§97).
+
+### 110.3 Flujo de análisis (D-T4, D-T5, D-T6, precisa §29 a §31)
+
+El análisis por IA es una acción explícita del usuario ("Analizar con
+IA"), nunca automático al subir un archivo. El resultado es una
+propuesta (`TicketAnalysis`, contrato §53) devuelta al formulario, con
+confianza por campo cuando el proveedor la entrega: campos de alta
+confianza se muestran con normalidad, los de baja confianza se
+resaltan para dirigir la revisión humana. La confianza nunca decide
+nada automáticamente (§30).
+
+Cuando el ticket pertenece a una apuesta ya registrada, la comparación
+es **campo por campo**: actualizar, mantener o editar manualmente cada
+campo por separado, nunca aceptar o rechazar la propuesta completa como
+única opción (§31).
+
+La IA nunca escribe en `bets`. La confirmación humana reutiliza
+`POST .../bets` y `PATCH .../bets/:id` ya existentes (§51: mismo flujo
+financiero, no uno nuevo), con un `ticketId` opcional para vincular el
+ticket dentro de la misma transacción.
+
+### 110.4 Límite de análisis IA
+
+Máximo 5 análisis por ticket y 50 por proyecto en una ventana móvil de
+24 horas (valores configurables), para acotar el costo sin bloquear el
+uso normal. Un intento fallido cuenta igual que uno exitoso para el
+límite. Al superarse, la API responde con el código de límite de tasa
+ya existente.
+
+### 110.5 Tablas nuevas
+
+`tickets` (archivo, apuesta asociada —nula hasta vincularse—, quién lo
+subió, metadatos) y `ticket_analyses` (histórico de análisis,
+**solo inserción**, mismo espíritu de inmutabilidad que
+`reconciliation_checkpoints`/`integrity_check_runs`, D2/§109.1).
+
+### 110.6 Permisos nuevos
+
+De proyecto: `tickets.view` (todo rol, igual que `bets.view`),
+`tickets.upload` y `tickets.analyze` (Administrador de Proyecto y
+Colaborador, igual que `bets.create`). Sin permiso de eliminación en
+esta fase.

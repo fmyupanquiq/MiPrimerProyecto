@@ -2,6 +2,7 @@ import { Decimal } from 'decimal.js';
 import { z } from 'zod';
 import { moneyInputSchema, type MoneyString } from './money.js';
 import { oddsInputSchema, type OddsString } from './odds.js';
+import type { TicketSummary } from './ticket.js';
 
 /** Clasificación de una apuesta, derivada de su estructura real (§20, §90). */
 export const BET_TYPES = ['SIMPLE', 'CREATED', 'MULTIPLE'] as const;
@@ -77,6 +78,12 @@ export const createBetSchema = z.object({
   placedTimeKnown: z.boolean().default(true),
   reason: z.string().trim().max(REASON_MAX_LENGTH).optional(),
   selections: z.array(selectionInputSchema).min(1),
+  /**
+   * Vincula un ticket ya subido (§110.3): el backend comprueba que exista, pertenezca al
+   * proyecto y no esté ya vinculado a otra apuesta, dentro de la misma transacción — nunca un
+   * segundo flujo de escritura para tickets/IA (§51).
+   */
+  ticketId: z.uuid().optional(),
 });
 export type CreateBetInput = z.infer<typeof createBetSchema>;
 
@@ -199,4 +206,6 @@ export interface BetSummary {
 
 export interface BetDetail extends BetSummary {
   selections: BetSelectionSummary[];
+  /** Tickets vinculados a esta apuesta (§110), más recientes primero. */
+  tickets: TicketSummary[];
 }

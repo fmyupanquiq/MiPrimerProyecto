@@ -176,6 +176,9 @@ export const OWNER_PERMISSIONS = [
   'reconciliations.confirm',
   'integrity.view',
   'integrity.run',
+  'tickets.view',
+  'tickets.upload',
+  'tickets.analyze',
 ];
 
 export function projectDetail(overrides: Record<string, unknown> = {}) {

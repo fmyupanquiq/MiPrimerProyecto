@@ -27,6 +27,14 @@ describe('loadConfig', () => {
       schedulerEnabled: true,
       pgDumpPath: 'pg_dump',
       pgRestorePath: 'pg_restore',
+      tarPath: 'tar',
+    });
+    expect(config.tickets).toEqual({
+      dir: '.data/tickets',
+      anthropicApiKey: undefined,
+      anthropicModel: 'claude-sonnet-5',
+      maxAnalysesPerTicket: 5,
+      maxAnalysesPerProjectDay: 50,
     });
   });
 
@@ -55,7 +63,7 @@ describe('loadConfig', () => {
   });
 
   it('en producción exige HTTPS y cookie Secure (§41)', () => {
-    const production = { ...baseEnv, NODE_ENV: 'production' };
+    const production = { ...baseEnv, NODE_ENV: 'production', ANTHROPIC_API_KEY: 'sk-ant-test' };
     expect(() => loadConfig({ ...production, APP_BASE_URL: 'http://letfer.example' })).toThrow(
       /HTTPS/,
     );
@@ -65,5 +73,17 @@ describe('loadConfig', () => {
 
     const ok = loadConfig({ ...production, APP_BASE_URL: 'https://letfer.example' });
     expect(ok.cookieSecure).toBe(true);
+  });
+
+  it('en producción exige ANTHROPIC_API_KEY para analizar tickets (D-T1)', () => {
+    const production = {
+      ...baseEnv,
+      NODE_ENV: 'production',
+      APP_BASE_URL: 'https://letfer.example',
+    };
+    expect(() => loadConfig(production)).toThrow(/ANTHROPIC_API_KEY/);
+    expect(
+      loadConfig({ ...production, ANTHROPIC_API_KEY: 'sk-ant-test' }).tickets.anthropicApiKey,
+    ).toBe('sk-ant-test');
   });
 });

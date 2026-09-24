@@ -119,6 +119,12 @@ export const PERMISSIONS = {
     scope: 'GLOBAL',
     description: 'Restaurar LetFer desde una generación de backup',
   },
+
+  // --- Tickets e IA (Fase 7, §28-§31, §51-§53, §90, §97, §110) ---
+  'tickets.view': { scope: 'PROJECT', description: 'Ver los tickets y sus análisis' },
+  'tickets.upload': { scope: 'PROJECT', description: 'Subir un ticket' },
+  /** Dispara una llamada al proveedor de IA (D-T4: acción explícita, nunca automática). */
+  'tickets.analyze': { scope: 'PROJECT', description: 'Analizar un ticket con IA' },
 } as const satisfies Record<string, PermissionDefinition>;
 
 export type PermissionCode = keyof typeof PERMISSIONS;
@@ -233,6 +239,10 @@ export const SYSTEM_ROLE_DEFINITIONS: readonly SystemRoleDefinition[] = [
       'reconciliations.confirm',
       'integrity.view',
       'integrity.run',
+      // Tickets e IA (Fase 7, §110.6).
+      'tickets.view',
+      'tickets.upload',
+      'tickets.analyze',
     ],
   },
   {
@@ -257,6 +267,10 @@ export const SYSTEM_ROLE_DEFINITIONS: readonly SystemRoleDefinition[] = [
       // Confianza y recuperación (Fase 5.5): puede consultar, no conciliar ni verificar.
       'reconciliations.view',
       'integrity.view',
+      // Tickets e IA (Fase 7, §110.6): mismo nivel que bets.create.
+      'tickets.view',
+      'tickets.upload',
+      'tickets.analyze',
     ],
   },
   {
@@ -275,6 +289,8 @@ export const SYSTEM_ROLE_DEFINITIONS: readonly SystemRoleDefinition[] = [
       // Confianza y recuperación (Fase 5.5): consulta, coherente con el resto de *.view.
       'reconciliations.view',
       'integrity.view',
+      // Tickets e IA (Fase 7, §110.6): consulta, coherente con el resto de *.view.
+      'tickets.view',
     ],
   },
 ];

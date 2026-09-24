@@ -43,6 +43,7 @@ import {
   houses,
   reconciliationCheckpoints,
   stages,
+  tickets,
   users,
   type BetRow,
   type BetSelectionRow,
@@ -60,7 +61,9 @@ import {
   betInsufficientBalance,
   betNotFound,
   invalidBetStructure,
+  ticketNotFound,
 } from './bet-errors.js';
+import { ticketsForBets } from '../tickets/ticket-queries.js';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -184,6 +187,7 @@ export class BetsService {
         bet!.placedAt,
         'Se registró una apuesta nueva fechada en o antes de este checkpoint.',
       );
+      if (input.ticketId) await this.linkTicket(tx, access.project.id, bet!.id, input.ticketId);
 
       await this.audit.record(tx, {
         action: 'bet.created',
@@ -289,6 +293,9 @@ export class BetsService {
       if (input.placedAt !== undefined) patch.placedAt = new Date(input.placedAt);
       if (input.placedTimeKnown !== undefined) patch.placedTimeKnown = input.placedTimeKnown;
       if (input.reason !== undefined) patch.reason = input.reason ?? null;
+      // Vincular un ticket no tiene efecto financiero (§110.3): se permite sin importar el
+      // estado de la apuesta, a diferencia de los campos que sí lo tienen (§107.9).
+      if (input.ticketId) await this.linkTicket(tx, access.project.id, bet.id, input.ticketId);
 
       const before = AUDITABLE_FIELDS.reduce<Record<string, unknown>>((acc, key) => {
         acc[key] = bet[key];
@@ -813,10 +820,36 @@ export class BetsService {
   private async detailOf(executor: DbExecutor, bet: BetRow): Promise<BetDetail> {
     const contexts = await this.contextsOf(executor, [bet]);
     const selections = await this.selectionsOf(executor, bet.id);
+    const ticketsByBet = await ticketsForBets(executor, [bet.id]);
     return {
       ...this.toSummary(bet, contexts.get(bet.id)!),
       selections: selections.map(toSelectionSummary),
+      tickets: ticketsByBet.get(bet.id) ?? [],
     };
+  }
+
+  /**
+   * Vincula un ticket ya subido a esta apuesta (§110.3): comprueba en la misma transacción que
+   * pertenece al proyecto y que no está ya vinculado a otra apuesta (`UPDATE ... WHERE bet_id IS
+   * NULL`, atómico frente a dos vinculaciones simultáneas del mismo ticket). Nunca escribe nada
+   * financiero — es la única responsabilidad de `tickets` que toca `BetsService`, y al revés:
+   * `TicketsService` nunca escribe en `bets` (§51, sin vía financiera paralela).
+   */
+  private async linkTicket(
+    tx: DbExecutor,
+    projectId: string,
+    betId: string,
+    ticketId: string,
+  ): Promise<void> {
+    const [linked] = await tx
+      .update(tickets)
+      .set({ betId })
+      .where(and(eq(tickets.id, ticketId), eq(tickets.projectId, projectId), isNull(tickets.betId)))
+      .returning({ id: tickets.id });
+    if (linked) return;
+    const [existing] = await tx.select().from(tickets).where(eq(tickets.id, ticketId));
+    if (!existing || existing.projectId !== projectId) throw ticketNotFound();
+    throw betConflict('Este ticket ya está vinculado a otra apuesta.');
   }
 
   private async contextsOf(

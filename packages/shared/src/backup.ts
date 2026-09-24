@@ -20,6 +20,14 @@ export interface BackupGeneration {
   sizeBytes: number;
   /** SHA-256 del archivo, para detectar corrupción (§109.3). */
   checksum: string;
+  /**
+   * Empaquetado de `TICKETS_DIR` con `tar` (§110.1, ADR 0017), junto al volcado en la misma
+   * generación: ningún archivo queda fuera del respaldo completo (D-B2 ampliado a la Fase 7).
+   * `null` únicamente en generaciones de antes de la Fase 7 (manifiestos ya existentes).
+   */
+  ticketsFileName: string | null;
+  ticketsSizeBytes: number | null;
+  ticketsChecksum: string | null;
   status: BackupStatus;
   errorMessage: string | null;
 }
