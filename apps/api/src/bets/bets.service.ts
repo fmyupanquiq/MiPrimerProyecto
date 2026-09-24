@@ -464,6 +464,18 @@ export class BetsService {
           .returning(),
         'bets',
       );
+      // Hallazgo H1 (revisión de arquitectura de la Fase 5.5): una PENDING sin monto oficial
+      // calcula su comprometido con la unidad de SU etapa (computeHouseBalances); moverla a una
+      // etapa con otra unidad cambia ese comprometido igual que editarla, aunque sea la misma
+      // casa. Con monto oficial confirmado, la unidad no interviene: no hace falta invalidar.
+      if (bet.status === 'PENDING' && bet.officialAmount === null) {
+        await this.invalidateAffectedCheckpoints(
+          tx,
+          bet.houseId,
+          bet.placedAt,
+          'Se movió de etapa una apuesta pendiente sin monto oficial; pudo cambiar su comprometido.',
+        );
+      }
       await this.audit.record(tx, {
         action: 'bet.moved_stage',
         entityType: 'bet',
@@ -486,6 +498,10 @@ export class BetsService {
     input: TrashBetInput,
   ): Promise<void> {
     await this.db.transaction(async (tx) => {
+      // M4 (revisión de arquitectura de la Fase 5.5): serializa contra confirm() de conciliación
+      // y contra el resto de operaciones financieras, evitando una carrera en la que el
+      // comprometido calculado durante una conciliación quede desactualizado.
+      await lockByKey(tx, `finance:${access.project.id}`);
       const bet = await this.lockOwned(tx, access.project.id, betId);
       if (bet.deletedAt !== null) throw betConflict('Esta apuesta ya está en la papelera.');
       this.assertOwnOrAny(access, bet, actor, 'bets.trash_any', 'bets.trash_own');
@@ -528,6 +544,8 @@ export class BetsService {
   /** Restaura una apuesta desde la papelera (§26: solo administradores autorizados). */
   async restore(access: ProjectAccess, actor: UserRow, betId: string): Promise<void> {
     await this.db.transaction(async (tx) => {
+      // M4: mismo motivo que trash().
+      await lockByKey(tx, `finance:${access.project.id}`);
       const bet = await this.lockOwned(tx, access.project.id, betId);
       if (bet.deletedAt === null) throw betConflict('Esta apuesta no está en la papelera.');
       await tx

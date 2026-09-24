@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
-import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { BackupGeneration } from '@letfer/shared';
 
@@ -11,8 +11,34 @@ import type { BackupGeneration } from '@letfer/shared';
  * pierde. Este módulo es el único que lo lee y lo escribe.
  */
 
+/**
+ * H2 (revisión de arquitectura de la Fase 5.5): un volcado de `pg_dump` contiene la base de
+ * datos completa —hashes de contraseña, hashes de token de sesión, todo el ledger financiero—,
+ * así que el directorio y cada archivo se protegen a nivel de sistema de archivos, no solo por
+ * la autorización de la API. Sin efecto en Windows (Node no soporta `mode` en archivos ahí);
+ * en Linux/macOS (el objetivo real de producción, §100) sí se aplica.
+ */
+const DIR_MODE = 0o700;
+const FILE_MODE = 0o600;
+
 export function manifestPath(dir: string): string {
   return join(dir, 'manifest.json');
+}
+
+/**
+ * Crea el directorio de backups si hace falta y fuerza permisos 0700. `mkdir` con
+ * `recursive: true` solo aplica `mode` a la creación inicial: si el directorio ya existía (de
+ * una ejecución anterior a este arreglo, o creado con otro umask), el `chmod` aparte lo corrige
+ * igual.
+ */
+export async function ensureSecureDir(dir: string): Promise<void> {
+  await mkdir(dir, { recursive: true, mode: DIR_MODE });
+  await chmod(dir, DIR_MODE).catch(() => undefined);
+}
+
+/** Fuerza permisos 0600 en un archivo ya escrito (p. ej. el volcado, que crea `pg_dump`). */
+export async function secureFile(path: string): Promise<void> {
+  await chmod(path, FILE_MODE).catch(() => undefined);
 }
 
 export async function readManifest(dir: string): Promise<BackupGeneration[]> {
@@ -28,11 +54,16 @@ export async function readManifest(dir: string): Promise<BackupGeneration[]> {
 
 /** Escritura atómica (archivo temporal + renombrado) para no dejar un manifiesto a medias. */
 export async function writeManifest(dir: string, generations: BackupGeneration[]): Promise<void> {
-  await mkdir(dir, { recursive: true });
+  await ensureSecureDir(dir);
   const target = manifestPath(dir);
   const tmp = `${target}.tmp-${process.pid}`;
-  await writeFile(tmp, JSON.stringify({ generations }, null, 2), 'utf-8');
+  // `rename` conserva el modo del archivo de origen: basta con pasarlo aquí (H2).
+  await writeFile(tmp, JSON.stringify({ generations }, null, 2), {
+    encoding: 'utf-8',
+    mode: FILE_MODE,
+  });
   await rename(tmp, target);
+  await secureFile(target);
 }
 
 export async function deleteBackupFile(dir: string, fileName: string): Promise<void> {

@@ -1,9 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { rm } from 'node:fs/promises';
 import request from 'supertest';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { isBinaryAvailable, readManifest, writeManifest } from '../src/backups/backup-files.js';
 import { BackupsService } from '../src/backups/backups.service.js';
+import { MaintenanceModeService } from '../src/backups/maintenance-mode.service.js';
+import { AppError } from '../src/common/app-error.js';
 import { projects, type UserRow } from '../src/database/schema/index.js';
 import { createTestApp, login, sessionCookie, type TestApp } from './support/create-app.js';
 import { insertProject } from './support/factories.js';
@@ -164,6 +166,124 @@ describe('backups y recuperación (e2e, PostgreSQL real, §37, §82, §109.3-4)'
       const result = await backups.maybeRunScheduledBackup();
       expect(result).not.toBeNull();
       expect(result!.triggeredBy).toBe('SCHEDULED');
+    });
+  });
+
+  describe('M2 (revisión de arquitectura): concurrencia en restore()', () => {
+    // Llamadas directas al servicio (no HTTP): el `@RequireRecentAuth()` de la ruta pasa por su
+    // propia consulta asíncrona antes de llegar al controlador, y con ella dos peticiones HTTP
+    // casi simultáneas ya no garantizan solaparse justo en la sección crítica. Llamando al
+    // servicio directamente, ambas promesas comparten el mismo primer `await` (leer el
+    // manifiesto) y llegan a la comprobación de `restoreInProgress` de forma determinista.
+    it('una segunda restauración simultánea se rechaza; no compiten dos pg_restore', async () => {
+      const seedId = randomUUID();
+      await writeManifest(backupDir, [
+        {
+          id: seedId,
+          takenAt: '2026-06-01T12:00:00.000Z',
+          triggeredBy: 'MANUAL',
+          fileName: 'seed-1.dump',
+          sizeBytes: 10,
+          checksum: 'abc',
+          status: 'COMPLETED',
+          errorMessage: null,
+        },
+      ]);
+      const results = await Promise.allSettled([
+        backups.restore(people.root, seedId, seedId),
+        backups.restore(people.root, seedId, seedId),
+      ]);
+      const messages = results.map((r) =>
+        r.status === 'rejected' && r.reason instanceof AppError
+          ? (r.reason.getResponse() as { message: string }).message
+          : undefined,
+      );
+      expect(messages).toContain('Ya hay una restauración en curso.');
+    });
+
+    it('el backup programado no compite con una restauración en curso', async () => {
+      const seedId = randomUUID();
+      await writeManifest(backupDir, [
+        {
+          id: seedId,
+          takenAt: '2026-06-01T12:00:00.000Z',
+          triggeredBy: 'MANUAL',
+          fileName: 'seed-1.dump',
+          sizeBytes: 10,
+          checksum: 'abc',
+          status: 'COMPLETED',
+          errorMessage: null,
+        },
+      ]);
+      ctx.clock.set('2026-06-02T04:00:00.000Z'); // pasada la hora del backup programado
+      // `restore()` toma el respaldo preventivo llamando a `createBackup` antes de restaurar.
+      // Sin `pg_dump` en este entorno, esa llamada (y por tanto toda la restauración) termina en
+      // milisegundos, así que un respiro con `setTimeout` no alcanza a "atrapar" con fiabilidad
+      // la ventana en la que `restoreInProgress` sigue en `true`. Se intercepta esa llamada para
+      // mantenerla en vilo el tiempo que haga falta, sin acoplar la prueba a más detalles internos.
+      let releasePreventiveBackup!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        releasePreventiveBackup = resolve;
+      });
+      const originalCreateBackup = backups.createBackup.bind(backups);
+      const createBackupSpy = vi
+        .spyOn(backups, 'createBackup')
+        .mockImplementationOnce(async (triggeredBy) => {
+          await gate;
+          return originalCreateBackup(triggeredBy);
+        });
+      try {
+        const restorePromise = backups.restore(people.root, seedId, seedId).catch(() => undefined);
+        // Deja que `restore()` corra hasta quedar bloqueada dentro del respaldo preventivo
+        // interceptado, con `restoreInProgress` ya en `true`. Al estar la interceptación
+        // bloqueada indefinidamente (hasta `releasePreventiveBackup()`), no hay carrera: solo
+        // hace falta un respiro real para dejar pasar la lectura del manifiesto (E/S real).
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        const scheduled = await backups.maybeRunScheduledBackup();
+        // Mientras la restauración estuvo en curso, el programado no debió disparar nada.
+        expect(scheduled).toBeNull();
+        releasePreventiveBackup();
+        await restorePromise;
+      } finally {
+        createBackupSpy.mockRestore();
+      }
+    });
+  });
+
+  describe('M3 (revisión de arquitectura): modo mantenimiento durante una restauración', () => {
+    it('activo, rechaza otras peticiones con 503, salvo /health; siempre se desactiva al terminar', async () => {
+      const maintenanceMode = ctx.app.get(MaintenanceModeService);
+      expect(maintenanceMode.isActive()).toBe(false);
+
+      maintenanceMode.activate();
+      try {
+        const blocked = await list('root');
+        expect(blocked.status).toBe(503);
+        expect((blocked.body as { code?: string }).code).toBe('SERVICE_UNAVAILABLE');
+
+        const health = await request(ctx.server).get('/api/health');
+        expect(health.status).not.toBe(503);
+      } finally {
+        maintenanceMode.deactivate();
+      }
+      expect((await list('root')).status).toBe(200); // vuelve a la normalidad
+
+      // La propia restore() lo desactiva siempre, incluso si pg_restore falla (sin pg_dump aquí).
+      const seedId = randomUUID();
+      await writeManifest(backupDir, [
+        {
+          id: seedId,
+          takenAt: '2026-06-01T12:00:00.000Z',
+          triggeredBy: 'MANUAL',
+          fileName: 'seed-1.dump',
+          sizeBytes: 10,
+          checksum: 'abc',
+          status: 'COMPLETED',
+          errorMessage: null,
+        },
+      ]);
+      await backups.restore(people.root, seedId, seedId).catch(() => undefined);
+      expect(maintenanceMode.isActive()).toBe(false);
     });
   });
 });

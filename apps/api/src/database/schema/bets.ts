@@ -57,6 +57,15 @@ export const bets = pgTable(
     settledTimeKnown: boolean('settled_time_known').notNull().default(true),
     reason: text('reason'),
     ...timestamps(),
+    /**
+     * Último instante en que cambió un campo con efecto financiero real (casa, etapa, stake,
+     * monto oficial, estado, borrado lógico; §109.1.3, M1 de la revisión de arquitectura previa
+     * a integrar la Fase 5.5). Lo mantiene el disparador `bump_bet_financial_timestamp`, nunca
+     * la aplicación: a diferencia de `updated_at` (que cambia con cualquier edición, incluida
+     * una simple corrección del motivo, §107.9), esta columna es la que usa la verificación de
+     * integridad para distinguir un cambio relevante para la conciliación de uno administrativo.
+     */
+    financialFieldsUpdatedAt: timestamptz('financial_fields_updated_at').notNull().defaultNow(),
     version: versionColumn(),
     ...softDeleteColumns(),
     deletedBy: uuid('deleted_by').references(() => users.id, { onDelete: 'restrict' }),

@@ -1,4 +1,4 @@
-import { mkdir, stat } from 'node:fs/promises';
+import { stat } from 'node:fs/promises';
 import {
   Inject,
   Injectable,
@@ -19,12 +19,15 @@ import {
   backupFilePath,
   connectionEnv,
   deleteBackupFile,
+  ensureSecureDir,
   parseConnection,
   readManifest,
   run,
+  secureFile,
   sha256File,
   writeManifest,
 } from './backup-files.js';
+import { MaintenanceModeService } from './maintenance-mode.service.js';
 
 /**
  * Backups automáticos y recuperación (§37, §82, §109.3-4, D-B1 a D-B4, D-R1). El backup se
@@ -39,12 +42,15 @@ export class BackupsService implements OnApplicationBootstrap, OnApplicationShut
   private intervalHandle: NodeJS.Timeout | undefined;
   /** Serializa lecturas/escrituras del manifiesto dentro de este proceso. */
   private manifestChain: Promise<unknown> = Promise.resolve();
+  /** M2: evita dos restauraciones simultáneas (doble clic, o dos Administradores Globales). */
+  private restoreInProgress = false;
 
   constructor(
     @Inject(DATABASE) private readonly db: Database,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
     private readonly audit: AuditService,
     private readonly clock: Clock,
+    private readonly maintenanceMode: MaintenanceModeService,
   ) {}
 
   onApplicationBootstrap(): void {
@@ -71,6 +77,9 @@ export class BackupsService implements OnApplicationBootstrap, OnApplicationShut
    * probable directamente, sin depender de que el temporizador real llegue a dispararse.
    */
   async maybeRunScheduledBackup(): Promise<BackupGeneration | null> {
+    // M2: no compite con una restauración en curso — un pg_dump a mitad de un pg_restore
+    // (que borra y recrea tablas) podría fallar o capturar un estado a medias.
+    if (this.restoreInProgress) return null;
     const now = this.clock.now();
     if (now.getUTCHours() < this.config.backup.scheduleHourUtc) return null;
     const today = now.toISOString().slice(0, 10);
@@ -95,11 +104,12 @@ export class BackupsService implements OnApplicationBootstrap, OnApplicationShut
     let status: BackupGeneration['status'] = 'COMPLETED';
     let errorMessage: string | null = null;
     try {
-      await mkdir(this.config.backup.dir, { recursive: true });
+      await ensureSecureDir(this.config.backup.dir); // H2: directorio 0700
       const result = await run(this.config.backup.pgDumpPath, ['-Fc', '-f', filePath], env);
       if (result.code !== 0) {
         throw new Error(result.stderr || `pg_dump terminó con código ${result.code}`);
       }
+      await secureFile(filePath); // H2: el volcado lo crea pg_dump, se asegura aparte a 0600
       const stats = await stat(filePath);
       sizeBytes = stats.size;
       checksum = await sha256File(filePath);
@@ -125,12 +135,20 @@ export class BackupsService implements OnApplicationBootstrap, OnApplicationShut
 
   /**
    * Restauración (§37, §109.4, D-R1): operación de mantenimiento controlada, **no en caliente**.
-   * Esta llamada ejecuta `pg_restore` contra la misma base de datos a la que la API sigue
-   * conectada; en un uso real debe hacerse con la API detenida o fuera de tráfico normal —
-   * ejecutarla con la aplicación sirviendo peticiones puede bloquearse o fallar por bloqueos de
-   * otras conexiones del propio pool (documentado en el ADR 0016). Sigue el orden del §37: backup
-   * preventivo primero, luego la restauración, luego la auditoría (después, porque `--clean`
-   * borra las tablas actuales antes de restaurar: un registro escrito antes se perdería).
+   * La validación (existe, está COMPLETED, la confirmación coincide) se hace primero y no toca
+   * nada; solo entonces se activa la protección real (M2, M3 de la revisión de arquitectura
+   * previa a integrar la Fase 5.5):
+   *
+   * - M2: `restoreInProgress` impide una segunda restauración simultánea (comprobar-y-fijar sin
+   *   `await` entre medias: seguro de carreras dentro del mismo proceso) y pausa el backup
+   *   programado (`maybeRunScheduledBackup`) mientras dure.
+   * - M3: `MaintenanceModeService` hace que el middleware global rechace con 503 cualquier otra
+   *   petición entrante mientras `pg_restore` corre — la protección técnica real que D-R1 exige,
+   *   no solo una instrucción operativa de "detener la API a mano".
+   *
+   * Sigue el orden del §37: backup preventivo primero, luego la restauración, luego la auditoría
+   * (después, porque `--clean` borra las tablas actuales antes de restaurar: un registro escrito
+   * antes se perdería).
    */
   async restore(
     actor: UserRow,
@@ -156,48 +174,62 @@ export class BackupsService implements OnApplicationBootstrap, OnApplicationShut
       );
     }
 
-    const preventive = await this.createBackup('MANUAL');
-    if (preventive.status !== 'COMPLETED') {
-      throw new AppError(
-        409,
-        ErrorCode.INVALID_STATE,
-        'No se pudo tomar el backup preventivo: la restauración se canceló sin tocar nada.',
-      );
+    // M2: comprobar-y-fijar en el mismo turno del bucle de eventos (sin `await` entre medias):
+    // dos llamadas a restore() no pueden colarse una dentro de la ventana de la otra.
+    if (this.restoreInProgress) {
+      throw new AppError(409, ErrorCode.INVALID_STATE, 'Ya hay una restauración en curso.');
     }
+    this.restoreInProgress = true;
+    this.maintenanceMode.activate(); // M3: a partir de aquí, el resto de la API responde 503.
+    try {
+      const preventive = await this.createBackup('MANUAL');
+      if (preventive.status !== 'COMPLETED') {
+        throw new AppError(
+          409,
+          ErrorCode.INVALID_STATE,
+          'No se pudo tomar el backup preventivo: la restauración se canceló sin tocar nada.',
+        );
+      }
 
-    const env = connectionEnv(parseConnection(this.config.databaseUrl));
-    const conn = parseConnection(this.config.databaseUrl);
-    const filePath = backupFilePath(this.config.backup.dir, target.fileName);
-    const result = await run(
-      this.config.backup.pgRestorePath,
-      ['--clean', '--if-exists', '-d', conn.database, filePath],
-      env,
-    );
-    const restored = result.code === 0;
-
-    // Después de restaurar (§37: la auditoría es el último paso; --clean habría borrado un
-    // registro escrito antes de la restauración).
-    await this.audit.record(this.db, {
-      action: 'backup.restored',
-      entityType: 'backup_generation',
-      entityId: target.id,
-      actorUserId: actor.id,
-      newValues: {
-        generationId: target.id,
-        fileName: target.fileName,
-        preventiveBackupId: preventive.id,
-        restored,
-      },
-    });
-
-    if (!restored) {
-      throw new AppError(
-        500,
-        ErrorCode.INTERNAL_ERROR,
-        `pg_restore falló: ${result.stderr || `código ${result.code}`}`,
+      const env = connectionEnv(parseConnection(this.config.databaseUrl));
+      const conn = parseConnection(this.config.databaseUrl);
+      const filePath = backupFilePath(this.config.backup.dir, target.fileName);
+      const result = await run(
+        this.config.backup.pgRestorePath,
+        ['--clean', '--if-exists', '-d', conn.database, filePath],
+        env,
       );
+      const restored = result.code === 0;
+
+      // Después de restaurar (§37: la auditoría es el último paso; --clean habría borrado un
+      // registro escrito antes de la restauración).
+      await this.audit.record(this.db, {
+        action: 'backup.restored',
+        entityType: 'backup_generation',
+        entityId: target.id,
+        actorUserId: actor.id,
+        newValues: {
+          generationId: target.id,
+          fileName: target.fileName,
+          preventiveBackupId: preventive.id,
+          restored,
+        },
+      });
+
+      if (!restored) {
+        throw new AppError(
+          500,
+          ErrorCode.INTERNAL_ERROR,
+          `pg_restore falló: ${result.stderr || `código ${result.code}`}`,
+        );
+      }
+      return target;
+    } finally {
+      // Siempre se libera, incluso si algo de lo anterior lanzó: nunca deja la API en modo
+      // mantenimiento indefinidamente ni bloqueada para la próxima restauración.
+      this.maintenanceMode.deactivate();
+      this.restoreInProgress = false;
     }
-    return target;
   }
 
   private async appendToManifest(generation: BackupGeneration): Promise<void> {

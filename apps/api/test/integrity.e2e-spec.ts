@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
+  bets,
   financialMovements,
   reconciliationCheckpoints,
   type UserRow,
@@ -233,6 +234,95 @@ describe('verificación de integridad del ledger (e2e, PostgreSQL real, §38, §
         .from(reconciliationCheckpoints)
         .where(eq(reconciliationCheckpoints.id, checkpoint.id));
       expect(row!.status).toBe('MATCHED');
+    });
+
+    it('M1 (revisión de arquitectura): corregir el motivo de una apuesta liquidada no es un falso hallazgo', async () => {
+      const created = (
+        await request(ctx.server)
+          .post(`/api/projects/${projectId}/bets`)
+          .set('Cookie', cookies.owner)
+          .send({
+            houseId,
+            stake: '1.00',
+            visibleTotalOdds: '1.95',
+            placedAt: '2026-06-01T08:00:00.000Z',
+            selections: [
+              {
+                eventGroup: 0,
+                position: 0,
+                event: 'A vs B',
+                selection: 'A gana',
+                visibleOdds: '1.95',
+              },
+            ],
+          })
+          .expect(201)
+      ).body as { id: string; version: number };
+      const settled = (
+        await request(ctx.server)
+          .post(`/api/projects/${projectId}/bets/${created.id}/settle`)
+          .set('Cookie', cookies.owner)
+          .send({ status: 'LOST', settledAt: '2026-06-01T09:00:00.000Z', version: created.version })
+          .expect(200)
+      ).body as { version: number };
+
+      const checkpoint = (
+        await request(ctx.server)
+          .post(`/api/projects/${projectId}/houses/${houseId}/reconciliations`)
+          .set('Cookie', cookies.owner)
+          .send({ officialAvailable: '490.00' }) // 500 - 10 (stake 1.00 × unidad 10.00, LOST)
+          .expect(201)
+      ).body as { id: string; status: string };
+      expect(checkpoint.status).toBe('MATCHED');
+
+      // Permitido por el §107.9 (una apuesta liquidada solo admite corregir motivo y fecha): no
+      // tiene ningún efecto financiero, así que no debería generar ningún hallazgo.
+      await request(ctx.server)
+        .patch(`/api/projects/${projectId}/bets/${created.id}`)
+        .set('Cookie', cookies.owner)
+        .send({ reason: 'Corrección de motivo, sin efecto financiero', version: settled.version })
+        .expect(200);
+
+      const body = (await runProject('owner').expect(201)).body as RunBody;
+      expect(body.status).toBe('OK');
+      expect(body.findings).toEqual([]);
+    });
+
+    it('M1: un cambio de etapa sigue detectándose de forma independiente (sin pasar por BetsService)', async () => {
+      const checkpoint = (
+        await request(ctx.server)
+          .post(`/api/projects/${projectId}/houses/${houseId}/reconciliations`)
+          .set('Cookie', cookies.owner)
+          .send({ officialAvailable: '500.00' })
+          .expect(201)
+      ).body as { id: string; status: string };
+      expect(checkpoint.status).toBe('MATCHED');
+
+      // CLOSED, no ACTIVE: el proyecto ya tiene una etapa activa (§86, índice único parcial) y
+      // esta prueba no necesita que la nueva lo sea, solo que exista con otra unidad.
+      const otherStage = await insertStage(ctx.t.db, {
+        projectId,
+        unitStake: '20.00',
+        status: 'CLOSED',
+      });
+      const { bet: pending } = await insertBet(ctx.t.db, {
+        projectId,
+        stageId,
+        houseId,
+        createdBy: people.collab.id,
+        status: 'PENDING',
+        placedAt: new Date('2026-05-01T00:00:00.000Z'),
+      });
+      // Inserción y actualización directas (fuera de BetsService, que con H1 ya invalidaría el
+      // checkpoint correctamente): simula que esa invalidación falló, para comprobar que el
+      // disparador `bump_bet_financial_timestamp` marca el cambio de etapa como relevante por su
+      // cuenta, no solo `placed_at` como en la prueba (e).
+      await ctx.t.db.update(bets).set({ stageId: otherStage.id }).where(eq(bets.id, pending.id));
+
+      const body = (await runProject('owner').expect(201)).body as RunBody;
+      expect(body.status).toBe('ISSUES_FOUND');
+      const finding = body.findings.find((f) => f.check === 'CHECKPOINT_INVALIDATION');
+      expect(finding?.affected).toContain(`checkpoint:${checkpoint.id}`);
     });
   });
 });

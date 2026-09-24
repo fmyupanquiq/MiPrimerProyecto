@@ -25,6 +25,7 @@ describe('conciliación (e2e, PostgreSQL real, §32, §80, §109.1)', () => {
   let ctx: TestApp;
   let projectId: string;
   let houseId: string;
+  let stageId: string;
   const people = {} as Record<Actor, UserRow>;
   const cookies = {} as Record<Actor, string>;
 
@@ -62,6 +63,13 @@ describe('conciliación (e2e, PostgreSQL real, §32, §80, §109.1)', () => {
         .expect(200)
     ).body as HouseBody[];
     houseId = houseList[0]!.id;
+    const stageList = (
+      await request(ctx.server)
+        .get(`/api/projects/${projectId}/stages`)
+        .set('Cookie', cookies.owner)
+        .expect(200)
+    ).body as { id: string }[];
+    stageId = stageList[0]!.id;
   });
 
   // Función, no constante: `projectId` todavía no tiene valor cuando se evalúa este bloque
@@ -86,6 +94,11 @@ describe('conciliación (e2e, PostgreSQL real, §32, §80, §109.1)', () => {
       .set('Cookie', cookies[actor]);
   const createBet = (actor: Actor, body: object) =>
     request(ctx.server).post(`${base()}/bets`).set('Cookie', cookies[actor]).send(body);
+  const moveBetStage = (actor: Actor, betId: string, body: object) =>
+    request(ctx.server)
+      .post(`${base()}/bets/${betId}/move-stage`)
+      .set('Cookie', cookies[actor])
+      .send(body);
 
   describe('confirmar (D-C1, D-C2: un solo paso)', () => {
     it('coincide: crea un checkpoint MATCHED con los campos del §80, sin tocar el saldo', async () => {
@@ -237,6 +250,95 @@ describe('conciliación (e2e, PostgreSQL real, §32, §80, §109.1)', () => {
       expect(row.status).toBe('INVALIDATED');
       expect(row.invalidatedAt).not.toBeNull();
       expect(row.invalidatedReason).not.toBeNull();
+    });
+
+    it('H1 (revisión de arquitectura): mover una pendiente sin monto oficial a otra unidad invalida', async () => {
+      const bet = (
+        await createBet('collab', {
+          houseId,
+          stageId,
+          stake: '2.00',
+          visibleTotalOdds: '1.95',
+          // Antes del checkpoint (que ocurrirá a las 12:00 del reloj falso, fijado en
+          // beforeEach): así el checkpoint sí "conoce" esta apuesta y puede invalidarse por ella.
+          placedAt: '2026-06-01T08:00:00.000Z',
+          selections: [
+            {
+              eventGroup: 0,
+              position: 0,
+              event: 'A vs B',
+              selection: 'A gana',
+              visibleOdds: '1.95',
+            },
+          ],
+        }).expect(201)
+      ).body as { id: string; version: number };
+
+      // Disponible = 500 - 20 comprometido (stake 2.00 × unidad 10.00) = 480.00.
+      await confirm('owner', { officialAvailable: '480.00' }).expect(201);
+      expect((await status('owner').expect(200)).body).toMatchObject({
+        requiresReconciliation: false,
+      });
+
+      const newStage = (
+        await request(ctx.server)
+          .post(`${base()}/stages`)
+          .set('Cookie', cookies.owner)
+          .send({ name: 'Etapa 2', unitStake: '20.00' })
+          .expect(201)
+      ).body as { id: string };
+      // Mover a la nueva etapa cambia el comprometido calculado (2.00 × 20.00 = 40.00, no 20.00):
+      // el checkpoint que asumía 480.00 de disponible ya no es correcto.
+      await moveBetStage('owner', bet.id, { stageId: newStage.id, version: bet.version }).expect(
+        200,
+      );
+
+      expect((await status('owner').expect(200)).body).toMatchObject({
+        requiresReconciliation: true,
+      });
+    });
+
+    it('H1: mover una pendiente CON monto oficial confirmado no invalida nada', async () => {
+      const bet = (
+        await createBet('collab', {
+          houseId,
+          stageId,
+          stake: '2.00',
+          officialAmount: '25.00',
+          visibleTotalOdds: '1.95',
+          // Antes del checkpoint, igual que en la prueba anterior: si esto invalidara, sería por
+          // el monto oficial (no debería), no porque la apuesta quedara fuera de la comparación.
+          placedAt: '2026-06-01T08:00:00.000Z',
+          selections: [
+            {
+              eventGroup: 0,
+              position: 0,
+              event: 'A vs B',
+              selection: 'A gana',
+              visibleOdds: '1.95',
+            },
+          ],
+        }).expect(201)
+      ).body as { id: string; version: number };
+
+      // Disponible = 500 - 25 (monto oficial, no depende de la unidad) = 475.00.
+      await confirm('owner', { officialAvailable: '475.00' }).expect(201);
+
+      const newStage = (
+        await request(ctx.server)
+          .post(`${base()}/stages`)
+          .set('Cookie', cookies.owner)
+          .send({ name: 'Etapa 2', unitStake: '20.00' })
+          .expect(201)
+      ).body as { id: string };
+      await moveBetStage('owner', bet.id, { stageId: newStage.id, version: bet.version }).expect(
+        200,
+      );
+
+      // El comprometido sigue siendo 25.00 (monto oficial): el checkpoint sigue siendo válido.
+      expect((await status('owner').expect(200)).body).toMatchObject({
+        requiresReconciliation: false,
+      });
     });
   });
 

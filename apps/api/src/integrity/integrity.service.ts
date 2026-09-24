@@ -212,10 +212,15 @@ export class IntegrityService {
     executor: DbExecutor,
     projectId: string | undefined,
   ): Promise<IntegrityFinding[]> {
+    // M1 (revisión de arquitectura previa a integrar la Fase 5.5): compara contra
+    // `financial_fields_updated_at`, no contra `updated_at` — esa columna solo se mueve ante un
+    // cambio con efecto financiero real (disparador `bump_bet_financial_timestamp`), nunca ante
+    // una simple corrección de motivo (§107.9) o un traslado de etapa sin efecto en el
+    // comprometido, que antes se reportaban como falsos hallazgos.
     const result = await executor.execute<{ id: string }>(
       sql`SELECT DISTINCT c.id FROM reconciliation_checkpoints c
           JOIN bets b ON b.house_id = c.house_id AND b.placed_at <= c.occurred_at
-          WHERE c.status = 'MATCHED' AND b.updated_at > c.created_at
+          WHERE c.status = 'MATCHED' AND b.financial_fields_updated_at > c.created_at
             AND (${projectId ?? null}::uuid IS NULL OR c.project_id = ${projectId ?? null}::uuid)`,
     );
     const affected = result.rows.map((r) => `checkpoint:${r.id}`);

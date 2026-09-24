@@ -564,6 +564,32 @@ describe('apuestas, selecciones y liquidaciones (e2e, PostgreSQL real, §18-§27
       const list = (await listBets('admin').expect(200)).body as BetBody[];
       expect(list.map((b) => b.id)).toContain(created.id);
     });
+
+    it('M4 (revisión de arquitectura): espera si hay otra operación financiera en curso', async () => {
+      const created = (await createBet('collab', simpleBet()).expect(201)).body as BetBody;
+
+      // Mantiene tomado el mismo bloqueo asesor que usan las operaciones financieras del
+      // proyecto (`finance:<projectId>`), simulando una conciliación u otra operación en curso.
+      const client = await ctx.t.pool.connect();
+      await client.query('BEGIN');
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
+        `finance:${projectId}`,
+      ]);
+      try {
+        const trashPromise = trashBet('admin', created.id);
+        const TIMED_OUT = Symbol('timed-out');
+        const race = await Promise.race([
+          trashPromise,
+          new Promise((resolve) => setTimeout(() => resolve(TIMED_OUT), 300)),
+        ]);
+        expect(race).toBe(TIMED_OUT); // sigue bloqueada mientras el lock está tomado
+
+        await client.query('COMMIT'); // libera el bloqueo asesor
+        expect((await trashPromise).status).toBe(200); // ahora sí se completa
+      } finally {
+        client.release();
+      }
+    });
   });
 
   describe('una apuesta en la papelera no admite operaciones (revisión de arquitectura)', () => {
