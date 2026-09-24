@@ -3,6 +3,7 @@ import { Navigate, Route, Routes, useLocation } from 'react-router';
 import { AuthProvider, useAuth } from './auth/AuthContext.js';
 import { loginPathFor } from './auth/redirect.js';
 import { ReauthProvider } from './auth/ReauthContext.js';
+import { AdminPage } from './pages/AdminPage.js';
 import { AppShell } from './pages/AppShell.js';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage.js';
 import { InvitePage } from './pages/InvitePage.js';
@@ -50,6 +51,7 @@ export function App() {
         >
           <Route path="/" element={<ProjectsPage />} />
           <Route path="/projects/trash" element={<TrashPage />} />
+          <Route path="/admin" element={<AdminPage />} />
           <Route path="/projects/:projectId" element={<ProjectLayout />}>
             <Route index element={<DashboardPage />} />
             <Route path="setup" element={<ProjectSetupPage />} />

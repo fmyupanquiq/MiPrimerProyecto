@@ -4,16 +4,25 @@ import {
   PROJECT_NAME_MAX_LENGTH,
   updateProjectSchema,
   type DateFormat,
+  type IntegrityCheckRunSummary,
   type ProjectDetail,
 } from '@letfer/shared';
 import { type FormEvent, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { describeApiError } from '../../api/errors.js';
+import { integrityApi } from '../../api/integrity.js';
 import { membersApi, projectsApi } from '../../api/projects.js';
 import { ApiError } from '../../api/client.js';
 import { isReauthCancelled, useReauth } from '../../auth/ReauthContext.js';
-import { DATE_FORMAT_LABELS, timeZones } from '../../labels.js';
-import { btn, btnDanger, btnPrimary, inputClass, Notice, Section } from '../../ui.js';
+import { useLoad } from '../../hooks/useLoad.js';
+import {
+  DATE_FORMAT_LABELS,
+  formatDateTime,
+  INTEGRITY_CHECK_LABELS,
+  INTEGRITY_CHECK_STATUS_LABELS,
+  timeZones,
+} from '../../labels.js';
+import { Badge, btn, btnDanger, btnPrimary, inputClass, Notice, Section } from '../../ui.js';
 import { useProject } from './ProjectContext.js';
 
 /** Configuración del proyecto (§105.6) y acciones sobre su ciclo de vida (§105.5). */
@@ -43,7 +52,76 @@ export function SettingsPage() {
         )}
       </Section>
       <LifecycleSection onNotice={setNotice} />
+      {can('integrity.view') && <IntegritySection />}
     </>
+  );
+}
+
+/** Verificación de integridad del ledger del proyecto (§38, §109.2). Solo lectura, bajo demanda. */
+function IntegritySection() {
+  const { project, can } = useProject();
+  const history = useLoad(`integrity:${project.id}`, () => integrityApi.list(project.id));
+  const [running, setRunning] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function run() {
+    setRunning(true);
+    setError(null);
+    try {
+      await integrityApi.run(project.id);
+      history.reload();
+    } catch (caught) {
+      setError(describeApiError(caught));
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  return (
+    <Section title="Verificación de integridad">
+      <p className="text-sm text-slate-500">
+        Solo lectura: nunca corrige datos ni crea movimientos (§38). Se ejecuta bajo demanda.
+      </p>
+      {can('integrity.run') && (
+        <button
+          type="button"
+          className={`${btnPrimary} self-start`}
+          disabled={running}
+          onClick={() => void run()}
+        >
+          {running ? 'Verificando…' : 'Verificar ahora'}
+        </button>
+      )}
+      {error && <Notice tone="error">{error}</Notice>}
+      {history.error && <Notice tone="error">{history.error}</Notice>}
+      {history.data && history.data.length === 0 && (
+        <p className="text-sm text-slate-500">Todavía no se ha ejecutado ninguna verificación.</p>
+      )}
+      {history.data && history.data.length > 0 && (
+        <ul className="flex flex-col gap-3">
+          {history.data.map((run: IntegrityCheckRunSummary) => (
+            <li key={run.id} className="rounded border border-slate-200 p-3 text-sm">
+              <p className="flex items-center gap-2 font-medium">
+                <Badge tone={run.status === 'OK' ? 'green' : 'red'}>
+                  {INTEGRITY_CHECK_STATUS_LABELS[run.status]}
+                </Badge>
+                {formatDateTime(run.startedAt)} · {run.runBy.name}
+              </p>
+              {run.findings.length > 0 && (
+                <ul className="mt-2 flex flex-col gap-1">
+                  {run.findings.map((finding, index) => (
+                    <li key={index} className="text-slate-600">
+                      <strong>{INTEGRITY_CHECK_LABELS[finding.check] ?? finding.check}</strong>:{' '}
+                      {finding.message} ({finding.affected.length} afectado(s))
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </Section>
   );
 }
 

@@ -65,6 +65,11 @@ function open(extra: Record<string, Handler> = {}) {
     [`GET ${HOUSES_URL}`]: { status: 200, body: [house()] },
     [`GET ${MOVEMENTS_URL}`]: { status: 200, body: [] },
     [`GET ${WITHDRAWALS_URL}`]: { status: 200, body: [] },
+    [`GET ${HOUSES_URL}/${HOUSE_A}/reconciliations/status`]: {
+      status: 200,
+      body: { houseId: HOUSE_A, requiresReconciliation: true, lastMatchedCheckpoint: null },
+    },
+    [`GET ${HOUSES_URL}/${HOUSE_A}/reconciliations`]: { status: 200, body: [] },
     ...extra,
   });
 }
@@ -482,5 +487,115 @@ describe('casas y finanzas del proyecto (§13-§17, §49)', () => {
     open({ [`GET ${HOUSES_URL}`]: apiError(500, 'INTERNAL_ERROR') });
     renderApp(FINANCE_URL);
     expect(await screen.findByRole('alert')).toBeTruthy();
+  });
+
+  describe('conciliación (§32, §80, §109.1)', () => {
+    it('muestra "Requiere nueva conciliación" y permite confirmar', async () => {
+      const { calls } = open({
+        [`POST ${HOUSES_URL}/${HOUSE_A}/reconciliations`]: {
+          status: 201,
+          body: {
+            id: 'c1',
+            projectId: PROJECT_ID,
+            houseId: HOUSE_A,
+            houseName: 'Betano',
+            occurredAt: '2026-06-01T12:00:00.000Z',
+            letferAvailable: '500.00',
+            officialAvailable: '500.00',
+            committed: '0.00',
+            difference: '0.00',
+            status: 'MATCHED',
+            performedBy: { id: ANA.id, name: 'Ana Pérez' },
+            note: null,
+            invalidatedAt: null,
+            invalidatedReason: null,
+            createdAt: '2026-06-01T12:00:00.000Z',
+          },
+        },
+      });
+      renderApp(FINANCE_URL);
+      expect(await screen.findByText('Requiere nueva conciliación')).toBeTruthy();
+
+      const form = screen.getByRole('form', { name: 'Conciliar' });
+      fireEvent.change(within(form).getByLabelText('Saldo disponible oficial'), {
+        target: { value: '500' },
+      });
+      fireEvent.click(within(form).getByRole('button', { name: 'Conciliar' }));
+
+      expect(await screen.findByText('Coincide: se registró la conciliación.')).toBeTruthy();
+      expect(
+        calls.find(
+          (c) => c.path === `${HOUSES_URL}/${HOUSE_A}/reconciliations` && c.method === 'POST',
+        )!.body,
+      ).toEqual({ officialAvailable: '500.00' });
+    });
+
+    it('sin permiso reconciliations.confirm, no se ofrece el formulario, solo la consulta', async () => {
+      open({
+        [`GET ${URL}`]: {
+          status: 200,
+          body: projectDetail({
+            isOwner: false,
+            myRole: 'READER',
+            myPermissions: [
+              'project.view',
+              'stages.view',
+              'houses.view',
+              'movements.view',
+              'reconciliations.view',
+            ],
+          }),
+        },
+      });
+      renderApp(FINANCE_URL);
+      await screen.findByText('Requiere nueva conciliación');
+      expect(screen.queryByRole('form', { name: 'Conciliar' })).toBeNull();
+    });
+
+    it('sin permiso reconciliations.view, no se muestra la sección', async () => {
+      open({
+        [`GET ${URL}`]: {
+          status: 200,
+          body: projectDetail({
+            isOwner: false,
+            myRole: 'READER',
+            myPermissions: ['project.view', 'stages.view', 'houses.view', 'movements.view'],
+          }),
+        },
+      });
+      renderApp(FINANCE_URL);
+      await screen.findByText('Betano');
+      expect(screen.queryByRole('heading', { name: 'Conciliación' })).toBeNull();
+    });
+
+    it('el historial muestra el estado de cada checkpoint', async () => {
+      open({
+        [`GET ${HOUSES_URL}/${HOUSE_A}/reconciliations`]: {
+          status: 200,
+          body: [
+            {
+              id: 'c1',
+              projectId: PROJECT_ID,
+              houseId: HOUSE_A,
+              houseName: 'Betano',
+              occurredAt: '2026-06-01T12:00:00.000Z',
+              letferAvailable: '500.00',
+              officialAvailable: '450.00',
+              committed: '0.00',
+              difference: '-50.00',
+              status: 'DISCREPANCY',
+              performedBy: { id: ANA.id, name: 'Ana Pérez' },
+              note: null,
+              invalidatedAt: null,
+              invalidatedReason: null,
+              createdAt: '2026-06-01T12:00:00.000Z',
+            },
+          ],
+        },
+      });
+      renderApp(FINANCE_URL);
+      expect(await screen.findByText('Discrepancia')).toBeTruthy();
+      expect(screen.getByText('S/ -50.00')).toBeTruthy();
+    });
   });
 });

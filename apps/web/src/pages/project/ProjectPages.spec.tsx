@@ -33,6 +33,7 @@ function open(path: string, project: StubResponse, extra: Record<string, Handler
     'GET /projects': { status: 200, body: [] },
     'GET /projects/trash': { status: 200, body: [] },
     [`GET ${URL}`]: project,
+    [`GET ${URL}/integrity-checks`]: { status: 200, body: [] },
     ...extra,
   });
 }

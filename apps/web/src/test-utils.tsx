@@ -172,6 +172,10 @@ export const OWNER_PERMISSIONS = [
   'bets.trash_any',
   'bets.restore',
   'bets.move_stage',
+  'reconciliations.view',
+  'reconciliations.confirm',
+  'integrity.view',
+  'integrity.run',
 ];
 
 export function projectDetail(overrides: Record<string, unknown> = {}) {

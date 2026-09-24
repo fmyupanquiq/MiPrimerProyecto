@@ -9,8 +9,11 @@ const navClass = ({ isActive }: { isActive: boolean }) =>
 
 /** Marco de las pantallas autenticadas: navegación principal, persona usuaria y cierre de sesión. */
 export function AppShell() {
-  const { user, logout } = useAuth();
+  const { user, logout, can } = useAuth();
   const [closing, setClosing] = useState(false);
+  // "Administración" (§37, §109) solo es visible con algún permiso system.* (Administrador Global).
+  const showAdmin =
+    can('system.backups.view') || can('system.backups.create') || can('system.integrity.run');
 
   async function onLogout() {
     setClosing(true);
@@ -36,6 +39,11 @@ export function AppShell() {
               <NavLink to="/projects/trash" className={navClass}>
                 Papelera
               </NavLink>
+              {showAdmin && (
+                <NavLink to="/admin" className={navClass}>
+                  Administración
+                </NavLink>
+              )}
             </nav>
           </div>
           {user && (

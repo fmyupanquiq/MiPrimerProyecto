@@ -1,4 +1,5 @@
 import {
+  confirmReconciliationSchema,
   createExtraordinaryMovementSchema,
   createHouseSchema,
   createTransferSchema,
@@ -7,12 +8,15 @@ import {
   requestWithdrawalSchema,
   type HouseSummary,
   type MovementDirection,
+  type ReconciliationCheckpointSummary,
+  type ReconciliationReview,
   type WithdrawalRequestSummary,
 } from '@letfer/shared';
 import { type FormEvent, useState } from 'react';
 import { Link } from 'react-router';
 import { describeApiError } from '../../api/errors.js';
 import { housesApi, movementsApi, withdrawalsApi } from '../../api/finance.js';
+import { reconciliationsApi } from '../../api/reconciliations.js';
 import { useAuth } from '../../auth/AuthContext.js';
 import { isReauthCancelled, useReauth } from '../../auth/ReauthContext.js';
 import { useLoad } from '../../hooks/useLoad.js';
@@ -21,6 +25,7 @@ import {
   HOUSE_STATUS_LABELS,
   MOVEMENT_DIRECTION_LABELS,
   MOVEMENT_TYPE_LABELS,
+  RECONCILIATION_STATUS_LABELS,
   WITHDRAWAL_STATUS_LABELS,
 } from '../../labels.js';
 import { Badge, btn, btnDanger, btnPrimary, inputClass, Notice, Section } from '../../ui.js';
@@ -85,6 +90,9 @@ export function FinancePage() {
           reloadAll();
         }}
       />
+      {can('reconciliations.view') && houses.data && houses.data.length > 0 && (
+        <ReconciliationSection houses={houses.data} />
+      )}
       <Section title="Historial de movimientos">
         {movements.error && <Notice tone="error">{movements.error}</Notice>}
         {movements.loading && !movements.data && <p>Cargando historial…</p>}
@@ -877,5 +885,212 @@ function WithdrawalRow({
       </div>
       {error && <Notice tone="error">{error}</Notice>}
     </li>
+  );
+}
+
+/** Conciliación por casa (§32, §80, §109.1): un registro de comparación, nunca un ajuste. */
+function ReconciliationSection({ houses }: { houses: HouseSummary[] }) {
+  const { project, can } = useProject();
+  const [houseId, setHouseId] = useState(houses[0]?.id ?? '');
+  const [notice, setNotice] = useState<string | null>(null);
+  const [showReview, setShowReview] = useState(false);
+
+  const status = useLoad(`reconciliation-status:${project.id}:${houseId}`, () =>
+    reconciliationsApi.status(project.id, houseId),
+  );
+  const history = useLoad(`reconciliation-history:${project.id}:${houseId}`, () =>
+    reconciliationsApi.list(project.id, houseId),
+  );
+  const review = useLoad(`reconciliation-review:${project.id}:${houseId}:${showReview}`, () =>
+    showReview
+      ? reconciliationsApi.review(project.id, houseId)
+      : Promise.resolve<ReconciliationReview>({ since: null, bets: [], movements: [] }),
+  );
+
+  if (houses.length === 0) return null;
+
+  return (
+    <Section title="Conciliación">
+      {notice && <Notice tone="success">{notice}</Notice>}
+      <label className="flex max-w-xs flex-col gap-1 text-sm font-medium">
+        Casa
+        <select
+          value={houseId}
+          onChange={(event) => {
+            setHouseId(event.target.value);
+            setShowReview(false);
+          }}
+          className={inputClass}
+        >
+          {houses.map((house) => (
+            <option key={house.id} value={house.id}>
+              {house.name}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      {status.error && <Notice tone="error">{status.error}</Notice>}
+      {status.data && (
+        <p className="text-sm">
+          {status.data.requiresReconciliation ? (
+            <Badge tone="amber">Requiere nueva conciliación</Badge>
+          ) : (
+            <Badge tone="green">Al día</Badge>
+          )}
+        </p>
+      )}
+
+      {can('reconciliations.confirm') && (
+        <ConfirmReconciliationForm
+          houseId={houseId}
+          onDone={(message) => {
+            setNotice(message);
+            status.reload();
+            history.reload();
+          }}
+        />
+      )}
+
+      <button type="button" className={btn} onClick={() => setShowReview((v) => !v)}>
+        {showReview ? 'Ocultar' : 'Revisar desde última conciliación'}
+      </button>
+      {showReview && review.data && (
+        <div className="flex flex-col gap-2 text-sm">
+          <p className="text-slate-500">
+            {review.data.since
+              ? `Desde ${formatDateTime(review.data.since)}`
+              : 'Sin conciliación previa: se muestra todo desde el origen.'}
+          </p>
+          <p>
+            {review.data.bets.length} apuesta(s) y {review.data.movements.length} movimiento(s)
+            posteriores.
+          </p>
+        </div>
+      )}
+
+      <h3 className="text-sm font-medium text-slate-700">Historial</h3>
+      {history.error && <Notice tone="error">{history.error}</Notice>}
+      {history.data && history.data.length === 0 && (
+        <p className="text-sm text-slate-500">Todavía no hay conciliaciones para esta casa.</p>
+      )}
+      {history.data && history.data.length > 0 && (
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 text-slate-500">
+                <th className="py-2 pr-3 font-medium">Fecha</th>
+                <th className="py-2 pr-3 font-medium">Estado</th>
+                <th className="py-2 pr-3 font-medium">LetFer</th>
+                <th className="py-2 pr-3 font-medium">Oficial</th>
+                <th className="py-2 pr-3 font-medium">Diferencia</th>
+                <th className="py-2 font-medium">Conciliado por</th>
+              </tr>
+            </thead>
+            <tbody>
+              {history.data.map((row: ReconciliationCheckpointSummary) => (
+                <tr key={row.id} className="border-b border-slate-100">
+                  <td className="py-2 pr-3">{formatDateTime(row.occurredAt)}</td>
+                  <td className="py-2 pr-3">
+                    <Badge
+                      tone={
+                        row.status === 'MATCHED'
+                          ? 'green'
+                          : row.status === 'INVALIDATED'
+                            ? 'slate'
+                            : 'red'
+                      }
+                    >
+                      {RECONCILIATION_STATUS_LABELS[row.status]}
+                    </Badge>
+                    {row.status === 'INVALIDATED' && row.invalidatedReason && (
+                      <p className="text-xs text-slate-500">{row.invalidatedReason}</p>
+                    )}
+                  </td>
+                  <td className="py-2 pr-3">{formatPEN(row.letferAvailable)}</td>
+                  <td className="py-2 pr-3">{formatPEN(row.officialAvailable)}</td>
+                  <td className="py-2 pr-3">{formatPEN(row.difference)}</td>
+                  <td className="py-2">{row.performedBy.name}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Section>
+  );
+}
+
+function ConfirmReconciliationForm({
+  houseId,
+  onDone,
+}: {
+  houseId: string;
+  onDone: (message: string) => void;
+}) {
+  const { project } = useProject();
+  const [officialAvailable, setOfficialAvailable] = useState('');
+  const [note, setNote] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError(null);
+    const parsed = confirmReconciliationSchema.safeParse({
+      officialAvailable,
+      note: note.trim() === '' ? undefined : note,
+    });
+    if (!parsed.success) {
+      setError(parsed.error.issues[0]?.message ?? 'Ingresa un saldo válido.');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const result = await reconciliationsApi.confirm(project.id, houseId, parsed.data);
+      setOfficialAvailable('');
+      setNote('');
+      onDone(
+        result.status === 'MATCHED'
+          ? 'Coincide: se registró la conciliación.'
+          : `Discrepancia registrada: diferencia de ${formatPEN(result.difference)}.`,
+      );
+    } catch (caught) {
+      setError(describeApiError(caught));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <form
+      onSubmit={(event) => void onSubmit(event)}
+      className="flex flex-col gap-3"
+      aria-label="Conciliar"
+      noValidate
+    >
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="flex flex-col gap-1 text-sm font-medium">
+          Saldo disponible oficial
+          <input
+            value={officialAvailable}
+            onChange={(event) => setOfficialAvailable(event.target.value)}
+            className={inputClass}
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-sm font-medium">
+          Nota (opcional)
+          <input
+            value={note}
+            onChange={(event) => setNote(event.target.value)}
+            className={inputClass}
+          />
+        </label>
+      </div>
+      {error && <Notice tone="error">{error}</Notice>}
+      <button type="submit" disabled={submitting} className={`${btnPrimary} self-start`}>
+        Conciliar
+      </button>
+    </form>
   );
 }

@@ -1,13 +1,16 @@
 import type {
+  BackupStatus,
   BetStatus,
   BetType,
   HouseStatus,
+  IntegrityCheckStatus,
   InvitationExpiry,
   InvitationStatus,
   MemberStatus,
   MovementDirection,
   MovementType,
   ProjectStatus,
+  ReconciliationStatus,
   StageStatus,
   WithdrawalStatus,
 } from '@letfer/shared';
@@ -95,6 +98,30 @@ export const WITHDRAWAL_STATUS_LABELS: Record<WithdrawalStatus, string> = {
   APPROVED: 'Aprobado',
   REJECTED: 'Rechazado',
   CANCELLED: 'Cancelado',
+};
+
+export const RECONCILIATION_STATUS_LABELS: Record<ReconciliationStatus, string> = {
+  MATCHED: 'Coincide',
+  DISCREPANCY: 'Discrepancia',
+  INVALIDATED: 'Invalidado',
+};
+
+export const INTEGRITY_CHECK_STATUS_LABELS: Record<IntegrityCheckStatus, string> = {
+  OK: 'Sin hallazgos',
+  ISSUES_FOUND: 'Hallazgos encontrados',
+};
+
+export const INTEGRITY_CHECK_LABELS: Record<string, string> = {
+  NEGATIVE_AVAILABLE: 'Disponible negativo',
+  SETTLEMENT_SHAPE: 'Forma de liquidación',
+  PENDING_BET_REFERENCES: 'Referencias de apuestas pendientes',
+  LEDGER_SHAPE: 'Forma del ledger',
+  CHECKPOINT_INVALIDATION: 'Invalidación de checkpoints',
+};
+
+export const BACKUP_STATUS_LABELS: Record<BackupStatus, string> = {
+  COMPLETED: 'Completado',
+  FAILED: 'Fallido',
 };
 
 export const DATE_FORMAT_LABELS = {
