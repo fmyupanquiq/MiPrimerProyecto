@@ -94,9 +94,11 @@ describe('sembrado del catálogo RBAC (PostgreSQL real)', () => {
       [
         'bets.view',
         'houses.view',
+        'integrity.view',
         'members.view',
         'movements.view',
         'project.view',
+        'reconciliations.view',
         'stages.view',
       ].sort(),
     );

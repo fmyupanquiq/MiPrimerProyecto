@@ -307,10 +307,12 @@ describe('proyectos: crear, listar, ver y editar (e2e, PostgreSQL real)', () => 
         [
           'bets.view',
           'houses.view',
+          'integrity.view',
           'members.view',
           'movements.view',
           'project.view',
           'projects.create',
+          'reconciliations.view',
           'stages.view',
         ].sort(),
       );
