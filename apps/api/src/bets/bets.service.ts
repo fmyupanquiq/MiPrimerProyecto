@@ -41,6 +41,7 @@ import {
   bets,
   financialMovements,
   houses,
+  reconciliationCheckpoints,
   stages,
   users,
   type BetRow,
@@ -177,6 +178,12 @@ export class BetsService {
         })
         .returning();
       await this.insertSelections(tx, bet!.id, input.selections);
+      await this.invalidateAffectedCheckpoints(
+        tx,
+        house.id,
+        bet!.placedAt,
+        'Se registró una apuesta nueva fechada en o antes de este checkpoint.',
+      );
 
       await this.audit.record(tx, {
         action: 'bet.created',
@@ -297,6 +304,25 @@ export class BetsService {
       );
       if (newSelections) await this.replaceSelections(tx, bet.id, newSelections);
 
+      // Solo la rama PENDING tiene efecto sobre el comprometido (§107.9); una edición de una
+      // apuesta ya liquidada no toca ninguna cifra financiera y no invalida nada (§74, §109.1.3).
+      if (bet.status === 'PENDING') {
+        await this.invalidateAffectedCheckpoints(
+          tx,
+          updated.houseId,
+          updated.placedAt,
+          'Se editó una apuesta pendiente fechada en o antes de este checkpoint.',
+        );
+        if (updated.houseId !== bet.houseId) {
+          await this.invalidateAffectedCheckpoints(
+            tx,
+            bet.houseId,
+            bet.placedAt,
+            'Se movió una apuesta pendiente a otra casa; afectaba al comprometido de esta.',
+          );
+        }
+      }
+
       const after = AUDITABLE_FIELDS.reduce<Record<string, unknown>>((acc, key) => {
         acc[key] = updated[key];
         return acc;
@@ -392,6 +418,15 @@ export class BetsService {
           .returning(),
         'bets',
       );
+      // El BET_PLACEMENT recién insertado está fechado en bet.placedAt (§107.3), que puede ser
+      // anterior a un checkpoint existente: esa fotografía asumía "sin ledger todavía" (D-B7) y
+      // acaba de dejar de ser cierta (§74, §109.1.3).
+      await this.invalidateAffectedCheckpoints(
+        tx,
+        bet.houseId,
+        bet.placedAt,
+        'Se liquidó una apuesta cuyo BET_PLACEMENT quedó fechado en o antes de este checkpoint.',
+      );
 
       await this.audit.record(tx, {
         action: 'bet.settled',
@@ -469,6 +504,16 @@ export class BetsService {
           version: nextVersion(bets.version),
         })
         .where(eq(bets.id, bet.id));
+      // Solo una apuesta PENDING tiene efecto sobre el comprometido al enviarse a la papelera
+      // (§107.3: una liquidada ya tiene su ledger insertado, inmutable, sin cambios); §74, §109.1.3.
+      if (bet.status === 'PENDING') {
+        await this.invalidateAffectedCheckpoints(
+          tx,
+          bet.houseId,
+          bet.placedAt,
+          'Se envió a la papelera una apuesta pendiente fechada en o antes de este checkpoint.',
+        );
+      }
       await this.audit.record(tx, {
         action: 'bet.trashed',
         entityType: 'bet',
@@ -495,6 +540,15 @@ export class BetsService {
           version: nextVersion(bets.version),
         })
         .where(eq(bets.id, bet.id));
+      // Simétrico a trash(): restaurar una PENDING vuelve a sumarla al comprometido (§74, §109.1.3).
+      if (bet.status === 'PENDING') {
+        await this.invalidateAffectedCheckpoints(
+          tx,
+          bet.houseId,
+          bet.placedAt,
+          'Se restauró una apuesta pendiente fechada en o antes de este checkpoint.',
+        );
+      }
       await this.audit.record(tx, {
         action: 'bet.restored',
         entityType: 'bet',
@@ -517,6 +571,36 @@ export class BetsService {
     if (bet.deletedAt !== null) {
       throw betConflict('Esta apuesta está en la papelera: restáurala antes de continuar.');
     }
+  }
+
+  /**
+   * Invalida los checkpoints de conciliación `MATCHED` de una casa cuya fotografía ya no es
+   * correcta (§74, §109.1.3, ADR 0016): una apuesta con efecto financiero potencial (colocada,
+   * editada, liquidada, eliminada o restaurada) fechada en o antes de `occurredAt` de un
+   * checkpoint significa que ese checkpoint asumía un estado que acaba de cambiar. Una apuesta
+   * posterior nunca invalida nada: es actividad nueva, no una corrección retroactiva. Se llama
+   * dentro de la misma transacción que la acción sobre la apuesta.
+   */
+  private async invalidateAffectedCheckpoints(
+    tx: DbExecutor,
+    houseId: string,
+    placedAt: Date,
+    reason: string,
+  ): Promise<void> {
+    await tx
+      .update(reconciliationCheckpoints)
+      .set({
+        status: 'INVALIDATED',
+        invalidatedAt: this.clock.now(),
+        invalidatedReason: reason,
+      })
+      .where(
+        and(
+          eq(reconciliationCheckpoints.houseId, houseId),
+          eq(reconciliationCheckpoints.status, 'MATCHED'),
+          gte(reconciliationCheckpoints.occurredAt, placedAt),
+        ),
+      );
   }
 
   /** `any` permite actuar sobre cualquier apuesta; sin él, hace falta `own` y ser quien la creó. */
