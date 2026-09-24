@@ -62,6 +62,18 @@ const envSchema = z.object({
 
   // Correo: en desarrollo los mensajes se escriben como archivos en esta carpeta.
   MAIL_OUTBOX_DIR: z.string().min(1).default('.data/outbox'),
+
+  // Backups (§37, §82, §109.3, D-B1 a D-B4): disparados desde dentro de la propia API, sin
+  // depender de un cron del sistema operativo ni de un proveedor concreto.
+  BACKUP_DIR: z.string().min(1).default('.data/backups'),
+  BACKUP_RETENTION_COUNT: positiveInt(30),
+  BACKUP_CHECK_INTERVAL_SECONDS: positiveInt(HOUR),
+  BACKUP_SCHEDULE_HOUR_UTC: z.coerce.number().int().min(0).max(23).default(3),
+  BACKUP_SCHEDULER_ENABLED: booleanFlag(true),
+  // D-B2: exige pg_dump/pg_restore en el entorno (ADR 0016); rutas configurables para no
+  // depender de que estén en el PATH.
+  PG_DUMP_PATH: z.string().min(1).default('pg_dump'),
+  PG_RESTORE_PATH: z.string().min(1).default('pg_restore'),
 });
 
 export interface AppConfig {
@@ -92,6 +104,15 @@ export interface AppConfig {
     authTtlMs: number;
   };
   mail: { outboxDir: string };
+  backup: {
+    dir: string;
+    retentionCount: number;
+    checkIntervalSeconds: number;
+    scheduleHourUtc: number;
+    schedulerEnabled: boolean;
+    pgDumpPath: string;
+    pgRestorePath: string;
+  };
 }
 
 /** Error de configuración: el mensaje nombra las variables inválidas, nunca sus valores. */
@@ -167,6 +188,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       authTtlMs: values.THROTTLE_AUTH_TTL_SECONDS * 1000,
     },
     mail: { outboxDir: values.MAIL_OUTBOX_DIR },
+    backup: {
+      dir: values.BACKUP_DIR,
+      retentionCount: values.BACKUP_RETENTION_COUNT,
+      checkIntervalSeconds: values.BACKUP_CHECK_INTERVAL_SECONDS,
+      scheduleHourUtc: values.BACKUP_SCHEDULE_HOUR_UTC,
+      schedulerEnabled: values.BACKUP_SCHEDULER_ENABLED,
+      pgDumpPath: values.PG_DUMP_PATH,
+      pgRestorePath: values.PG_RESTORE_PATH,
+    },
   };
 }
 

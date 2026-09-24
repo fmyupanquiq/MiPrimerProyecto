@@ -15,6 +15,9 @@ export default defineConfig({
       ARGON2_MEMORY_KIB: '1024',
       ARGON2_PASSES: '1',
       THROTTLE_ENABLED: 'false',
+      // El backup automático interno (§109.3) no debe correr de fondo durante las pruebas; cada
+      // prueba de backups lo habilita explícitamente donde corresponda.
+      BACKUP_SCHEDULER_ENABLED: 'false',
     },
   },
 });

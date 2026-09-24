@@ -19,6 +19,15 @@ describe('loadConfig', () => {
     expect(config.reauthWindowSeconds).toBe(300);
     expect(config.appOrigin).toBe('http://localhost:5173');
     expect(config.cookieSecure).toBe(false);
+    expect(config.backup).toEqual({
+      dir: '.data/backups',
+      retentionCount: 30,
+      checkIntervalSeconds: 3600,
+      scheduleHourUtc: 3,
+      schedulerEnabled: true,
+      pgDumpPath: 'pg_dump',
+      pgRestorePath: 'pg_restore',
+    });
   });
 
   it('permite sobrescribir parámetros mediante variables de entorno', () => {
