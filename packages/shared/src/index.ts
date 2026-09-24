@@ -1,9 +1,12 @@
 import { z } from 'zod';
 
 export * from './auth.js';
+export * from './backup.js';
 export * from './errors.js';
+export * from './integrity.js';
 export * from './password-policy.js';
 export * from './permissions.js';
+export * from './reconciliation.js';
 export * from './user.js';
 
 /** Nombre del producto. Sirve para verificar el enlace entre workspaces (Fase 0). */

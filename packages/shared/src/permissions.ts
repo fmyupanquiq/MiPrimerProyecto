@@ -85,6 +85,40 @@ export const PERMISSIONS = {
   },
   'bets.restore': { scope: 'PROJECT', description: 'Restaurar una apuesta desde la papelera' },
   'bets.move_stage': { scope: 'PROJECT', description: 'Mover una apuesta a otra etapa' },
+
+  // --- Confianza y recuperación (Fase 5.5, §32, §38, §74, §80, §109) ---
+  'reconciliations.view': {
+    scope: 'PROJECT',
+    description: 'Ver el historial de conciliaciones de las casas',
+  },
+  /** Único paso: declara el saldo oficial y compara (D-C1, D-C2). No mueve dinero. */
+  'reconciliations.confirm': {
+    scope: 'PROJECT',
+    description: 'Conciliar una casa contra su saldo oficial declarado',
+  },
+  'integrity.view': {
+    scope: 'PROJECT',
+    description: 'Ver el historial de verificaciones de integridad del proyecto',
+  },
+  /** Solo lectura: nunca corrige datos ni crea movimientos (D-I1, §38). */
+  'integrity.run': {
+    scope: 'PROJECT',
+    description: 'Ejecutar una verificación de integridad del ledger del proyecto',
+  },
+  /**
+   * Primer permiso con prefijo `system.*` (ADR 0016): capacidades de administración de toda la
+   * instancia, no de un proyecto. Reservados al Administrador Global (§37, §109.5).
+   */
+  'system.integrity.run': {
+    scope: 'GLOBAL',
+    description: 'Ejecutar una verificación de integridad sobre todos los proyectos',
+  },
+  'system.backups.view': { scope: 'GLOBAL', description: 'Ver las generaciones de backup' },
+  'system.backups.create': { scope: 'GLOBAL', description: 'Disparar un backup manual' },
+  'system.backups.restore': {
+    scope: 'GLOBAL',
+    description: 'Restaurar LetFer desde una generación de backup',
+  },
 } as const satisfies Record<string, PermissionDefinition>;
 
 export type PermissionCode = keyof typeof PERMISSIONS;
@@ -194,6 +228,11 @@ export const SYSTEM_ROLE_DEFINITIONS: readonly SystemRoleDefinition[] = [
       'bets.trash_any',
       'bets.restore',
       'bets.move_stage',
+      // Confianza y recuperación (Fase 5.5, §109.5: conciliar e investigar son de administrador).
+      'reconciliations.view',
+      'reconciliations.confirm',
+      'integrity.view',
+      'integrity.run',
     ],
   },
   {
@@ -215,6 +254,9 @@ export const SYSTEM_ROLE_DEFINITIONS: readonly SystemRoleDefinition[] = [
       'bets.create',
       'bets.update_own',
       'bets.trash_own',
+      // Confianza y recuperación (Fase 5.5): puede consultar, no conciliar ni verificar.
+      'reconciliations.view',
+      'integrity.view',
     ],
   },
   {
@@ -230,6 +272,9 @@ export const SYSTEM_ROLE_DEFINITIONS: readonly SystemRoleDefinition[] = [
       'houses.view',
       'movements.view',
       'bets.view',
+      // Confianza y recuperación (Fase 5.5): consulta, coherente con el resto de *.view.
+      'reconciliations.view',
+      'integrity.view',
     ],
   },
 ];

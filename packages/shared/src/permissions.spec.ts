@@ -81,6 +81,10 @@ describe('matriz de roles de sistema (§105.2)', () => {
         'bets.trash_any',
         'bets.restore',
         'bets.move_stage',
+        'reconciliations.view',
+        'reconciliations.confirm',
+        'integrity.view',
+        'integrity.run',
       ].sort(),
     );
     const readOnlyFinance = [
@@ -89,6 +93,8 @@ describe('matriz de roles de sistema (§105.2)', () => {
       'stages.view',
       'houses.view',
       'movements.view',
+      'reconciliations.view',
+      'integrity.view',
     ];
     // El Colaborador (§4.3, §88, Fase 4): solo consulta de etapas/casas/movimientos, pero
     // puede crear apuestas y editar/eliminar únicamente las propias (D-B5).
@@ -179,6 +185,30 @@ describe('matriz de roles de sistema (§105.2)', () => {
       expect(perms(role)).toEqual(
         expect.arrayContaining(['stages.view', 'houses.view', 'movements.view']),
       );
+    }
+  });
+
+  it('Fase 5.5 (§109.5): todo rol de proyecto ve conciliaciones e integridad; solo el Administrador de Proyecto las ejecuta', () => {
+    for (const role of ['COLLABORATOR', 'READER', 'PROJECT_ADMIN'] as const) {
+      expect(perms(role)).toEqual(
+        expect.arrayContaining(['reconciliations.view', 'integrity.view']),
+      );
+    }
+    for (const role of ['COLLABORATOR', 'READER'] as const) {
+      expect(perms(role)).not.toContain('reconciliations.confirm');
+      expect(perms(role)).not.toContain('integrity.run');
+    }
+  });
+
+  it('Fase 5.5: los permisos system.* son globales y solo los tiene el Administrador Global', () => {
+    const systemPermissions = PERMISSION_CODES.filter((code) => code.startsWith('system.'));
+    expect(systemPermissions.length).toBeGreaterThan(0);
+    for (const permission of systemPermissions) {
+      expect(PERMISSIONS[permission].scope).toBe('GLOBAL');
+      const holders = SYSTEM_ROLE_DEFINITIONS.filter((role) =>
+        role.permissions.includes(permission),
+      ).map((role) => role.key);
+      expect(holders).toEqual(['GLOBAL_ADMIN']);
     }
   });
 });
