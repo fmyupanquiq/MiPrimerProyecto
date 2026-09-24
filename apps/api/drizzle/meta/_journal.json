@@ -141,6 +141,20 @@
       "when": 1790165915299,
       "tag": "0019_bet_triggers",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1790214186896,
+      "tag": "0020_normal_wonder_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1790214194787,
+      "tag": "0021_trust_and_recovery_triggers",
+      "breakpoints": true
     }
   ]
 }
