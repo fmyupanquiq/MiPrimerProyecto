@@ -19,6 +19,8 @@ export const ErrorCode = {
   LAST_GLOBAL_ADMIN: 'LAST_GLOBAL_ADMIN',
   /** La cuenta es propietaria de proyectos: hay que transferirlos primero (§111.3). */
   OWNS_PROJECTS: 'OWNS_PROJECTS',
+  /** Una corrección financiera dejaría una casa con saldo negativo en algún punto (§112.4). */
+  CORRECTION_CONFLICT: 'CORRECTION_CONFLICT',
   INVALID_TOKEN: 'INVALID_TOKEN',
   RATE_LIMITED: 'RATE_LIMITED',
   PAYLOAD_TOO_LARGE: 'PAYLOAD_TOO_LARGE',

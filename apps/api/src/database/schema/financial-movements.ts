@@ -1,6 +1,16 @@
 import { MOVEMENT_DIRECTIONS, MOVEMENT_TYPES } from '@letfer/shared';
 import { sql } from 'drizzle-orm';
-import { check, index, pgEnum, pgTable, text, uuid } from 'drizzle-orm/pg-core';
+import {
+  check,
+  index,
+  pgEnum,
+  pgTable,
+  text,
+  uniqueIndex,
+  uuid,
+  type AnyPgColumn,
+} from 'drizzle-orm/pg-core';
+import { betCorrections } from './bet-corrections.js';
 import { money, newId, primaryId, timestamptz } from './columns.js';
 import { houses } from './houses.js';
 import { projects } from './projects.js';
@@ -50,6 +60,19 @@ export const financialMovements = pgTable(
     toHouseId: uuid('to_house_id').references(() => houses.id, { onDelete: 'restrict' }),
     amount: money('amount').notNull(),
     reason: text('reason'),
+    /**
+     * Solo en `REVERSAL` (§112.1): la fila que anula. Una fila se anula una sola vez (índice
+     * único parcial) y un disparador exige que coincidan proyecto, casa, monto, etapa, operación y
+     * fecha efectiva, con dirección opuesta.
+     */
+    reversesMovementId: uuid('reverses_movement_id').references(
+      (): AnyPgColumn => financialMovements.id,
+      { onDelete: 'restrict' },
+    ),
+    /** Corrección de apuesta que originó la fila (reversión o re-registro); `null` en el resto. */
+    correctionId: uuid('correction_id').references(() => betCorrections.id, {
+      onDelete: 'restrict',
+    }),
     /** Cuándo ocurrió el efecto financiero (§16); por defecto, al registrarlo. */
     occurredAt: timestamptz('occurred_at').notNull().defaultNow(),
     createdAt: timestamptz('created_at').notNull().defaultNow(),
@@ -64,6 +87,10 @@ export const financialMovements = pgTable(
     index('financial_movements_from_house_idx').on(table.fromHouseId),
     index('financial_movements_to_house_idx').on(table.toHouseId),
     index('financial_movements_operation_idx').on(table.operationId),
+    uniqueIndex('financial_movements_one_reversal_per_row')
+      .on(table.reversesMovementId)
+      .where(sql`${table.reversesMovementId} IS NOT NULL`),
+    index('financial_movements_correction_idx').on(table.correctionId),
     check('financial_movements_amount_positive', sql`${table.amount} > 0`),
     check(
       'financial_movements_house_shape',
@@ -82,12 +109,17 @@ export const financialMovements = pgTable(
       sql`(${table.type} IN ('INITIAL_CAPITAL', 'DEPOSIT') AND ${table.direction} = 'CREDIT')
           OR (${table.type} IN ('WITHDRAWAL', 'BET_PLACEMENT') AND ${table.direction} = 'DEBIT')
           OR (${table.type} = 'BET_SETTLEMENT' AND ${table.direction} = 'CREDIT')
-          OR (${table.type} = 'EXTRAORDINARY' AND ${table.direction} IN ('CREDIT', 'DEBIT'))
+          OR (${table.type} IN ('EXTRAORDINARY', 'REVERSAL')
+            AND ${table.direction} IN ('CREDIT', 'DEBIT'))
           OR (${table.type} = 'TRANSFER' AND ${table.direction} IS NULL)`,
     ),
     check(
+      'financial_movements_reversal_shape',
+      sql`(${table.type} = 'REVERSAL') = (${table.reversesMovementId} IS NOT NULL)`,
+    ),
+    check(
       'financial_movements_reason_required',
-      sql`${table.type} NOT IN ('WITHDRAWAL', 'EXTRAORDINARY')
+      sql`${table.type} NOT IN ('WITHDRAWAL', 'EXTRAORDINARY', 'REVERSAL')
           OR (${table.reason} IS NOT NULL AND length(btrim(${table.reason})) > 0)`,
     ),
   ],

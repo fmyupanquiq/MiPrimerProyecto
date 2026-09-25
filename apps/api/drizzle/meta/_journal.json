@@ -211,6 +211,20 @@
       "when": 1790301032320,
       "tag": "0029_maintenance_runs_immutable",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1790321433138,
+      "tag": "0030_loving_sleepwalker",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1790321454104,
+      "tag": "0031_bet_corrections_immutable_and_reversal_trigger",
+      "breakpoints": true
     }
   ]
 }

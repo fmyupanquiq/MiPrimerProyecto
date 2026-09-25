@@ -93,6 +93,7 @@ export const MOVEMENT_TYPE_LABELS: Record<MovementType, string> = {
   EXTRAORDINARY: 'Extraordinario',
   BET_PLACEMENT: 'Apuesta (colocación)',
   BET_SETTLEMENT: 'Apuesta (liquidación)',
+  REVERSAL: 'Reversión',
 };
 
 export const BET_TYPE_LABELS: Record<BetType, string> = {

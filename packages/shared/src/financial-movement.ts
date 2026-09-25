@@ -15,6 +15,8 @@ export const MOVEMENT_TYPES = [
   'EXTRAORDINARY',
   'BET_PLACEMENT',
   'BET_SETTLEMENT',
+  /** Anula una fila vigente del ledger (§112.1): mismo monto y casa, dirección opuesta. */
+  'REVERSAL',
 ] as const;
 export type MovementType = (typeof MOVEMENT_TYPES)[number];
 
