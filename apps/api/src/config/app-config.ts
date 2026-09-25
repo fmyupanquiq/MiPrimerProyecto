@@ -74,6 +74,13 @@ const envSchema = z.object({
   // depender de que estén en el PATH.
   PG_DUMP_PATH: z.string().min(1).default('pg_dump'),
   PG_RESTORE_PATH: z.string().min(1).default('pg_restore'),
+  // Mantenimiento (§111.6, ADR 0018): purga diaria de registros auxiliares caducados. Solo
+  // sesiones, intentos de acceso y tokens de recuperación con más de N días desde que dejaron de
+  // valer; nunca datos de negocio ni auditoría.
+  MAINTENANCE_RETENTION_DAYS: positiveInt(30),
+  MAINTENANCE_CHECK_INTERVAL_SECONDS: positiveInt(HOUR),
+  MAINTENANCE_SCHEDULE_HOUR_UTC: z.coerce.number().int().min(0).max(23).default(4),
+  MAINTENANCE_SCHEDULER_ENABLED: booleanFlag(true),
   // Tickets: los backups también empaquetan este directorio con `tar` (ADR 0017).
   TAR_PATH: z.string().min(1).default('tar'),
 
@@ -123,6 +130,12 @@ export interface AppConfig {
     pgRestorePath: string;
     /** Empaqueta `tickets.dir` junto al volcado en cada generación (ADR 0017). */
     tarPath: string;
+  };
+  maintenance: {
+    retentionDays: number;
+    checkIntervalSeconds: number;
+    scheduleHourUtc: number;
+    schedulerEnabled: boolean;
   };
   tickets: {
     dir: string;
@@ -222,6 +235,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       pgDumpPath: values.PG_DUMP_PATH,
       pgRestorePath: values.PG_RESTORE_PATH,
       tarPath: values.TAR_PATH,
+    },
+    maintenance: {
+      retentionDays: values.MAINTENANCE_RETENTION_DAYS,
+      checkIntervalSeconds: values.MAINTENANCE_CHECK_INTERVAL_SECONDS,
+      scheduleHourUtc: values.MAINTENANCE_SCHEDULE_HOUR_UTC,
+      schedulerEnabled: values.MAINTENANCE_SCHEDULER_ENABLED,
     },
     tickets: {
       dir: values.TICKETS_DIR,

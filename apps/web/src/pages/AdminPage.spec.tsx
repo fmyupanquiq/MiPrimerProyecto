@@ -143,3 +143,92 @@ describe('administración de la instancia (§37, §38, §109)', () => {
     });
   });
 });
+
+describe('mantenimiento: purga de registros auxiliares (§111.6)', () => {
+  const MAINT = [...ADMIN_PERMISSIONS, 'system.maintenance.run'];
+  const run = (overrides: Record<string, unknown> = {}) => ({
+    id: 'm1',
+    trigger: 'MANUAL',
+    runBy: { id: ANA.id, name: 'Ana Pérez' },
+    startedAt: '2026-06-01T12:00:00.000Z',
+    finishedAt: '2026-06-01T12:00:01.000Z',
+    status: 'COMPLETED',
+    retentionDays: 30,
+    purged: { sessions: 3, loginAttempts: 1, passwordResetTokens: 2 },
+    errorMessage: null,
+    ...overrides,
+  });
+
+  it('muestra el historial, con quién o qué la lanzó', async () => {
+    open(MAINT, {
+      'GET /admin/maintenance/runs': {
+        status: 200,
+        body: [run({ id: 'm2', trigger: 'SCHEDULED', runBy: null }), run({ id: 'm1' })],
+      },
+    });
+    renderApp('/admin');
+    const list = await screen.findByRole('list', { name: 'Historial de mantenimiento' });
+    expect(within(list).getByText(/Automática \(diaria\)/)).toBeTruthy();
+    expect(within(list).getByText(/Ana Pérez/)).toBeTruthy();
+    expect(
+      within(list).getAllByText('3 sesiones, 1 intentos de acceso y 2 enlaces de recuperación'),
+    ).toHaveLength(2);
+  });
+
+  it('purga ahora y muestra cuánto se eliminó', async () => {
+    let done = false;
+    const { calls } = open(MAINT, {
+      'GET /admin/maintenance/runs': () => ({ status: 200, body: done ? [run()] : [] }),
+      'POST /admin/maintenance/purge': () => {
+        done = true;
+        return { status: 200, body: run() };
+      },
+    });
+    renderApp('/admin');
+    expect(await screen.findByText('Todavía no se ha ejecutado ninguna purga.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Purgar ahora' }));
+    expect(
+      await screen.findByText(
+        'Purga completada: 3 sesiones, 1 intentos de acceso y 2 enlaces de recuperación.',
+      ),
+    ).toBeTruthy();
+    expect(await screen.findByRole('list', { name: 'Historial de mantenimiento' })).toBeTruthy();
+    expect(calls.filter((call) => call.path === '/admin/maintenance/purge')).toHaveLength(1);
+    // No se pide contraseña: solo elimina registros auxiliares caducados.
+    expect(calls.some((call) => call.path === '/auth/reauth')).toBe(false);
+  });
+
+  it('avisa si la purga falló y no se eliminó nada', async () => {
+    open(MAINT, {
+      'GET /admin/maintenance/runs': { status: 200, body: [] },
+      'POST /admin/maintenance/purge': {
+        status: 200,
+        body: run({
+          status: 'FAILED',
+          purged: { sessions: 0, loginAttempts: 0, passwordResetTokens: 0 },
+          errorMessage: 'La purga falló y no se eliminó nada. Revisa los registros del servidor.',
+        }),
+      },
+    });
+    renderApp('/admin');
+    fireEvent.click(await screen.findByRole('button', { name: 'Purgar ahora' }));
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    expect(screen.getByText(/no se eliminó nada/)).toBeTruthy();
+  });
+
+  it('sin system.maintenance.run la sección no aparece ni consulta la API', async () => {
+    const { calls } = open(ADMIN_PERMISSIONS);
+    renderApp('/admin');
+    await screen.findByRole('heading', { name: 'Backups' });
+    expect(screen.queryByRole('heading', { name: 'Mantenimiento' })).toBeNull();
+    expect(calls.some((call) => call.path.startsWith('/admin/maintenance'))).toBe(false);
+  });
+
+  it('con solo el permiso de mantenimiento la pantalla no queda vacía', async () => {
+    open(['projects.create', 'system.maintenance.run'], {
+      'GET /admin/maintenance/runs': { status: 200, body: [] },
+    });
+    renderApp('/admin');
+    expect(await screen.findByRole('heading', { name: 'Mantenimiento' })).toBeTruthy();
+  });
+});

@@ -1,7 +1,12 @@
-import type { BackupGeneration, IntegrityCheckRunSummary } from '@letfer/shared';
+import type {
+  BackupGeneration,
+  IntegrityCheckRunSummary,
+  MaintenanceRunSummary,
+} from '@letfer/shared';
 import { type FormEvent, useState } from 'react';
 import { adminIntegrityApi } from '../api/integrity.js';
 import { backupsApi } from '../api/backups.js';
+import { maintenanceApi } from '../api/maintenance.js';
 import { describeApiError } from '../api/errors.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { isReauthCancelled, useReauth } from '../auth/ReauthContext.js';
@@ -11,6 +16,8 @@ import {
   formatDateTime,
   INTEGRITY_CHECK_LABELS,
   INTEGRITY_CHECK_STATUS_LABELS,
+  MAINTENANCE_STATUS_LABELS,
+  MAINTENANCE_TRIGGER_LABELS,
 } from '../labels.js';
 import { Badge, btn, btnDanger, btnPrimary, inputClass, Notice, Section } from '../ui.js';
 
@@ -28,15 +35,91 @@ export function AdminPage() {
   const { can } = useAuth();
   const showIntegrity = can('system.integrity.run');
   const showBackups = can('system.backups.view') || can('system.backups.create');
-  if (!showIntegrity && !showBackups) {
+  const showMaintenance = can('system.maintenance.run');
+  if (!showIntegrity && !showBackups && !showMaintenance) {
     return <Notice tone="info">No tienes permiso para ver esta sección.</Notice>;
   }
   return (
     <>
       {showIntegrity && <GlobalIntegritySection />}
       {showBackups && <BackupsSection />}
+      {showMaintenance && <MaintenanceSection />}
     </>
   );
+}
+
+/**
+ * Mantenimiento (§111.6, ADR 0018): purga de registros auxiliares caducados. Solo sesiones,
+ * intentos de acceso y tokens de recuperación con más de N días de haber dejado de valer; nunca
+ * datos de negocio, ledger ni auditoría. Corre a diario por sí sola y también se puede lanzar aquí.
+ */
+function MaintenanceSection() {
+  const history = useLoad('admin-maintenance', () => maintenanceApi.runs());
+  const [running, setRunning] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function run() {
+    setRunning(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await maintenanceApi.purge();
+      if (result.status === 'FAILED') setError(result.errorMessage ?? 'La purga falló.');
+      else setNotice(`Purga completada: ${purgedText(result.purged)}.`);
+      history.reload();
+    } catch (caught) {
+      setError(describeApiError(caught));
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  return (
+    <Section title="Mantenimiento">
+      <p className="text-sm text-slate-500">
+        Elimina sesiones, intentos de acceso y enlaces de recuperación caducados hace más de{' '}
+        {history.data?.[0]?.retentionDays ?? 30} días. No toca proyectos, finanzas, invitaciones ni
+        la auditoría. Se ejecuta sola una vez al día.
+      </p>
+      <button
+        type="button"
+        className={`${btnPrimary} self-start`}
+        disabled={running}
+        onClick={() => void run()}
+      >
+        {running ? 'Purgando…' : 'Purgar ahora'}
+      </button>
+      {notice && <Notice tone="success">{notice}</Notice>}
+      {error && <Notice tone="error">{error}</Notice>}
+      {history.error && <Notice tone="error">{history.error}</Notice>}
+      {history.data && history.data.length === 0 && (
+        <p className="text-sm text-slate-500">Todavía no se ha ejecutado ninguna purga.</p>
+      )}
+      {history.data && history.data.length > 0 && (
+        <ul className="flex flex-col gap-2" aria-label="Historial de mantenimiento">
+          {history.data.map((item: MaintenanceRunSummary) => (
+            <li key={item.id} className="rounded border border-slate-200 p-3 text-sm">
+              <p className="flex flex-wrap items-center gap-2 font-medium">
+                <Badge tone={item.status === 'COMPLETED' ? 'green' : 'red'}>
+                  {MAINTENANCE_STATUS_LABELS[item.status]}
+                </Badge>
+                {formatDateTime(item.startedAt)} ·{' '}
+                {item.runBy ? item.runBy.name : MAINTENANCE_TRIGGER_LABELS[item.trigger]}
+              </p>
+              <p className="text-slate-600">
+                {item.status === 'FAILED' ? item.errorMessage : purgedText(item.purged)}
+              </p>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Section>
+  );
+}
+
+function purgedText(purged: MaintenanceRunSummary['purged']): string {
+  return `${purged.sessions} sesiones, ${purged.loginAttempts} intentos de acceso y ${purged.passwordResetTokens} enlaces de recuperación`;
 }
 
 function GlobalIntegritySection() {

@@ -6,6 +6,7 @@ export * from './auth.js';
 export * from './backup.js';
 export * from './errors.js';
 export * from './integrity.js';
+export * from './maintenance.js';
 export * from './password-policy.js';
 export * from './permissions.js';
 export * from './reconciliation.js';

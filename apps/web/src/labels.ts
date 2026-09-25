@@ -7,6 +7,8 @@ import type {
   IntegrityCheckStatus,
   InvitationExpiry,
   InvitationStatus,
+  MaintenanceStatus,
+  MaintenanceTrigger,
   MemberStatus,
   MovementDirection,
   MovementType,
@@ -136,6 +138,16 @@ export const INTEGRITY_CHECK_LABELS: Record<string, string> = {
   PENDING_BET_REFERENCES: 'Referencias de apuestas pendientes',
   LEDGER_SHAPE: 'Forma del ledger',
   CHECKPOINT_INVALIDATION: 'Invalidación de checkpoints',
+};
+
+export const MAINTENANCE_STATUS_LABELS: Record<MaintenanceStatus, string> = {
+  COMPLETED: 'Completada',
+  FAILED: 'Fallida',
+};
+
+export const MAINTENANCE_TRIGGER_LABELS: Record<MaintenanceTrigger, string> = {
+  MANUAL: 'Manual',
+  SCHEDULED: 'Automática (diaria)',
 };
 
 export const BACKUP_STATUS_LABELS: Record<BackupStatus, string> = {

@@ -18,6 +18,8 @@ export default defineConfig({
       // El backup automático interno (§109.3) no debe correr de fondo durante las pruebas; cada
       // prueba de backups lo habilita explícitamente donde corresponda.
       BACKUP_SCHEDULER_ENABLED: 'false',
+      // Igual para la purga diaria de registros auxiliares (§111.6).
+      MAINTENANCE_SCHEDULER_ENABLED: 'false',
     },
   },
 });

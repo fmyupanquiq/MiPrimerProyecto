@@ -20,3 +20,4 @@ export * from './integrity-check-runs.js';
 export * from './tickets.js';
 export * from './ticket-analyses.js';
 export * from './account-deletion-requests.js';
+export * from './maintenance-runs.js';
