@@ -2907,14 +2907,22 @@ fechada después del checkpoint no lo invalida. Se conservan siempre, con el mot
 
 Los retornos no confirmados participan en la ganancia/pérdida, el ROI y el Yield con su valor
 calculado, y el dashboard muestra siempre cuántas apuestas y qué monto están en ese estado. Las
-cifras monetarias se devuelven siempre con dos decimales. Criterio de coherencia: la suma de la
-ganancia/pérdida del dashboard sin filtros es igual al efecto neto de las apuestas en el ledger.
+cifras monetarias se devuelven siempre con dos decimales. El monto apostado y la ganancia/pérdida
+(y, por tanto, el Yield y el ROI) se calculan desde el ledger, no desde valores derivados de la
+apuesta que pudieran quedar desactualizados: la ganancia de una apuesta es el efecto neto de sus
+filas (colocación, liquidación y reversiones) y su monto apostado, su colocación vigente. Criterio de
+coherencia: la suma de la ganancia/pérdida del dashboard sin filtros es igual al efecto neto de las
+apuestas en el ledger, y la curva de rendimiento termina en esa misma cifra.
 
 #### 112.7 Verificación de integridad (§109.2)
 
-Se amplía con: efecto neto del ledger igual a la ganancia/pérdida de cada apuesta liquidada; efecto
-neto cero para pendientes y papelera; toda reversión apunta a una fila vigente y no se repite;
-cada corrección tiene su registro. Sigue siendo de solo lectura.
+Se amplía con: efecto neto del ledger igual a la ganancia/pérdida de cada apuesta liquidada (`BET_LEDGER_NET`);
+efecto neto cero y ninguna fila vigente para pendientes y papelera, y las filas vigentes esperadas
+para las liquidadas, contando solo las no anuladas (`SETTLEMENT_SHAPE`); toda reversión de una
+apuesta lleva la corrección de esa misma apuesta (`REVERSAL_INTEGRITY`; que una fila no se anule dos
+veces lo garantiza la base de datos); y un checkpoint `MATCHED` no puede coexistir con una fila del
+ledger escrita después de crearlo y fechada antes de él (`CHECKPOINT_INVALIDATION`). Sigue siendo de
+solo lectura.
 
 #### 112.8 Permisos nuevos
 

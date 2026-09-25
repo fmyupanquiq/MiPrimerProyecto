@@ -251,6 +251,33 @@ filtros = Σ efecto neto de apuestas en el ledger = variación de saldos.
   confirmar, con operaciones rechazadas incluidas, comprueba tras cada paso saldo del ledger = saldo
   del dashboard = saldo conciliable, y al final que el efecto neto de cada apuesta es su ganancia.
 
+### 8.5.4 (integridad, dashboard, ROI y Yield)
+
+- **El dashboard sale del ledger.** El monto apostado y la ganancia/pérdida de cada apuesta se calculan
+  con sus filas del ledger (colocación vigente y efecto neto, reversiones incluidas), no con columnas
+  de la apuesta. Yield y ROI dependen de esas cifras y del capital (que ya salía del ledger). Adulterar a
+  mano el retorno o el monto de una apuesta no mueve el dashboard y lo delata la integridad
+  (`BET_LEDGER_NET`). La curva de rendimiento cuenta también las `REVERSAL` de apuestas: sin ello
+  terminaba en una cifra distinta tras corregir o reabrir (defecto encontrado y corregido en esta
+  subfase).
+- **Aviso de retornos no confirmados (D-A6).** `DashboardStatus.retornosPorConfirmar` y
+  `DashboardAnalysis.unconfirmedReturns { count, profitLoss }` (respetan los filtros del análisis). Los
+  provisionales ya cuentan en P/L, Yield y ROI; la web mostrará el aviso en la 8.5.5.
+- **Cifras con dos decimales (D-A13, F7).** Todas las cifras monetarias del análisis y sus desgloses se
+  normalizan.
+- **Integridad.** Nuevas comprobaciones `BET_LEDGER_NET` y `REVERSAL_INTEGRITY`; `SETTLEMENT_SHAPE`
+  cuenta filas vigentes (con reversiones, el recuento de filas `BET_SETTLEMENT` ya no servía);
+  `CHECKPOINT_INVALIDATION` gana una vía basada en el ledger (fila escrita después del checkpoint y
+  fechada antes de él, con comparación estricta para no marcar operaciones del mismo instante) y la
+  vía antigua, basada en `financial_fields_updated_at`, queda limitada a apuestas pendientes (en una
+  liquidada manda el ledger, y una corrección fechada después del checkpoint no debe invalidarlo). El
+  disparador `bump_bet_financial_timestamp` no se amplía.
+- **Criterio de aceptación.** El helper `assertFinancialInvariant` comprueba ahora, tras cada paso de
+  todas las secuencias (incluida la pseudoaleatoria): ledger = dashboard = conciliable; ledger =
+  capital + movimientos + P/L según las apuestas; monto apostado, P/L, Yield y ROI del dashboard
+  iguales a lo que dicen las apuestas; curva de rendimiento terminada en ese P/L; aviso de retornos
+  por confirmar igual a las ganadas provisionales; y verificación de integridad sin hallazgos.
+
 ## Plan de subfases
 
 8.5.0 línea base y documentación · 8.5.1 migraciones, motor y validador ·
