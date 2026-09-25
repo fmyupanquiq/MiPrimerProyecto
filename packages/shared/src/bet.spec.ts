@@ -4,6 +4,9 @@ import {
   isStakeString,
   moveBetStageSchema,
   confirmBetReturnSchema,
+  correctSettlementSchema,
+  reopenBetSchema,
+  restoreBetSchema,
   settleBetSchema,
   trashBetSchema,
   updateBetSchema,
@@ -133,5 +136,49 @@ describe('trashBetSchema', () => {
   it('el motivo es opcional', () => {
     expect(trashBetSchema.safeParse({}).success).toBe(true);
     expect(trashBetSchema.safeParse({ reason: 'Duplicada' }).success).toBe(true);
+  });
+});
+
+describe('correctSettlementSchema (§112.3, D-A8)', () => {
+  const base = { reason: 'Se liquidó por error', version: 3 };
+
+  it('exige motivo, versión y al menos un cambio', () => {
+    expect(correctSettlementSchema.safeParse({ ...base, status: 'LOST' }).success).toBe(true);
+    expect(correctSettlementSchema.safeParse({ ...base }).success).toBe(false);
+    expect(correctSettlementSchema.safeParse({ status: 'LOST', version: 3 }).success).toBe(false);
+    expect(
+      correctSettlementSchema.safeParse({ ...base, reason: '   ', status: 'LOST' }).success,
+    ).toBe(false);
+    expect(correctSettlementSchema.safeParse({ reason: 'x', status: 'LOST' }).success).toBe(false);
+  });
+
+  it('acepta cada campo corregible por separado y no el retorno en una perdida', () => {
+    for (const change of [
+      { officialAmount: '25.00' },
+      { officialRealizedReturn: '41.00' },
+      { settledAt: '2026-06-01T14:00:00.000Z' },
+      { placedAt: '2026-06-01T13:00:00.000Z' },
+      { placedTimeKnown: false },
+      { settledTimeKnown: false },
+    ]) {
+      expect(correctSettlementSchema.safeParse({ ...base, ...change }).success).toBe(true);
+    }
+    expect(
+      correctSettlementSchema.safeParse({ ...base, status: 'LOST', officialRealizedReturn: '5.00' })
+        .success,
+    ).toBe(false);
+    expect(correctSettlementSchema.safeParse({ ...base, officialAmount: '0.00' }).success).toBe(
+      false,
+    );
+  });
+
+  it('reabrir exige motivo; restaurar admite un cuerpo vacío', () => {
+    expect(reopenBetSchema.safeParse({ reason: 'Error', version: 2 }).success).toBe(true);
+    expect(reopenBetSchema.safeParse({ reason: '  ', version: 2 }).success).toBe(false);
+    expect(reopenBetSchema.safeParse({ version: 2 }).success).toBe(false);
+    expect(restoreBetSchema.parse(undefined)).toEqual({});
+    expect(restoreBetSchema.parse({ reason: ' Era correcta ' })).toEqual({
+      reason: 'Era correcta',
+    });
   });
 });

@@ -220,13 +220,12 @@ describe('retorno calculado y retorno oficial (e2e, PostgreSQL real, §77, §112
       expect(analysis).toMatchObject({ profitLoss: '19.00', counts: { won: 1 } });
     });
 
-    it('una colocación fechada antes del saldo que la respalda se rechaza al liquidar (línea de tiempo, §74)', async () => {
-      const bet = await newBet({ placedAt: '2026-05-01T10:00:00.000Z' }); // antes del capital inicial
-      const response = await settle('admin', bet, { status: 'LOST' });
-      expect(response.status).toBe(409);
-      expect(bodyOf(response).code).toBe('CORRECTION_CONFLICT');
-      expect((await betRow(bet.id)).status).toBe('PENDING');
-      expect(await rowsOf(bet.id)).toHaveLength(0);
+    it('liquidar una pendiente antigua no introduce conflictos: su reserva ya ocupaba ese saldo (§74)', async () => {
+      const bet = await newBet({ placedAt: '2026-05-01T10:00:00.000Z' });
+      const settled = (await settle('admin', bet, { status: 'LOST' }).expect(200))
+        .body as BetDetail;
+      expect(settled.status).toBe('LOST');
+      await invariant();
     });
   });
 

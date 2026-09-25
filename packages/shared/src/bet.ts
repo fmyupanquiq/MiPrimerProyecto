@@ -1,5 +1,7 @@
 import { Decimal } from 'decimal.js';
 import { z } from 'zod';
+import type { BetCorrectionKind } from './bet-correction.js';
+import type { MovementType } from './financial-movement.js';
 import { moneyInputSchema, type MoneyString } from './money.js';
 import { oddsInputSchema, type OddsString } from './odds.js';
 import type { TicketSummary } from './ticket.js';
@@ -156,6 +158,66 @@ export interface ReturnMismatchDetails {
   delta: MoneyString;
 }
 
+const requiredReasonSchema = z.string().trim().min(1, 'Indica el motivo.').max(REASON_MAX_LENGTH);
+
+/**
+ * Corrige una apuesta ya liquidada (§112.3, D-A8): estado, monto oficial, retorno oficial y fechas.
+ * Reescribe su efecto en el ledger con reversiones. Motivo obligatorio, versión y reautenticación.
+ * Cambiar de casa, etapa, selecciones o cuota se hace reabriéndola. El retorno no se indica en una
+ * perdida; en un cash out debe existir (el actual o el indicado).
+ */
+export const correctSettlementSchema = z
+  .object({
+    status: z.enum(['WON', 'LOST', 'VOID', 'CASHOUT']).optional(),
+    officialAmount: moneyInputSchema({ positive: true }).optional(),
+    officialRealizedReturn: moneyInputSchema().optional(),
+    settledAt: dateTimeSchema.optional(),
+    settledTimeKnown: z.boolean().optional(),
+    placedAt: dateTimeSchema.optional(),
+    placedTimeKnown: z.boolean().optional(),
+    reason: requiredReasonSchema,
+    version: z.number().int().positive(),
+  })
+  .superRefine((value, ctx) => {
+    const changes = [
+      value.status,
+      value.officialAmount,
+      value.officialRealizedReturn,
+      value.settledAt,
+      value.settledTimeKnown,
+      value.placedAt,
+      value.placedTimeKnown,
+    ];
+    if (changes.every((entry) => entry === undefined)) {
+      ctx.addIssue({ code: 'custom', path: [], message: 'Indica al menos un cambio.' });
+    }
+    if (value.status === 'LOST' && value.officialRealizedReturn !== undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['officialRealizedReturn'],
+        message: 'Una apuesta perdida no tiene retorno: no indiques un monto.',
+      });
+    }
+  });
+export type CorrectSettlementInput = z.infer<typeof correctSettlementSchema>;
+
+/** Reabre una apuesta liquidada a `PENDING` (D-A4): revierte su efecto en el ledger. */
+export const reopenBetSchema = z.object({
+  reason: requiredReasonSchema,
+  version: z.number().int().positive(),
+});
+export type ReopenBetInput = z.infer<typeof reopenBetSchema>;
+
+/**
+ * Restaura una apuesta de la papelera (§26). El motivo es obligatorio solo si estaba liquidada
+ * (D-A11): el servidor lo exige; una pendiente lo ignora.
+ */
+export const restoreBetSchema = z.preprocess(
+  (value) => value ?? {},
+  z.object({ reason: z.string().trim().max(REASON_MAX_LENGTH).optional() }),
+);
+export type RestoreBetInput = { reason?: string | undefined };
+
 /** Mueve una apuesta a otra etapa del proyecto (§25: solo administradores autorizados). */
 export const moveBetStageSchema = z.object({
   stageId: z.uuid(),
@@ -296,4 +358,98 @@ export interface ReturnDifferencesReport {
   byHouse: ReturnDifferencesByHouse[];
   /** Solo las que difieren, las más recientes primero (máximo 200). */
   items: ReturnDifferenceItem[];
+}
+
+/** Una fila del ledger que una corrección escribiría (o revertiría). */
+export interface CorrectionLine {
+  type: 'BET_PLACEMENT' | 'BET_SETTLEMENT' | 'REVERSAL';
+  direction: 'CREDIT' | 'DEBIT';
+  houseId: string;
+  houseName: string;
+  amount: MoneyString;
+  /** Fecha efectiva; en una reversión, la de la fila que anula (D-A2). */
+  occurredAt: string;
+  /** Solo en una reversión: el tipo de la fila que anula. */
+  reverses?: 'BET_PLACEMENT' | 'BET_SETTLEMENT';
+}
+
+export interface CorrectionBalanceImpact {
+  houseId: string;
+  houseName: string;
+  balanceBefore: MoneyString;
+  balanceAfter: MoneyString;
+  availableBefore: MoneyString;
+  availableAfter: MoneyString;
+}
+
+export interface CorrectionCheckpointImpact {
+  id: string;
+  houseId: string;
+  houseName: string;
+  occurredAt: string;
+}
+
+/** Un saldo bruto negativo que la corrección provocaría en el historial (§74, D-A5). */
+export interface CorrectionConflictInfo {
+  houseId: string;
+  houseName: string;
+  occurredAt: string;
+  balance: MoneyString;
+  /** Filas reales del ledger que actúan en ese instante. */
+  movementIds: string[];
+  /** Apuestas o retiros pendientes cuya reserva pesa en ese instante (comprometido histórico). */
+  pendingIds: string[];
+}
+
+/**
+ * Vista previa de una corrección, sin efectos (§112.3): el mismo código que la aplica, ejecutado y
+ * revertido. `valid` es falso si la corrección se rechazaría (`conflicts` o `availabilityProblems`).
+ */
+export interface CorrectionPreview {
+  kind: BetCorrectionKind;
+  valid: boolean;
+  /** `false` si el ledger ya refleja el efecto deseado (no habría filas nuevas). */
+  ledgerChanged: boolean;
+  reversals: CorrectionLine[];
+  inserts: CorrectionLine[];
+  balances: CorrectionBalanceImpact[];
+  checkpointsToInvalidate: CorrectionCheckpointImpact[];
+  conflicts: CorrectionConflictInfo[];
+  availabilityProblems: { houseId: string; houseName: string; available: MoneyString }[];
+  profitLossBefore: MoneyString | null;
+  profitLossAfter: MoneyString | null;
+  before: Record<string, unknown>;
+  after: Record<string, unknown>;
+}
+
+export interface BetLedgerEntry {
+  id: string;
+  type: MovementType;
+  direction: 'CREDIT' | 'DEBIT' | null;
+  houseId: string | null;
+  houseName: string | null;
+  amount: MoneyString;
+  occurredAt: string;
+  createdAt: string;
+  reversesMovementId: string | null;
+  correctionId: string | null;
+  /** `true` mientras ninguna reversión la haya anulado (las reversiones nunca son vigentes). */
+  live: boolean;
+}
+
+export interface BetCorrectionEntry {
+  id: string;
+  kind: BetCorrectionKind;
+  /** Campos financieros antes y después: aquí se conserva el retorno calculado y el oficial previos. */
+  before: Record<string, unknown>;
+  after: Record<string, unknown>;
+  reason: string | null;
+  createdBy: { id: string; name: string };
+  createdAt: string;
+}
+
+/** Historial financiero de una apuesta: filas del ledger (con reversiones) y correcciones. */
+export interface BetLedgerHistory {
+  movements: BetLedgerEntry[];
+  corrections: BetCorrectionEntry[];
 }

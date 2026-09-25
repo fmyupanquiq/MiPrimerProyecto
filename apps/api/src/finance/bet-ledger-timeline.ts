@@ -42,6 +42,11 @@ export interface TimelineConflict {
   balance: MoneyString;
   /** Filas que actúan sobre la casa exactamente en ese instante. */
   entryIds: string[];
+  /**
+   * Reservas (apuestas o retiros pendientes, `hold:…`) de esa casa fechadas en ese instante o antes:
+   * el comprometido histórico que pesa en el saldo (D-A5). Lo completa quien conoce las reservas.
+   */
+  holdIds?: string[];
 }
 
 interface HouseInstant {

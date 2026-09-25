@@ -93,6 +93,14 @@ export const PERMISSIONS = {
     scope: 'PROJECT',
     description: 'Confirmar el retorno oficial de una apuesta ganada',
   },
+  /**
+   * Corregir, reabrir, enviar a la papelera o restaurar una apuesta **liquidada** (§112.3, D-A8,
+   * D-A11): reescribe el efecto en el ledger con reversiones. Exige reautenticación y motivo.
+   */
+  'bets.correct': {
+    scope: 'PROJECT',
+    description: 'Corregir, reabrir, eliminar o restaurar una apuesta liquidada',
+  },
 
   // --- Confianza y recuperación (Fase 5.5, §32, §38, §74, §80, §109) ---
   'reconciliations.view': {
@@ -265,6 +273,7 @@ export const SYSTEM_ROLE_DEFINITIONS: readonly SystemRoleDefinition[] = [
       'bets.move_stage',
       // Correcciones financieras (Fase 8.5, §112.8, D-A8).
       'bets.confirm_return',
+      'bets.correct',
       // Confianza y recuperación (Fase 5.5, §109.5: conciliar e investigar son de administrador).
       'reconciliations.view',
       'reconciliations.confirm',

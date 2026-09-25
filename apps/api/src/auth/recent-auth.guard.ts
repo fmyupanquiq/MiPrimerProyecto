@@ -37,6 +37,25 @@ export type RecentAuthPredicate = (body: unknown) => boolean;
 export const RequireRecentAuthWhen = (predicate: RecentAuthPredicate) =>
   SetMetadata(REQUIRE_RECENT_AUTH_WHEN_KEY, predicate);
 
+/**
+ * Exige que la sesión haya confirmado la contraseña dentro de la ventana (§39, §104.5). Lo usan el
+ * guard (rutas siempre sensibles) y los servicios cuya exigencia depende del estado del recurso,
+ * p. ej. eliminar una apuesta liquidada (D-A11).
+ */
+export function assertRecentAuth(
+  session: { reauthenticatedAt: Date },
+  now: Date,
+  windowSeconds: number,
+): void {
+  if (now.getTime() - session.reauthenticatedAt.getTime() > windowSeconds * 1000) {
+    throw new AppError(
+      403,
+      ErrorCode.REAUTH_REQUIRED,
+      'Confirma tu contraseña para continuar con esta acción.',
+    );
+  }
+}
+
 @Injectable()
 export class RecentAuthGuard implements CanActivate {
   constructor(
@@ -59,14 +78,7 @@ export class RecentAuthGuard implements CanActivate {
     if (!always && !(predicate && predicate((request.body as unknown) ?? null))) return true;
 
     const { session } = requireAuthContext(request);
-    const ageMs = this.clock.now().getTime() - session.reauthenticatedAt.getTime();
-    if (ageMs > this.config.reauthWindowSeconds * 1000) {
-      throw new AppError(
-        403,
-        ErrorCode.REAUTH_REQUIRED,
-        'Confirma tu contraseña para continuar con esta acción.',
-      );
-    }
+    assertRecentAuth(session, this.clock.now(), this.config.reauthWindowSeconds);
     return true;
   }
 }

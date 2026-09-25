@@ -1,19 +1,27 @@
 import { Body, Controller, Get, Header, HttpCode, Param, Post, Patch, Query } from '@nestjs/common';
 import {
   confirmBetReturnSchema,
+  correctSettlementSchema,
   createBetSchema,
   listBetsQuerySchema,
   moveBetStageSchema,
+  reopenBetSchema,
+  restoreBetSchema,
   settleBetSchema,
   trashBetSchema,
   updateBetSchema,
   ErrorCode,
   type BetDetail,
+  type BetLedgerHistory,
   type BetSummary,
   type ConfirmBetReturnInput,
+  type CorrectSettlementInput,
+  type CorrectionPreview,
   type CreateBetInput,
   type ListBetsQuery,
   type MoveBetStageInput,
+  type ReopenBetInput,
+  type RestoreBetInput,
   type ReturnDifferencesReport,
   type SettleBetInput,
   type TrashBetInput,
@@ -174,7 +182,7 @@ export class BetsController {
     @Body({ schema: trashBetSchema }) body: TrashBetInput,
   ): Promise<{ id: string }> {
     const id = betIdOrNotFound(betId);
-    await this.bets.trash(access, auth.user, id, body);
+    await this.bets.trash(access, auth.user, auth.session, id, body);
     return { id };
   }
 
@@ -186,9 +194,82 @@ export class BetsController {
     @CurrentAuth() auth: AuthContext,
     @CurrentProject() access: ProjectAccess,
     @Param('betId') betId: string,
+    @Body({ schema: restoreBetSchema }) body: RestoreBetInput,
   ): Promise<{ id: string }> {
     const id = betIdOrNotFound(betId);
-    await this.bets.restore(access, auth.user, id);
+    await this.bets.restore(access, auth.user, auth.session, id, body);
     return { id };
+  }
+
+  /** Historial financiero de la apuesta: ledger con reversiones y correcciones (§112.1). */
+  @Get(':betId/ledger')
+  @ProjectRoute('bets.view')
+  @Header('Cache-Control', 'no-store')
+  ledger(
+    @CurrentProject() access: ProjectAccess,
+    @Param('betId') betId: string,
+  ): Promise<BetLedgerHistory> {
+    return this.bets.ledgerHistory(access, betIdOrNotFound(betId));
+  }
+
+  /**
+   * Corrige una apuesta liquidada (§112.3, D-A8): `bets.correct`, reautenticación, motivo y versión.
+   * Reescribe su efecto en el ledger con reversiones; se rechaza con 409 `CORRECTION_CONFLICT` si
+   * dejaría un saldo negativo en el historial.
+   */
+  @Post(':betId/correct-settlement')
+  @HttpCode(200)
+  @ProjectRoute('bets.correct')
+  @RequireRecentAuth()
+  @Header('Cache-Control', 'no-store')
+  correctSettlement(
+    @CurrentAuth() auth: AuthContext,
+    @CurrentProject() access: ProjectAccess,
+    @Param('betId') betId: string,
+    @Body({ schema: correctSettlementSchema }) body: CorrectSettlementInput,
+  ): Promise<BetDetail> {
+    return this.bets.correctSettlement(access, auth.user, betIdOrNotFound(betId), body);
+  }
+
+  /** Vista previa sin efectos: ejecuta el mismo camino y lo revierte. No exige reautenticación. */
+  @Post(':betId/correct-settlement/preview')
+  @HttpCode(200)
+  @ProjectRoute('bets.correct')
+  @Header('Cache-Control', 'no-store')
+  previewCorrectSettlement(
+    @CurrentAuth() auth: AuthContext,
+    @CurrentProject() access: ProjectAccess,
+    @Param('betId') betId: string,
+    @Body({ schema: correctSettlementSchema }) body: CorrectSettlementInput,
+  ): Promise<CorrectionPreview> {
+    return this.bets.previewSettlementCorrection(access, auth.user, betIdOrNotFound(betId), body);
+  }
+
+  /** Reabre una apuesta liquidada a `PENDING` (D-A4): revierte su efecto en el ledger. */
+  @Post(':betId/reopen')
+  @HttpCode(200)
+  @ProjectRoute('bets.correct')
+  @RequireRecentAuth()
+  @Header('Cache-Control', 'no-store')
+  reopen(
+    @CurrentAuth() auth: AuthContext,
+    @CurrentProject() access: ProjectAccess,
+    @Param('betId') betId: string,
+    @Body({ schema: reopenBetSchema }) body: ReopenBetInput,
+  ): Promise<BetDetail> {
+    return this.bets.reopen(access, auth.user, betIdOrNotFound(betId), body);
+  }
+
+  @Post(':betId/reopen/preview')
+  @HttpCode(200)
+  @ProjectRoute('bets.correct')
+  @Header('Cache-Control', 'no-store')
+  previewReopen(
+    @CurrentAuth() auth: AuthContext,
+    @CurrentProject() access: ProjectAccess,
+    @Param('betId') betId: string,
+    @Body({ schema: reopenBetSchema }) body: ReopenBetInput,
+  ): Promise<CorrectionPreview> {
+    return this.bets.previewReopen(access, auth.user, betIdOrNotFound(betId), body);
   }
 }

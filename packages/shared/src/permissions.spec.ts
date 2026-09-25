@@ -82,6 +82,7 @@ describe('matriz de roles de sistema (§105.2)', () => {
         'bets.restore',
         'bets.move_stage',
         'bets.confirm_return',
+        'bets.correct',
         'reconciliations.view',
         'reconciliations.confirm',
         'integrity.view',
@@ -121,11 +122,13 @@ describe('matriz de roles de sistema (§105.2)', () => {
     );
   });
 
-  it('confirmar el retorno oficial es del Administrador de Proyecto: nunca del Colaborador ni del Lector (D-A8)', () => {
-    expect(perms('PROJECT_ADMIN')).toContain('bets.confirm_return');
-    expect(perms('PROJECT_OWNER')).not.toContain('bets.confirm_return'); // el propietario la tiene por su membresía
-    for (const role of ['COLLABORATOR', 'READER'] as const) {
-      expect(perms(role)).not.toContain('bets.confirm_return');
+  it('confirmar retornos y corregir liquidadas es del Administrador de Proyecto: nunca del Colaborador ni del Lector (D-A8)', () => {
+    for (const permission of ['bets.confirm_return', 'bets.correct'] as const) {
+      expect(perms('PROJECT_ADMIN')).toContain(permission);
+      expect(perms('PROJECT_OWNER')).not.toContain(permission); // el propietario la tiene por su membresía
+      for (const role of ['COLLABORATOR', 'READER'] as const) {
+        expect(perms(role)).not.toContain(permission);
+      }
     }
   });
 

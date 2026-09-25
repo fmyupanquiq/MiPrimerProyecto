@@ -13,16 +13,21 @@ import {
   ZERO_MONEY,
   type AmountSource,
   type BetDetail,
+  type BetLedgerHistory,
   type BetSelectionInput,
   type BetSelectionSummary,
   type BetSummary,
   type BetType,
   type ConfirmBetReturnInput,
+  type CorrectSettlementInput,
+  type CorrectionPreview,
   type CreateBetInput,
   type ListBetsQuery,
   type MoneyString,
   type MoveBetStageInput,
   type PermissionCode,
+  type ReopenBetInput,
+  type RestoreBetInput,
   type ReturnDifferenceItem,
   type ReturnDifferencesByHouse,
   type ReturnDifferencesReport,
@@ -37,7 +42,9 @@ import { and, count, desc, eq, gte, inArray, isNotNull, isNull } from 'drizzle-o
 import { diffFields } from '../audit/audit-values.js';
 import { AuditService } from '../audit/audit.service.js';
 import type { ProjectAccess } from '../authorization/authorization.service.js';
+import { assertRecentAuth } from '../auth/recent-auth.guard.js';
 import { AppError } from '../common/app-error.js';
+import { APP_CONFIG, type AppConfig } from '../config/app-config.js';
 import { Clock } from '../common/clock.js';
 import { startOfDayInTimeZone } from '../common/timezone.js';
 import { lockByKey } from '../database/advisory-lock.js';
@@ -58,6 +65,7 @@ import {
   type BetSelectionRow,
   type HouseRow,
   type NewBet,
+  type SessionRow,
   type StageRow,
   type UserRow,
 } from '../database/schema/index.js';
@@ -67,6 +75,7 @@ import {
   applyBetLedgerPlan,
   assertAvailableNotNegative,
   betFinancialSnapshot,
+  betHold,
   desiredBetLedgerLines,
   effectiveBetReturn,
   planBetLedgerChange,
@@ -82,6 +91,7 @@ import {
   ticketNotFound,
 } from './bet-errors.js';
 import { ticketsForBets } from '../tickets/ticket-queries.js';
+import { BetCorrectionsService } from './bet-corrections.service.js';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -157,6 +167,8 @@ export class BetsService {
     @Inject(DATABASE) private readonly db: Database,
     private readonly audit: AuditService,
     private readonly clock: Clock,
+    private readonly corrections: BetCorrectionsService,
+    @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
 
   async list(access: ProjectAccess, query: ListBetsQuery): Promise<BetSummary[]> {
@@ -289,10 +301,11 @@ export class BetsService {
           input.officialAmount !== undefined ||
           input.visibleTotalOdds !== undefined ||
           input.officialPotentialReturn !== undefined ||
-          input.selections !== undefined
+          input.selections !== undefined ||
+          input.placedAt !== undefined
         ) {
           throw betConflict(
-            'Esta apuesta ya está liquidada: solo puedes corregir el motivo y la fecha de colocación.',
+            'Esta apuesta ya está liquidada: solo puedes editar el motivo. Para cambiar sus valores o fechas usa "Corregir liquidación" o reábrela (§112.3).',
           );
         }
       } else {
@@ -422,6 +435,11 @@ export class BetsService {
       const bet = await this.lockOwned(tx, access.project.id, betId);
       this.assertNotTrashed(bet);
       if (bet.status !== 'PENDING') throw betConflict('Esta apuesta ya está liquidada.');
+      if (new Date(input.settledAt).getTime() < bet.placedAt.getTime()) {
+        throw invalidBetStructure(
+          'La fecha de liquidación no puede ser anterior a la de colocación.',
+        );
+      }
 
       const stage = await this.stageById(tx, bet.stageId);
       // Un monto indicado al liquidar lo confirma una persona (§76); si no, se conserva el que ya
@@ -467,6 +485,8 @@ export class BetsService {
         betId: bet.id,
         desired: desiredBetLedgerLines(updated, stage),
         now: this.clock.now(),
+        // Al liquidar, la reserva de la pendiente pasa a ser su colocación real en el ledger.
+        subject: { before: betHold(bet, stage), after: null },
       });
       await applyBetLedgerPlan(tx, plan, {
         actorId: actor.id,
@@ -704,6 +724,73 @@ export class BetsService {
     };
   }
 
+  /** Corrige una apuesta liquidada (§112.3): reescribe su efecto en el ledger con reversiones. */
+  async correctSettlement(
+    access: ProjectAccess,
+    actor: UserRow,
+    betId: string,
+    input: CorrectSettlementInput,
+  ): Promise<BetDetail> {
+    const updated = await this.corrections.correctSettlement(access, actor, betId, input);
+    return this.detailOf(this.db, updated);
+  }
+
+  /** Vista previa sin efectos de una corrección de liquidación (mismo camino que la real). */
+  previewSettlementCorrection(
+    access: ProjectAccess,
+    actor: UserRow,
+    betId: string,
+    input: CorrectSettlementInput,
+  ): Promise<CorrectionPreview> {
+    return this.corrections.previewSettlementCorrection(access, actor, betId, input);
+  }
+
+  /** Reabre una apuesta liquidada a `PENDING` (D-A4). */
+  async reopen(
+    access: ProjectAccess,
+    actor: UserRow,
+    betId: string,
+    input: ReopenBetInput,
+  ): Promise<BetDetail> {
+    const updated = await this.corrections.reopen(access, actor, betId, input);
+    return this.detailOf(this.db, updated);
+  }
+
+  previewReopen(
+    access: ProjectAccess,
+    actor: UserRow,
+    betId: string,
+    input: ReopenBetInput,
+  ): Promise<CorrectionPreview> {
+    return this.corrections.previewReopen(access, actor, betId, input);
+  }
+
+  /** Historial financiero de la apuesta: filas del ledger (con reversiones) y correcciones. */
+  ledgerHistory(access: ProjectAccess, betId: string): Promise<BetLedgerHistory> {
+    return this.corrections.history(access, betId);
+  }
+
+  /**
+   * Requisitos de eliminar o restaurar una apuesta **liquidada** (D-A11): `bets.correct`,
+   * reautenticación reciente y motivo obligatorio. Devuelve el motivo. Una pendiente conserva los
+   * permisos de siempre.
+   */
+  private requireSettledActionPrerequisites(
+    access: ProjectAccess,
+    session: Pick<SessionRow, 'reauthenticatedAt'>,
+    rawReason: string | undefined,
+  ): string {
+    if (!access.permissions.has('bets.correct')) {
+      throw betForbidden(
+        'Solo quien puede corregir apuestas liquidadas puede eliminarlas o restaurarlas.',
+      );
+    }
+    assertRecentAuth(session, this.clock.now(), this.config.reauthWindowSeconds);
+    const reason = rawReason?.trim();
+    if (!reason) throw invalidBetStructure('Indica el motivo para una apuesta liquidada.');
+    return reason;
+  }
+
   /** Mueve una apuesta a otra etapa del proyecto (§25: solo administradores autorizados). */
   async moveStage(
     access: ProjectAccess,
@@ -756,9 +843,17 @@ export class BetsService {
   async trash(
     access: ProjectAccess,
     actor: UserRow,
+    session: Pick<SessionRow, 'reauthenticatedAt'>,
     betId: string,
     input: TrashBetInput,
   ): Promise<void> {
+    const current = await this.findOwned(this.db, access.project.id, betId);
+    if (current.status !== 'PENDING') {
+      // Una liquidada tiene efecto en el ledger: eliminarla lo revierte (D-A7, D-A11).
+      const reason = this.requireSettledActionPrerequisites(access, session, input.reason);
+      await this.corrections.trashSettled(access, actor, betId, reason);
+      return;
+    }
     await this.db.transaction(async (tx) => {
       // M4 (revisión de arquitectura de la Fase 5.5): serializa contra confirm() de conciliación
       // y contra el resto de operaciones financieras, evitando una carrera en la que el
@@ -804,7 +899,19 @@ export class BetsService {
   }
 
   /** Restaura una apuesta desde la papelera (§26: solo administradores autorizados). */
-  async restore(access: ProjectAccess, actor: UserRow, betId: string): Promise<void> {
+  async restore(
+    access: ProjectAccess,
+    actor: UserRow,
+    session: Pick<SessionRow, 'reauthenticatedAt'>,
+    betId: string,
+    input: RestoreBetInput,
+  ): Promise<void> {
+    const current = await this.findOwned(this.db, access.project.id, betId);
+    if (current.status !== 'PENDING') {
+      const reason = this.requireSettledActionPrerequisites(access, session, input.reason);
+      await this.corrections.restoreSettled(access, actor, betId, reason);
+      return;
+    }
     await this.db.transaction(async (tx) => {
       // M4: mismo motivo que trash().
       await lockByKey(tx, `finance:${access.project.id}`);

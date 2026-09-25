@@ -4,16 +4,20 @@ import {
   compareMoney,
   isPositiveMoney,
   multiplyMoney,
+  subtractMoney,
   type BetCorrectionKind,
   type MoneyString,
 } from '@letfer/shared';
-import { and, eq, inArray, isNull, or } from 'drizzle-orm';
+import { and, eq, inArray, isNull, ne, or } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { AppError } from '../common/app-error.js';
 import type { DbExecutor } from '../database/database.types.js';
 import {
   betCorrections,
+  bets,
   financialMovements,
+  stages,
+  withdrawalRequests,
   type BetCorrectionRow,
   type BetRow,
   type FinancialMovementRow,
@@ -65,6 +69,22 @@ export const effectiveBetReturn = (
 ): MoneyString | null => bet.officialRealizedReturn ?? bet.calculatedRealizedReturn ?? null;
 
 /**
+ * Ganancia o pérdida derivada (§107.5): `null` si está pendiente, en la papelera o sin retorno
+ * conocido; una perdida es `−monto`; el resto, `retorno efectivo − monto`. Es lo que el dashboard
+ * suma y lo que el efecto neto de la apuesta en el ledger debe igualar (§112.6).
+ */
+export function derivedProfitLoss(
+  bet: BetRow,
+  stage: Pick<StageRow, 'unitStake'>,
+): MoneyString | null {
+  if (bet.status === 'PENDING' || bet.deletedAt !== null) return null;
+  const amount = effectiveBetAmount(bet, stage);
+  if (bet.status === 'LOST') return subtractMoney(ZERO_MONEY, amount);
+  const realized = effectiveBetReturn(bet);
+  return realized === null ? null : subtractMoney(realized, amount);
+}
+
+/**
  * Efecto que el ledger debe tener para la apuesta (§107.2, §107.3, D-B2): ninguno mientras está
  * `PENDING` o en la papelera; colocación (débito) al liquidar, y liquidación (crédito) solo con
  * retorno positivo (una perdida no genera fila de liquidación).
@@ -95,6 +115,35 @@ export function desiredBetLedgerLines(
   }
   return lines;
 }
+
+/**
+ * Reserva histórica de una apuesta pendiente (D-A5, comprometido histórico). El comprometido no
+ * tiene línea temporal propia: se calcula en vivo. Para validar el pasado, una apuesta pendiente se
+ * modela como un débito desde su fecha de colocación (la reserva que ya ocupaba), igual que su
+ * `BET_PLACEMENT` cuando se liquida; así reabrirla o restaurarla no "libera" retroactivamente un
+ * dinero que estaba comprometido cuando se hicieron los retiros posteriores.
+ */
+export interface BetHold {
+  houseId: string;
+  amount: MoneyString;
+  occurredAt: Date;
+}
+
+/** Reserva que una apuesta ocupa en su estado actual: solo si está pendiente y no en la papelera. */
+export function betHold(bet: BetRow, stage: Pick<StageRow, 'unitStake'>): BetHold | null {
+  if (bet.status !== 'PENDING' || bet.deletedAt !== null) return null;
+  return {
+    houseId: bet.houseId,
+    amount: effectiveBetAmount(bet, stage),
+    occurredAt: bet.placedAt,
+  };
+}
+
+const holdEntry = (id: string, hold: BetHold): TimelineEntry => ({
+  id,
+  occurredAt: hold.occurredAt,
+  effects: [{ houseId: hold.houseId, direction: 'DEBIT', amount: hold.amount }],
+});
 
 /** Campos financieros de la apuesta para `bet_corrections.before`/`after` y la auditoría. */
 export function betFinancialSnapshot(bet: BetRow): Record<string, unknown> {
@@ -218,6 +267,11 @@ export async function planBetLedgerChange(
     desired: readonly BetLedgerLine[];
     /** Instante de la corrección (`created_at` simulado de las filas nuevas). */
     now: Date;
+    /**
+     * Reserva de la propia apuesta antes y después del cambio (`betHold`): al reabrir pasa de nula
+     * a activa; al liquidar, de activa a nula (su lugar lo toma la colocación real del ledger).
+     */
+    subject?: { before: BetHold | null; after: BetHold | null };
   },
 ): Promise<BetLedgerPlan> {
   const live = await liveBetLedgerRows(executor, input.projectId, input.betId);
@@ -266,15 +320,85 @@ export async function planBetLedgerChange(
           ),
         ),
       );
-    const before = rows.map((row) => signedEntry(row.id, row));
+    // Reservas de las demás apuestas y retiros pendientes de esas casas (comprometido histórico).
+    const pendingBets = await executor
+      .select({
+        id: bets.id,
+        houseId: bets.houseId,
+        officialAmount: bets.officialAmount,
+        stake: bets.stakeAmount,
+        unitStake: stages.unitStake,
+        placedAt: bets.placedAt,
+      })
+      .from(bets)
+      .innerJoin(stages, eq(stages.id, bets.stageId))
+      .where(
+        and(
+          eq(bets.projectId, input.projectId),
+          eq(bets.status, 'PENDING'),
+          isNull(bets.deletedAt),
+          inArray(bets.houseId, houseIds),
+          ne(bets.id, input.betId),
+        ),
+      );
+    const pendingWithdrawals = await executor
+      .select({
+        id: withdrawalRequests.id,
+        houseId: withdrawalRequests.houseId,
+        amount: withdrawalRequests.amount,
+        createdAt: withdrawalRequests.createdAt,
+      })
+      .from(withdrawalRequests)
+      .where(
+        and(
+          eq(withdrawalRequests.projectId, input.projectId),
+          eq(withdrawalRequests.status, 'PENDING'),
+          inArray(withdrawalRequests.houseId, houseIds),
+        ),
+      );
+    const holds: TimelineEntry[] = [
+      ...pendingBets.map((bet) =>
+        holdEntry(`hold:bet:${bet.id}`, {
+          houseId: bet.houseId,
+          amount: bet.officialAmount ?? multiplyMoney(bet.unitStake, bet.stake),
+          occurredAt: bet.placedAt,
+        }),
+      ),
+      ...pendingWithdrawals.map((request) =>
+        holdEntry(`hold:withdrawal:${request.id}`, {
+          houseId: request.houseId,
+          amount: request.amount,
+          occurredAt: request.createdAt,
+        }),
+      ),
+    ];
+    const subjectId = `hold:bet:${input.betId}`;
+    const before = [
+      ...rows.map((row) => signedEntry(row.id, row)),
+      ...holds,
+      ...(input.subject?.before ? [holdEntry(subjectId, input.subject.before)] : []),
+    ];
     const after: TimelineEntry[] = [
-      ...before,
+      ...rows.map((row) => signedEntry(row.id, row)),
+      ...holds,
+      ...(input.subject?.after ? [holdEntry(subjectId, input.subject.after)] : []),
       ...reversals.map((row) => signedEntry(`plan:reversal:${row.id}`, row, true)),
       ...inserts.map((line, index) =>
         signedEntry(`plan:insert:${index}`, { ...line, fromHouseId: null, toHouseId: null }),
       ),
     ];
-    conflicts = newTimelineConflicts(before, after, houses);
+    // Las reservas vigentes en cada instante conflictivo explican por qué el saldo no alcanza.
+    const holdEntries = after.filter((entry) => entry.id.startsWith('hold:'));
+    conflicts = newTimelineConflicts(before, after, houses).map((conflict) => ({
+      ...conflict,
+      holdIds: holdEntries
+        .filter(
+          (entry) =>
+            entry.occurredAt.getTime() <= conflict.occurredAt.getTime() &&
+            entry.effects.some((effect) => effect.houseId === conflict.houseId),
+        )
+        .map((entry) => entry.id),
+    }));
   }
 
   return {
@@ -290,6 +414,10 @@ export async function planBetLedgerChange(
   };
 }
 
+/** Ids de las apuestas y retiros pendientes cuya reserva pesa en un conflicto (comprometido histórico). */
+export const pendingIdsOf = (conflict: TimelineConflict): string[] =>
+  (conflict.holdIds ?? []).map((id) => id.split(':').slice(2).join(':'));
+
 /** 409 `CORRECTION_CONFLICT`: explica qué casa y qué instante quedarían con saldo negativo (§74). */
 export function correctionConflict(conflicts: readonly TimelineConflict[]): AppError {
   return new AppError(
@@ -302,7 +430,10 @@ export function correctionConflict(conflicts: readonly TimelineConflict[]): AppE
           houseId: conflict.houseId,
           occurredAt: conflict.occurredAt.toISOString(),
           balance: conflict.balance,
-          movementIds: conflict.entryIds.filter((id) => !id.startsWith('plan:')),
+          // Filas reales del ledger que actúan en ese instante...
+          movementIds: conflict.entryIds.filter((id) => !id.includes(':')),
+          // ...y apuestas o retiros pendientes cuya reserva pesa en él (comprometido histórico).
+          pendingIds: pendingIdsOf(conflict),
         })),
       },
     },

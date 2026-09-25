@@ -6,14 +6,14 @@ import { createTestApp, login, sessionCookie, type TestApp } from './support/cre
 import { insertMember, insertProject } from './support/factories.js';
 
 /**
- * Fase 8.5.0 (ADR 0019, borrador): pruebas de CARACTERIZACIÓN del comportamiento actual de `main`.
+/**
+ * Fase 8.5.0 (ADR 0019): pruebas de CARACTERIZACIÓN de lo que la Fase 8.5 deja como está.
  *
- * No fijan lo deseado: documentan, con PostgreSQL real, tres inconsistencias entre la apuesta, el
- * ledger y el dashboard que la Fase 8.5 debe resolver (F1, F2, F5, F6). F3 y F4 (monto calculado
- * congelado como confirmado, retorno provisional) quedaron resueltas en la subfase 8.5.2 y se
- * prueban en `bets-provisional-return.e2e-spec.ts`. Cada bloque indica qué subfase lo corrige; al corregirlo, la aserción que describe el
- * defecto se invierte (o se elimina) en ese mismo commit. Mientras tanto están en verde para no
- * bloquear `npm run check`.
+ * F1 (papelera de una liquidada), F2 (fecha de colocación) y F6 (colocación posterior a la
+ * liquidación) se resolvieron en la subfase 8.5.3 y se prueban en `bets-corrections.e2e-spec.ts`;
+ * F3 y F4 en la 8.5.2 (`bets-provisional-return.e2e-spec.ts`). Quedan F5 (mover de etapa una
+ * liquidada no reescribe la etapa de sus filas del ledger: es inmutable y ningún cálculo la usa,
+ * D-A9) y la regla de que una liquidada no admite cambios financieros por edición directa.
  */
 
 interface HouseBody {
@@ -90,10 +90,8 @@ describe('línea base de la Fase 8.5.0: apuestas liquidadas frente al ledger (ca
   const post = (path: string, body: object = {}) =>
     request(ctx.server).post(api(path)).set('Cookie', cookies.owner).send(body);
   const houses = async () => (await get('/houses').expect(200)).body as HouseBody[];
-  const analysis = async () => (await get('/dashboard/analysis').expect(200)).body as AnalysisBody;
   const movementsOf = (betId: string) =>
     ctx.t.db.select().from(financialMovements).where(eq(financialMovements.operationId, betId));
-  const allMovements = () => ctx.t.db.select().from(financialMovements);
 
   /** Apuesta de S/ 20.00 (stake 2 × unidad 10) ganada con retorno oficial de S/ 39.00. */
   async function settledWinner(
@@ -118,72 +116,6 @@ describe('línea base de la Fase 8.5.0: apuestas liquidadas frente al ledger (ca
       }).expect(200)
     ).body as BetBody;
   }
-
-  describe('F1: la papelera de una apuesta liquidada no toca el ledger, pero sí el dashboard', () => {
-    it('el saldo sigue contando la apuesta y el P/L la excluye; restaurar tampoco genera nada', async () => {
-      const bet = await settledWinner();
-      expect((await houses())[0]).toMatchObject({ balance: '519.00' }); // 500 - 20 + 39
-      expect((await analysis()).profitLoss).toBe('19.00');
-      expect(await allMovements()).toHaveLength(3); // capital, colocación y liquidación
-
-      await post(`/bets/${bet.id}/trash`, { reason: 'Registrada por error' }).expect(200);
-
-      // DEFECTO: el dashboard ya no ve la apuesta, pero el ledger conserva su efecto.
-      // (F7, menor: sin apuestas el P/L llega como "0" y no como "0.00", a diferencia del resto.)
-      expect((await analysis()).profitLoss).toBe('0');
-      expect((await houses())[0]).toMatchObject({ balance: '519.00' });
-      expect(await allMovements()).toHaveLength(3); // ninguna reversión
-
-      await post(`/bets/${bet.id}/restore`).expect(200);
-      expect((await analysis()).profitLoss).toBe('19.00');
-      expect(await allMovements()).toHaveLength(3); // tampoco se re-registró nada
-    });
-
-    it('la verificación de integridad no detecta esa divergencia (comprobación b, D-I1)', async () => {
-      const bet = await settledWinner();
-      await post(`/bets/${bet.id}/trash`).expect(200);
-      const run = (await post('/integrity-checks').expect(201)).body as {
-        status: string;
-        findings: unknown[];
-      };
-      // DEFECTO: hoy el chequeo no compara el efecto neto del ledger con el P/L de las apuestas.
-      expect(run).toMatchObject({ status: 'OK', findings: [] });
-    });
-  });
-
-  describe('F2: editar la fecha de colocación de una apuesta liquidada no mueve su BET_PLACEMENT', () => {
-    it('la apuesta y su movimiento quedan con fechas distintas', async () => {
-      const bet = await settledWinner();
-      const before = (await movementsOf(bet.id)).find((m) => m.type === 'BET_PLACEMENT')!;
-      expect(before.occurredAt.toISOString()).toBe('2026-06-01T13:00:00.000Z');
-
-      const edited = (
-        await request(ctx.server)
-          .patch(api(`/bets/${bet.id}`))
-          .set('Cookie', cookies.owner)
-          .send({ placedAt: '2026-05-20T10:00:00.000Z', version: bet.version })
-          .expect(200)
-      ).body as BetBody;
-      expect(edited.placedAt).toBe('2026-05-20T10:00:00.000Z');
-
-      // DEFECTO: el ledger conserva la fecha anterior y no se registró ninguna corrección.
-      const after = (await movementsOf(bet.id)).find((m) => m.type === 'BET_PLACEMENT')!;
-      expect(after.occurredAt.toISOString()).toBe('2026-06-01T13:00:00.000Z');
-      expect(await movementsOf(bet.id)).toHaveLength(2);
-    });
-
-    it('se acepta una fecha de colocación posterior a la liquidación (secuencia imposible)', async () => {
-      const bet = await settledWinner();
-      const response = await request(ctx.server)
-        .patch(api(`/bets/${bet.id}`))
-        .set('Cookie', cookies.owner)
-        .send({ placedAt: '2026-06-05T10:00:00.000Z', version: bet.version });
-      // DEFECTO (hallazgo nuevo F6): nada valida que colocación ≤ liquidación al editar.
-      expect(response.status).toBe(200);
-      const [row] = await ctx.t.db.select().from(bets).where(eq(bets.id, bet.id));
-      expect(row!.placedAt.getTime()).toBeGreaterThan(row!.settledAt!.getTime());
-    });
-  });
 
   describe('F5: mover de etapa una apuesta liquidada no actualiza la etapa de sus movimientos', () => {
     it('la etapa de la apuesta cambia; la de sus filas del ledger no', async () => {
@@ -214,7 +146,7 @@ describe('línea base de la Fase 8.5.0: apuestas liquidadas frente al ledger (ca
     });
   });
 
-  describe('§107.9: limitación vigente hasta la subfase 8.5.3', () => {
+  describe('una liquidada no admite cambios financieros por edición directa (§107.9, §112.3)', () => {
     it('una apuesta liquidada solo admite corregir motivo y fechas (409 con cualquier campo financiero)', async () => {
       const bet = await settledWinner();
       const response = await request(ctx.server)
@@ -222,7 +154,7 @@ describe('línea base de la Fase 8.5.0: apuestas liquidadas frente al ledger (ca
         .set('Cookie', cookies.owner)
         .send({ officialAmount: '25.00', version: bet.version });
       expect(response.status).toBe(409);
-      // Y no existe ninguna ruta para corregir el retorno, el estado ni reabrir a PENDING.
+      // Volver a liquidar tampoco: se corrige con "Corregir liquidación" o se reabre.
       await post(`/bets/${bet.id}/settle`, {
         status: 'LOST',
         settledAt: '2026-06-01T11:00:00.000Z',
