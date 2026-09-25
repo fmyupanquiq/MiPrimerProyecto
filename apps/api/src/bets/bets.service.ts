@@ -624,6 +624,8 @@ export class BetsService {
           calculatedRealizedReturn: calculated,
           delta,
           differed: differs,
+          // Aceptar la diferencia es una decisión explícita (y con reautenticación): queda registrada.
+          differenceAcknowledged: differs && input.acknowledgeDifference,
           ledgerChanged: plan.changed,
           correctionId: correction.id,
           ...(input.reason?.trim() && { reason: input.reason.trim() }),

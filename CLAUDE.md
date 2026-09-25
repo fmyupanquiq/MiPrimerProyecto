@@ -137,6 +137,49 @@ cuerpo si ambos difieren. Si una regla debe cambiar: primero se actualiza la esp
   (`MaintenanceService`); la purga y su registro (`maintenance_runs`, inmutable) van en una
   transacción. Un `null` suelto no se serializa en Nest: responde un objeto (`{ request: … }`).
 
+## Convenciones de la Fase 8.5 (ADR 0019, §112)
+
+- **Corregir el ledger = revertir, nunca editar (D-A1, D-A2)**: todo cambio del efecto financiero de
+  una apuesta pasa por `finance/bet-ledger.ts` (`planBetLedgerChange` sin escribir, `applyBetLedgerPlan`
+  al aplicar). Solo se revierte lo que cambia (filas `REVERSAL` con `reverses_movement_id`, misma fecha
+  efectiva que la fila anulada) y se añaden filas nuevas con `correction_id`; `bet_corrections` es
+  inmutable. Nunca insertes `BET_PLACEMENT`/`BET_SETTLEMENT` a mano fuera del motor.
+- **Liquidadas**: sin edición directa de campos financieros ni de `placedAt`. Corregir, reabrir,
+  eliminar y restaurar una liquidada solo por `BetCorrectionsService` (`bets.correct`, reautenticación,
+  motivo, versión). Una sola ruta de ejecución; la **vista previa ejecuta ese mismo camino y lo
+  revierte** (nunca un cálculo aparte). Reabrir limpia la fila pero conserva los valores previos en
+  `bet_corrections.before` y la auditoría. `placedAt <= settledAt` siempre (D-A10).
+- **Validación histórica (§74, D-A5)**: la línea de tiempo por casa (`bet-ledger-timeline.ts`) rechaza
+  con 409 `CORRECTION_CONFLICT` un saldo bruto negativo en cualquier instante; el comprometido se
+  modela como débito desde la colocación o solicitud de cada apuesta y retiro pendiente (`BetHold`).
+  Límite conocido: no se sabe cuándo dejó de existir una reserva ya resuelta más allá del ledger.
+- **Retornos (§77, D-A3)**: `official_realized_return` no nulo = confirmado; solo `calculated_realized_return`
+  = provisional (se calcula únicamente con `calculateBetReturn`, política de redondeo provisional
+  D-B8, **pendiente**: no la cambies sin decisión). `amount_confirmed` solo significa que alguien
+  confirmó el **monto**, nunca que LetFer congeló su cálculo. Confirmar con diferencia exige
+  `acknowledgeDifference` y reautenticación (`@RequireRecentAuthWhen`); `assertRecentAuth` cuando la
+  exigencia depende del estado del recurso.
+- **Fuente única de verdad = ledger**: monto apostado, ganancia/pérdida, Yield, ROI y curva de
+  rendimiento del dashboard salen del ledger (las reversiones cuentan). La verificación de integridad
+  compara el ledger con los datos de cada apuesta y cuenta **filas vigentes** (`BET_LEDGER_NET`,
+  `SETTLEMENT_SHAPE`, `REVERSAL_INTEGRITY`, `CHECKPOINT_INVALIDATION`). Cifras monetarias siempre con
+  dos decimales.
+- **Checkpoints (§112.5)**: una corrección invalida los `MATCHED` de las casas afectadas de fecha igual
+  o posterior a la fecha más antigua de las filas anuladas y nuevas, y solo si el ledger cambia.
+- **Invariante financiera**: toda prueba de un flujo financiero nuevo o modificado termina con
+  `assertFinancialInvariant` (`test/support/financial-invariant.ts`): ledger = dashboard = conciliable,
+  P/L, Yield y ROI según las apuestas, curva, aviso de retornos e integridad sin hallazgos. Las
+  secuencias completas (incluida la pseudoaleatoria de `bets-corrections.e2e-spec.ts`) la comprueban
+  tras cada paso, con operaciones rechazadas y sin errores 500.
+- **Proyecto cerrado**: las correcciones se permiten (tarea administrativa y conciliación final, §85);
+  en un proyecto en la papelera responden 404.
+- **Web**: `BetFinancialPanels.tsx`; nunca se aplica una corrección o reapertura sin haber visto el
+  impacto vigente; los retornos calculados se muestran siempre con su insignia. `OWNER_PERMISSIONS` de
+  `test-utils` debe seguir a la matriz real (lo comprueba `test-utils.spec.ts`).
+- **Pruebas**: con supertest, los `request()` se inician al esperarlos: para varias llamadas en
+  secuencia crea funciones (`() => post(...)`), no objetos ya construidos. `truncateAll` también vacía
+  `bet_corrections`.
+
 ## Comandos (desde la raíz)
 
 - `npm run check`: formato, lint, tipos, pruebas y build (ejecútalo antes de dar algo por hecho).

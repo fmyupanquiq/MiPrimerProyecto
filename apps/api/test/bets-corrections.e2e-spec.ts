@@ -969,6 +969,7 @@ describe('correcciones de apuestas liquidadas (e2e, PostgreSQL real, §112.3)', 
       ];
       const settleBodies = [
         { status: 'WON' },
+        { status: 'WON' },
         { status: 'WON', officialRealizedReturn: '40.00' },
         { status: 'LOST' },
         { status: 'VOID' },
@@ -1012,7 +1013,14 @@ describe('correcciones de apuestas liquidadas (e2e, PostgreSQL real, §112.3)', 
             label = (await detail(current.id)).deletedAt ? 'trash-pending' : 'settle';
           }
         } else {
-          const operation = pick(['correct', 'correct', 'reopen', 'trash', 'confirm'] as const);
+          const operation = pick([
+            'correct',
+            'correct',
+            'reopen',
+            'trash',
+            'confirm',
+            'confirm',
+          ] as const);
           label = operation;
           if (operation === 'correct') {
             response = await correct('admin', current, pick(correctionBodies));
@@ -1041,7 +1049,7 @@ describe('correcciones de apuestas liquidadas (e2e, PostgreSQL real, §112.3)', 
 
       expect(mutations, `resultados: ${outcomes.join(',')}`).toBeGreaterThanOrEqual(10);
       // La secuencia ejercita cada operación al menos una vez (si cambia la semilla, revisar).
-      for (const operation of ['settle', 'correct', 'reopen', 'trash', 'restore']) {
+      for (const operation of ['settle', 'confirm', 'correct', 'reopen', 'trash', 'restore']) {
         expect(applied[operation], `${operation}: ${JSON.stringify(applied)}`).toBeGreaterThan(0);
       }
       for (const id of ids) await expectNetMatchesProfit(id);

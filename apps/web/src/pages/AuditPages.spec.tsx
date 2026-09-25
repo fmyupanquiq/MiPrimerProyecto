@@ -50,7 +50,7 @@ function openProject(permissions: string[], extra: Record<string, Handler> = {})
 
 describe('auditoría del proyecto (§111.1)', () => {
   it('muestra la pestaña y los registros a quien tiene audit.view', async () => {
-    openProject([...OWNER_PERMISSIONS, 'audit.view'], {
+    openProject(OWNER_PERMISSIONS, {
       [`GET ${URL}/audit-logs`]: {
         status: 200,
         body: { items: [entry()], nextCursor: null },
@@ -65,7 +65,9 @@ describe('auditoría del proyecto (§111.1)', () => {
   });
 
   it('sin audit.view no hay pestaña y la pantalla avisa, sin pedir nada a la API', async () => {
-    const { calls } = openProject(OWNER_PERMISSIONS);
+    const { calls } = openProject(
+      OWNER_PERMISSIONS.filter((permission) => permission !== 'audit.view'),
+    );
     renderApp(AUDIT_URL);
     expect(
       await screen.findByText('No tienes permiso para ver la auditoría de este proyecto.'),

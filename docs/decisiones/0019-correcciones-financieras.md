@@ -1,6 +1,6 @@
 # 0019. Correcciones financieras de apuestas liquidadas
 
-- **Estado:** Aceptada (Fase 8.5). Especificación §112 aprobada; implementación en curso.
+- **Estado:** Aceptada (Fase 8.5). Especificación §112 aprobada; implementación completa (8.5.0 a 8.5.6).
 - **Fecha:** 2026-09-25
 - **Referencias:** especificación §17, §21, §24, §25, §26, §27, §32, §73, §74, §76, §77, §78, §107
   (en especial §107.8 y §107.9), §108, §109.1, §109.2, §111; ADR 0004, 0008, 0013, 0014, 0015,
@@ -299,6 +299,45 @@ filtros = Σ efecto neto de apuestas en el ledger = variación de saldos.
 - **Retornos** (nueva pestaña): retornos por confirmar y comparación de calculado y oficial por casa
   (evidencia para D-B8, solo lectura). **Dashboard**: aviso visible de retornos no confirmados en el
   estado y en el análisis.
+
+### 8.5.6 (revisión final)
+
+Comprobado con `bets-final-review.e2e-spec.ts` (PostgreSQL real):
+
+- **Permisos.** Matriz completa de las siete operaciones nuevas (confirmar retorno, corregir, previsualizar
+  corrección, reabrir, previsualizar reapertura, eliminar y restaurar una liquidada) por rol:
+  Administrador de Proyecto, propietario y Administrador Global, 200; Colaborador (también en su propia
+  apuesta) y Lector, 403 sin cambiar nada; ajeno, 404; sin sesión, 401. Reportes e historial: de lectura
+  para todo miembro. La reautenticación es obligatoria donde corresponde. La matriz de roles la fija
+  `permissions.spec.ts` y las pruebas de la web comprueban que sus permisos de ejemplo no se desfasan.
+- **Auditoría.** Cada operación deja exactamente un evento con actor, proyecto, entidad y el id de su
+  corrección (`bet.settled` con la fuente del retorno, `bet.return_confirmed` con `differed` y
+  `differenceAcknowledged` —añadido en esta revisión—, `bet.settlement_corrected`, `bet.reopened`,
+  `bet.trashed` y `bet.restored` con la marca de reversión o re-registro). Las operaciones rechazadas
+  (permiso, versión, conflicto histórico, estado) no dejan auditoría, corrección ni filas. Si falla la
+  auditoría, la operación se revierte por completo (atomicidad). El visor de auditoría del proyecto los
+  muestra sin datos de conexión.
+- **Concurrencia.** Además de las pruebas de 8.5.2 y 8.5.3 (dos correcciones, dos confirmaciones, corregir
+  y reabrir): confirmar y corregir a la vez, corregir y eliminar a la vez, reaperturas idénticas
+  simultáneas (una sola corrección y cada fila anulada una sola vez) y seis operaciones simultáneas
+  sobre varias apuestas de la misma casa (sin bloqueos mutuos, ninguna respuesta 500, invariante intacta).
+- **Invariante financiera.** `assertFinancialInvariant` cubre liquidar, confirmar, corregir, reabrir,
+  eliminar y restaurar: las secuencias escritas y la pseudoaleatoria comprueban, tras cada paso, seis
+  operaciones distintas con éxito (ahora incluida la confirmación) y también las rechazadas.
+- **Proyecto cerrado.** Decisión: las correcciones se permiten en un proyecto cerrado (§85: tareas
+  administrativas y conciliación final; liquidar ya se permitía) y responden 404 en uno en la papelera.
+
+Riesgos y límites abiertos que se mantienen documentados:
+
+- D-B8 (redondeo del retorno calculado): pendiente de tickets reales; el reporte de diferencias reúne la
+  evidencia.
+- Comprometido histórico: se modela como reserva desde la fecha de colocación o solicitud; no se conoce el
+  instante exacto en que dejó de existir una reserva ya resuelta más allá de lo que dice el ledger.
+- F5 (D-A9): la etapa de las filas del ledger no se reescribe al mover de etapa una apuesta.
+- La vista previa ejecuta la operación real dentro de una transacción que se revierte: retiene el
+  bloqueo financiero del proyecto mientras dura, y es de uso administrativo (exige `bets.correct`).
+- El disparador `bump_bet_financial_timestamp` no se amplía; la comprobación (e) usa el ledger y solo
+  las pendientes usan esa columna.
 
 ## Plan de subfases
 

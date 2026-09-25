@@ -174,6 +174,7 @@ export const OWNER_PERMISSIONS = [
   'bets.move_stage',
   'bets.confirm_return',
   'bets.correct',
+  'audit.view',
   'reconciliations.view',
   'reconciliations.confirm',
   'integrity.view',
