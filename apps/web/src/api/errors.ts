@@ -33,6 +33,8 @@ export function describeApiError(error: unknown): string {
     // Estos mensajes de la API ya están redactados para la persona usuaria.
     case ErrorCode.INVALID_STATE:
     case ErrorCode.OWNER_PROTECTED:
+    case ErrorCode.LAST_GLOBAL_ADMIN:
+    case ErrorCode.OWNS_PROJECTS:
       return error.message;
     default:
       return 'No se pudo completar la operación. Inténtalo de nuevo.';

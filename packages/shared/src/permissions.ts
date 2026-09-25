@@ -125,6 +125,27 @@ export const PERMISSIONS = {
   'tickets.upload': { scope: 'PROJECT', description: 'Subir un ticket' },
   /** Dispara una llamada al proveedor de IA (D-T4: acción explícita, nunca automática). */
   'tickets.analyze': { scope: 'PROJECT', description: 'Analizar un ticket con IA' },
+
+  // --- Administración (Fase 8, §111, ADR 0018) ---
+  /** Solo lectura, y siempre limitada al propio proyecto (D8-2). */
+  'audit.view': { scope: 'PROJECT', description: 'Consultar la auditoría del proyecto' },
+  'system.audit.view': {
+    scope: 'GLOBAL',
+    description: 'Consultar la auditoría de todo el sistema',
+  },
+  'system.users.view': { scope: 'GLOBAL', description: 'Ver y buscar usuarios del sistema' },
+  'system.users.manage': {
+    scope: 'GLOBAL',
+    description: 'Deshabilitar, reactivar y cerrar las sesiones de un usuario',
+  },
+  'system.account_deletions.decide': {
+    scope: 'GLOBAL',
+    description: 'Aprobar o rechazar solicitudes de eliminación de cuenta',
+  },
+  'system.maintenance.run': {
+    scope: 'GLOBAL',
+    description: 'Ejecutar la purga de registros auxiliares caducados',
+  },
 } as const satisfies Record<string, PermissionDefinition>;
 
 export type PermissionCode = keyof typeof PERMISSIONS;
@@ -243,6 +264,8 @@ export const SYSTEM_ROLE_DEFINITIONS: readonly SystemRoleDefinition[] = [
       'tickets.view',
       'tickets.upload',
       'tickets.analyze',
+      // Administración (Fase 8, §111.1): solo la auditoría de su propio proyecto.
+      'audit.view',
     ],
   },
   {

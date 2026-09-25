@@ -94,6 +94,11 @@ export function ProjectLayout() {
         <NavLink to={`/projects/${project.id}/members`} className={tabClass}>
           Miembros
         </NavLink>
+        {permissions.has('audit.view') && (
+          <NavLink to={`/projects/${project.id}/audit`} className={tabClass}>
+            Auditoría
+          </NavLink>
+        )}
         <NavLink to={`/projects/${project.id}/settings`} className={tabClass}>
           Configuración
         </NavLink>

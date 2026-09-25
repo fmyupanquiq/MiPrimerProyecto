@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Link, NavLink, Outlet } from 'react-router';
 import { useAuth } from '../auth/AuthContext.js';
 import { btn } from '../ui.js';
+import { ADMIN_SECTION_PERMISSIONS } from './admin/AdminLayout.js';
 
 const navClass = ({ isActive }: { isActive: boolean }) =>
   `rounded px-2 py-1 text-sm ${isActive ? 'bg-slate-200 font-medium' : 'text-slate-600'}`;
@@ -12,8 +13,7 @@ export function AppShell() {
   const { user, logout, can } = useAuth();
   const [closing, setClosing] = useState(false);
   // "Administración" (§37, §109) solo es visible con algún permiso system.* (Administrador Global).
-  const showAdmin =
-    can('system.backups.view') || can('system.backups.create') || can('system.integrity.run');
+  const showAdmin = ADMIN_SECTION_PERMISSIONS.some((permission) => can(permission));
 
   async function onLogout() {
     setClosing(true);

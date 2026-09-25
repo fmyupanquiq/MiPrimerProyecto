@@ -15,6 +15,10 @@ export const ErrorCode = {
   INVALID_STATE: 'INVALID_STATE',
   /** Se intentó modificar al propietario del proyecto (§105.4). */
   OWNER_PROTECTED: 'OWNER_PROTECTED',
+  /** Se intentó deshabilitar o eliminar al último Administrador Global activo (§111.4). */
+  LAST_GLOBAL_ADMIN: 'LAST_GLOBAL_ADMIN',
+  /** La cuenta es propietaria de proyectos: hay que transferirlos primero (§111.3). */
+  OWNS_PROJECTS: 'OWNS_PROJECTS',
   INVALID_TOKEN: 'INVALID_TOKEN',
   RATE_LIMITED: 'RATE_LIMITED',
   PAYLOAD_TOO_LARGE: 'PAYLOAD_TOO_LARGE',

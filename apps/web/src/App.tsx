@@ -4,11 +4,14 @@ import { AuthProvider, useAuth } from './auth/AuthContext.js';
 import { loginPathFor } from './auth/redirect.js';
 import { ReauthProvider } from './auth/ReauthContext.js';
 import { AdminPage } from './pages/AdminPage.js';
+import { AdminAuditPage } from './pages/admin/AdminAuditPage.js';
+import { AdminLayout } from './pages/admin/AdminLayout.js';
 import { AppShell } from './pages/AppShell.js';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage.js';
 import { InvitePage } from './pages/InvitePage.js';
 import { LoginPage } from './pages/LoginPage.js';
 import { ProjectsPage } from './pages/ProjectsPage.js';
+import { AuditPage } from './pages/project/AuditPage.js';
 import { BetsPage } from './pages/project/BetsPage.js';
 import { DashboardPage } from './pages/project/DashboardPage.js';
 import { FinancePage } from './pages/project/FinancePage.js';
@@ -51,7 +54,10 @@ export function App() {
         >
           <Route path="/" element={<ProjectsPage />} />
           <Route path="/projects/trash" element={<TrashPage />} />
-          <Route path="/admin" element={<AdminPage />} />
+          <Route path="/admin" element={<AdminLayout />}>
+            <Route index element={<AdminPage />} />
+            <Route path="audit" element={<AdminAuditPage />} />
+          </Route>
           <Route path="/projects/:projectId" element={<ProjectLayout />}>
             <Route index element={<DashboardPage />} />
             <Route path="setup" element={<ProjectSetupPage />} />
@@ -59,6 +65,7 @@ export function App() {
             <Route path="finance" element={<FinancePage />} />
             <Route path="bets" element={<BetsPage />} />
             <Route path="members" element={<MembersPage />} />
+            <Route path="audit" element={<AuditPage />} />
             <Route path="settings" element={<SettingsPage />} />
           </Route>
         </Route>

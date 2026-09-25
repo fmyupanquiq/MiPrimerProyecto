@@ -88,6 +88,7 @@ describe('matriz de roles de sistema (§105.2)', () => {
         'tickets.view',
         'tickets.upload',
         'tickets.analyze',
+        'audit.view',
       ].sort(),
     );
     const readOnlyFinance = [
@@ -232,6 +233,28 @@ describe('matriz de roles de sistema (§105.2)', () => {
     }
     expect(perms('READER')).not.toContain('tickets.upload');
     expect(perms('READER')).not.toContain('tickets.analyze');
+  });
+
+  it('Fase 8 (§111.7): la auditoría de proyecto es solo del Administrador de Proyecto', () => {
+    expect(PERMISSIONS['audit.view'].scope).toBe('PROJECT');
+    expect(perms('PROJECT_ADMIN')).toContain('audit.view');
+    for (const role of ['COLLABORATOR', 'READER', 'PROJECT_OWNER'] as const) {
+      expect(perms(role)).not.toContain('audit.view');
+    }
+  });
+
+  it('Fase 8 (§111.7): los permisos globales de administración existen y son de sistema', () => {
+    for (const code of [
+      'system.audit.view',
+      'system.users.view',
+      'system.users.manage',
+      'system.account_deletions.decide',
+      'system.maintenance.run',
+    ] as const) {
+      expect(PERMISSIONS[code].scope).toBe('GLOBAL');
+      expect(perms('USER')).not.toContain(code);
+      expect(perms('GLOBAL_ADMIN')).toContain(code);
+    }
   });
 
   it('Fase 5.5: los permisos system.* son globales y solo los tiene el Administrador Global', () => {

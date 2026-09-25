@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+export * from './audit.js';
 export * from './auth.js';
 export * from './backup.js';
 export * from './errors.js';
