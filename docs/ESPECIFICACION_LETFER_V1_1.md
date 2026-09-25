@@ -563,6 +563,9 @@ Administradores no tienen esos límites operativos.
 
 La restauración corresponde a administradores autorizados.
 
+Enviar a la papelera o restaurar una apuesta **liquidada** exige
+`bets.correct` (§112.3).
+
 ## 27. Integridad financiera
 
 El backend debe garantizar:
@@ -1474,6 +1477,9 @@ respecto de operaciones posteriores, LetFer bloquea la operación y
 explica los registros que generan el conflicto. El administrador debe
 corregir primero el historial real.
 
+La regla de invalidación de checkpoints y la validación histórica se
+precisan en los §112.4 y §112.5.
+
 ## 75. Apuesta real con saldo insuficiente en LetFer
 
 La existencia real de una apuesta en la casa no autoriza a LetFer a
@@ -1522,6 +1528,8 @@ Si posteriormente un ticket muestra un monto oficial distinto:
 -   Se recalculan efectos financieros y conciliaciones afectadas
     conforme a las reglas históricas.
 
+Un monto calculado al liquidar no se presenta como confirmado (§112.2).
+
 ## 77. Retorno calculado y retorno oficial
 
 Una apuesta ganada puede liquidarse provisionalmente sin disponer
@@ -1546,6 +1554,8 @@ Cuando se obtiene el retorno oficial:
 -   Se recalculan saldos y conciliaciones afectadas.
 
 No se confunde nunca un retorno calculado con uno oficial.
+
+Detalle, estados y flujo de confirmación en el §112.2.
 
 ## 78. Resultados y liquidaciones especiales
 
@@ -2394,7 +2404,8 @@ calculan en cada lectura, igual que los saldos de casa (D3, Fase 3).
 
 -   Monto efectivo = `official_amount` si existe; si no,
     `stake × stage.unit_stake` (redondeado, ADR 0004).
--   Retorno: `official_realized_return` si la apuesta está liquidada
+-   Retorno efectivo: el oficial (`official_realized_return`) si existe;
+    si no, el calculado no confirmado (§112.2), en una apuesta liquidada
     con retorno positivo (`WON`/`VOID`/`CASHOUT`); ausente si `LOST`
     (§107.2) o si sigue `PENDING`.
 -   Ganancia/pérdida: sin liquidar, ninguna; `LOST`, `−monto efectivo`;
@@ -2442,7 +2453,8 @@ límite se aplica sobre llamadas repetidas al endpoint individual.
 La política `ROUND_HALF_UP` para montos y retornos calculados de
 apuestas sigue siendo provisional (ADR 0004): se ajustará cuando existan
 tickets reales de Betano/Betsafe que confirmen si la casa redondea o
-trunca.
+trunca. La política se aplica a través de una única función y el reporte
+de diferencias aporta la evidencia (§112).
 
 ### 107.9 Fuera de esta fase
 
@@ -2451,9 +2463,9 @@ reserva todavía, Fase 7, D-B11), el estado "requiere nueva
 conciliación" en `houses` (Fase 6, D-B12), dashboards/gráficos (Fase 5)
 y la corrección de campos financieros (`status`, `official_amount`,
 `official_realized_return`, `settled_at`) de una apuesta **ya
-liquidada** (§77 completo: comparar retorno calculado vs. oficial y
-recalcular tras liquidar) — mientras tanto, volver a liquidar o
-cambiar esos campos de una apuesta liquidada responde 409.
+liquidada** (§77 completo). Resuelto en la Fase 8.5 (§112). Corregir la
+casa, la etapa, las selecciones o la cuota de una apuesta liquidada se
+hace reabriéndola (§112.3).
 
 ## 108. Dashboard, métricas y gráficos (Fase 5)
 
@@ -2595,7 +2607,8 @@ ya integraba, y esa fotografía cambió. Una apuesta colocada **después**
 del checkpoint nunca lo invalida (es actividad nueva, no una
 corrección retroactiva). Invalidar registra cuándo y por qué
 (`invalidated_at`, `invalidated_reason`), nunca borra ni reescribe el
-checkpoint original (D2).
+checkpoint original (D2). La fecha de referencia es la más antigua de las
+filas afectadas (§112.5).
 
 "Requiere nueva conciliación" (§74) se deriva en vivo: una casa lo
 "requiere" cuando su checkpoint `MATCHED` no invalidado más reciente ya
@@ -2618,9 +2631,10 @@ posterior.
 Comprobaciones de la versión inicial (D-I1):
 
 a. Cada casa, recalculada desde cero, no tiene disponible negativo.\
-b. Los estados de apuesta y sus liquidaciones son coherentes: `LOST`
-sin fila `BET_SETTLEMENT`; `WON`/`VOID`/`CASHOUT` con exactamente una
-(D-B2).\
+b. Los estados de apuesta y sus liquidaciones son coherentes (D-B2), con
+las comprobaciones del §112.7 (efecto neto del ledger por apuesta,
+reversiones y correcciones) en lugar de "exactamente una fila
+`BET_SETTLEMENT`".\
 c. Ninguna apuesta `PENDING` referencia una etapa o casa en papelera.\
 d. Los movimientos del ledger referencian proyecto, etapa y casa
 existentes y consistentes con las restricciones del esquema (defensa
@@ -2824,3 +2838,84 @@ De proyecto: `audit.view` (Administrador de Proyecto). Globales, reservados
 al Administrador Global: `system.audit.view`, `system.users.view`,
 `system.users.manage`, `system.account_deletions.decide` y
 `system.maintenance.run`.
+
+### 112. Correcciones financieras de apuestas liquidadas (Fase 8.5)
+
+**Estado:** Aprobada.\
+Precisa y completa los §21, §24, §25, §26, §73, §74, §76, §77, §78, §107, §108 y §109 con las
+decisiones de la Fase 8.5 (D-A1 a D-A13, ADR 0019). Si alguna regla anterior las contradice,
+prevalece este apartado. Fuera de alcance: importación histórica, decisión del redondeo (D-B8),
+cambio de casa, etapa, selecciones o cuota de una apuesta liquidada.
+
+#### 112.1 Ledger inmutable y correcciones
+
+El ledger nunca se edita ni se borra. Una corrección con efecto monetario inserta filas `REVERSAL`
+que anulan las filas vigentes (misma casa y monto, dirección opuesta, misma fecha efectiva que la
+fila anulada) y, después, las filas correctas. Una fila no se anula dos veces. Toda corrección deja
+un registro inmutable (`bet_corrections`) con los valores anteriores y nuevos, quién la hizo y el
+motivo. El efecto neto en el ledger de una apuesta liquidada es siempre igual a su ganancia o
+pérdida; el de una apuesta pendiente o en la papelera es cero.
+
+#### 112.2 Retorno calculado y retorno oficial (§77)
+
+Una apuesta `WON` puede liquidarse sin retorno oficial: se registra un retorno calculado
+(`monto oficial o confirmado × cuota visible total`, con la política de redondeo vigente) marcado
+como **no confirmado**. `VOID` (retorno = monto) queda confirmado. `CASHOUT` requiere retorno
+oficial. `LOST` no tiene retorno. Al obtener el retorno oficial se compara con el calculado: si
+coincide, se marca confirmado; si difiere, LetFer no cambia nada hasta que una persona con
+`bets.confirm_return` lo confirme de forma explícita (con reautenticación); entonces el oficial pasa
+a ser la autoridad, se corrige el ledger (§112.1), se audita y se aplican los efectos sobre
+saldos y conciliaciones (§112.5). Nunca se presenta un retorno calculado como oficial.
+
+El monto de una apuesta se distingue igual: un monto calculado al liquidar no se presenta como
+confirmado (§76).
+
+#### 112.3 Corrección, reapertura, papelera y restauración de apuestas liquidadas
+
+Con `bets.correct`, reautenticación reciente, versión y motivo obligatorio, se puede corregir el
+estado, el monto oficial, el retorno oficial, la fecha y hora de liquidación y la fecha de
+colocación de una apuesta liquidada; reabrirla a `PENDING` (revierte todo su efecto y vuelve a
+comprometer su monto, si hay disponible suficiente); enviarla a la papelera (reversión completa) y
+restaurarla (re-registro). El Colaborador solo elimina sus apuestas pendientes. Antes de aplicar
+existe una vista previa sin efectos con las filas, los saldos antes y después, los checkpoints que
+se invalidarían y los conflictos.
+
+La fecha de colocación no puede ser posterior a la de liquidación.
+
+#### 112.4 Validación histórica (§74)
+
+Antes de escribir, LetFer reproduce la línea de tiempo de cada casa afectada. Si el saldo bruto
+queda negativo en algún punto, o el disponible actual queda negativo, la operación se rechaza (409
+`CORRECTION_CONFLICT`) y se explican los registros que generan el conflicto; no se escribe nada.
+El administrador debe corregir primero el historial real. El comprometido no se reconstruye por
+fecha: la comprobación histórica usa saldo bruto.
+
+#### 112.5 Checkpoints (§74, §109.1.3)
+
+Una corrección invalida todo checkpoint `MATCHED` de las casas afectadas cuya fecha sea igual o
+posterior a la fecha **más antigua** de las filas afectadas (anuladas y nuevas). Una corrección
+fechada después del checkpoint no lo invalida. Se conservan siempre, con el motivo. Los checkpoints
+`DISCREPANCY` no cambian. Nunca se crea un ajuste para conservar una coincidencia.
+
+#### 112.6 Dashboard, ROI y Yield (§33, §108)
+
+Los retornos no confirmados participan en la ganancia/pérdida, el ROI y el Yield con su valor
+calculado, y el dashboard muestra siempre cuántas apuestas y qué monto están en ese estado. Las
+cifras monetarias se devuelven siempre con dos decimales. Criterio de coherencia: la suma de la
+ganancia/pérdida del dashboard sin filtros es igual al efecto neto de las apuestas en el ledger.
+
+#### 112.7 Verificación de integridad (§109.2)
+
+Se amplía con: efecto neto del ledger igual a la ganancia/pérdida de cada apuesta liquidada; efecto
+neto cero para pendientes y papelera; toda reversión apunta a una fila vigente y no se repite;
+cada corrección tiene su registro. Sigue siendo de solo lectura.
+
+#### 112.8 Permisos nuevos
+
+De proyecto: `bets.correct` y `bets.confirm_return`, ambos para el Administrador de Proyecto. El
+Colaborador y el Lector no los reciben.
+
+#### 112.9 Etapa de las filas del ledger
+
+Mover una apuesta de etapa (§25) no reescribe la etapa de sus filas del ledger: son inmutables y
+ningún cálculo la usa. La etapa vigente de una apuesta es siempre la de la propia apuesta.
