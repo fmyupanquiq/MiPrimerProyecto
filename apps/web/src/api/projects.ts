@@ -45,6 +45,11 @@ export const projectsApi = {
       body: reason ? { reason } : {},
     }),
   restore: (id: string) => apiFetch<ProjectDetail>(`/projects/${id}/restore`, { method: 'POST' }),
+  transferOwnership: (id: string, newOwnerId: string) =>
+    apiFetch<ProjectDetail>(`/projects/${id}/transfer-ownership`, {
+      method: 'POST',
+      body: { newOwnerId },
+    }),
 };
 
 export const membersApi = {

@@ -1,17 +1,115 @@
+import type { SessionInfo } from '@letfer/shared';
 import { useState } from 'react';
 import { accountDeletionsApi } from '../api/admin.js';
+import { authApi } from '../api/auth.js';
 import { describeApiError } from '../api/errors.js';
 import { useLoad } from '../hooks/useLoad.js';
 import { ACCOUNT_DELETION_STATUS_LABELS, formatDateTime } from '../labels.js';
 import { Badge, btn, btnDanger, inputClass, Notice, Section } from '../ui.js';
 
-/** Mi cuenta: la persona gestiona su propia cuenta (§8, §111.3). */
+/** Mi cuenta: la persona gestiona su propia cuenta (§8, §111.3, §111.5). */
 export function AccountPage() {
   return (
     <>
       <h1 className="text-2xl font-semibold">Mi cuenta</h1>
+      <SessionsSection />
       <DeletionSection />
     </>
+  );
+}
+
+/** Sesiones abiertas de la persona (§3, §104.7): ver desde dónde entró y cerrar las demás. */
+function SessionsSection() {
+  const list = useLoad('account-sessions', () => authApi.sessions());
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const sessions: SessionInfo[] = list.data?.sessions ?? [];
+  const others = sessions.filter((session) => !session.current);
+
+  async function revoke(session: SessionInfo) {
+    setBusy(session.id);
+    setError(null);
+    setNotice(null);
+    try {
+      await authApi.revokeSession(session.id);
+      setNotice('Se cerró la sesión.');
+      list.reload();
+    } catch (caught) {
+      setError(describeApiError(caught));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function revokeOthers() {
+    setBusy('others');
+    setError(null);
+    setNotice(null);
+    try {
+      const { revoked } = await authApi.revokeOtherSessions();
+      setNotice(revoked === 1 ? 'Se cerró 1 sesión.' : `Se cerraron ${revoked} sesiones.`);
+      list.reload();
+    } catch (caught) {
+      setError(describeApiError(caught));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <Section title="Sesiones abiertas">
+      <p className="text-sm text-slate-600">
+        Si no reconoces alguna sesión, ciérrala y cambia tu contraseña.
+      </p>
+      {notice && <Notice tone="success">{notice}</Notice>}
+      {error && <Notice tone="error">{error}</Notice>}
+      {list.error && <Notice tone="error">{list.error}</Notice>}
+      {list.loading && !list.data && <p>Cargando sesiones…</p>}
+      <ul className="flex flex-col gap-2" aria-label="Sesiones abiertas">
+        {sessions.map((session) => (
+          <li
+            key={session.id}
+            className="flex flex-wrap items-center justify-between gap-3 rounded border border-slate-200 bg-white p-3 text-sm"
+          >
+            <div className="flex flex-col gap-1">
+              <p className="flex flex-wrap items-center gap-2 font-medium">
+                {session.userAgent ?? 'Dispositivo desconocido'}
+                {session.current && <Badge tone="green">Esta sesión</Badge>}
+                {session.persistent && <Badge tone="slate">Sesión persistente</Badge>}
+              </p>
+              <p className="text-xs text-slate-500">
+                {session.ip ? `IP ${session.ip} · ` : ''}Inició el{' '}
+                {formatDateTime(session.createdAt)} · Última actividad{' '}
+                {formatDateTime(session.lastSeenAt)}
+              </p>
+            </div>
+            {!session.current && (
+              <button
+                type="button"
+                className={btn}
+                disabled={busy !== null}
+                aria-label={`Cerrar la sesión iniciada el ${formatDateTime(session.createdAt)}`}
+                onClick={() => void revoke(session)}
+              >
+                Cerrar sesión
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+      {others.length > 0 && (
+        <button
+          type="button"
+          className={`${btn} self-start`}
+          disabled={busy !== null}
+          onClick={() => void revokeOthers()}
+        >
+          Cerrar las demás sesiones
+        </button>
+      )}
+    </Section>
   );
 }
 

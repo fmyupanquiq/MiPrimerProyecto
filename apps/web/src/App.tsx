@@ -8,6 +8,7 @@ import { AccountPage } from './pages/AccountPage.js';
 import { AdminAccountDeletionsPage } from './pages/admin/AdminAccountDeletionsPage.js';
 import { AdminAuditPage } from './pages/admin/AdminAuditPage.js';
 import { AdminLayout } from './pages/admin/AdminLayout.js';
+import { AdminProjectsPage } from './pages/admin/AdminProjectsPage.js';
 import { AdminUserDetailPage } from './pages/admin/AdminUserDetailPage.js';
 import { AdminUsersPage } from './pages/admin/AdminUsersPage.js';
 import { AppShell } from './pages/AppShell.js';
@@ -65,6 +66,7 @@ export function App() {
             <Route path="users" element={<AdminUsersPage />} />
             <Route path="users/:userId" element={<AdminUserDetailPage />} />
             <Route path="deletions" element={<AdminAccountDeletionsPage />} />
+            <Route path="projects" element={<AdminProjectsPage />} />
           </Route>
           <Route path="/account" element={<AccountPage />} />
           <Route path="/projects/:projectId" element={<ProjectLayout />}>

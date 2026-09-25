@@ -39,9 +39,13 @@ function memberIdOrNotFound(userId: string): string {
 export class MembersController {
   constructor(private readonly members: MembersService) {}
 
-  /** Miembros del proyecto. El correo solo lo ve quien gestiona roles. */
+  /**
+   * Miembros del proyecto. El correo solo lo ve quien gestiona roles. Admite proyectos en la
+   * papelera (solo para quien puede restaurarlos) para poder elegir a la nueva persona
+   * propietaria (§111.3).
+   */
   @Get('members')
-  @ProjectRoute('members.view')
+  @ProjectRoute('members.view', { allowTrashed: true })
   @Header('Cache-Control', 'no-store')
   list(
     @CurrentProject() access: ProjectAccess,

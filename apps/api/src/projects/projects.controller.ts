@@ -143,11 +143,13 @@ export class ProjectsController {
 
   /**
    * Transfiere la propiedad del proyecto a otro miembro activo. Solo el Administrador Global
-   * (permiso global `projects.transfer_ownership`) y con reautenticación reciente (F4).
+   * (permiso global `projects.transfer_ownership`) y con reautenticación reciente (F4). Admite
+   * proyectos en la papelera (`allowTrashed`): sin ello, la protección de D8-6 dejaría atrapada a la
+   * cuenta de quien es propietario de uno (§111.3).
    */
   @Post(':projectId/transfer-ownership')
   @HttpCode(200)
-  @ProjectRoute('projects.transfer_ownership')
+  @ProjectRoute('projects.transfer_ownership', { allowTrashed: true })
   @RequireRecentAuth()
   @Header('Cache-Control', 'no-store')
   async transferOwnership(

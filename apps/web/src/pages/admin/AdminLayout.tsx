@@ -42,6 +42,11 @@ export function AdminLayout() {
             Eliminación de cuentas
           </NavLink>
         )}
+        {can('projects.list_all') && (
+          <NavLink to="/admin/projects" className={tabClass}>
+            Proyectos
+          </NavLink>
+        )}
         {can('system.audit.view') && (
           <NavLink to="/admin/audit" className={tabClass}>
             Auditoría

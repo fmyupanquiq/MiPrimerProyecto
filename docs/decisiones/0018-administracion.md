@@ -88,11 +88,20 @@ Administrador Global las aprobó la persona responsable del producto tras el pla
 
 ### Administración de proyectos y sesiones
 
-- La lista global de proyectos (`GET /projects?scope=all`) y la transferencia de propiedad
-  (`POST /projects/:id/transfer-ownership`) ya existen: se añade su interfaz.
-- Sesiones: `GET /users/me/sessions`, `DELETE /users/me/sessions/:id`,
-  `POST /users/me/sessions/revoke-others`, y `POST /admin/users/:id/revoke-sessions`
-  (`system.users.manage`, reautenticación). Se apoyan en `SessionService`.
+- La lista global de proyectos (`GET /projects?scope=all` más `GET /projects/trash`) y la
+  transferencia de propiedad (`POST /projects/:id/transfer-ownership`) ya existían: se añade su
+  interfaz (`/admin/projects`).
+- **Proyectos en la papelera.** D8-6 bloquea también a quien es propietario de un proyecto en la
+  papelera; si además no se pudiera transferir, esa cuenta quedaría atrapada (habría que restaurar,
+  transferir y volver a enviar a la papelera). Por eso `transfer-ownership` y `GET .../members`
+  pasan a admitir proyectos en la papelera (`allowTrashed`), solo para quien puede restaurarlos
+  (propietario y Administrador Global; el resto sigue recibiendo 404). Cambia una prueba de la
+  Fase 2 que fijaba el 404 anterior.
+- **Sesiones.** Los endpoints propios ya existían desde la Fase 1 (`GET /auth/sessions`,
+  `DELETE /auth/sessions/:id`, `POST /auth/sessions/revoke-others`); solo faltaba la pantalla
+  ("Mi cuenta"). Se añade `POST /admin/users/:id/revoke-sessions` (`system.users.manage`,
+  reautenticación) apoyado en `SessionService`; no cambia el estado de la cuenta y se audita
+  (`admin.user_sessions.revoked`).
 
 ### Mantenimiento y purga auxiliar
 

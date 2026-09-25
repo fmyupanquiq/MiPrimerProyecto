@@ -24,6 +24,8 @@ export const adminUsersApi = {
   get: (userId: string) => apiFetch<AdminUserDetail>(`/admin/users/${userId}`),
   disable: (userId: string, input: SetUserStatusInput) =>
     apiFetch<AdminUserDetail>(`/admin/users/${userId}/disable`, { method: 'POST', body: input }),
+  revokeSessions: (userId: string) =>
+    apiFetch<{ revoked: number }>(`/admin/users/${userId}/revoke-sessions`, { method: 'POST' }),
   enable: (userId: string, input: SetUserStatusInput) =>
     apiFetch<AdminUserDetail>(`/admin/users/${userId}/enable`, { method: 'POST', body: input }),
 };

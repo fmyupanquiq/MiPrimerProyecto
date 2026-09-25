@@ -67,4 +67,17 @@ export class AdminUsersController {
     await this.adminUsers.enable(auth.user, userId(id), body);
     return this.adminUsers.detail(id);
   }
+
+  /** Cierra todas las sesiones de la persona (p. ej. cuenta comprometida): reautenticación reciente. */
+  @Post(':userId/revoke-sessions')
+  @HttpCode(200)
+  @RequireGlobalPermission('system.users.manage')
+  @RequireRecentAuth()
+  @Header('Cache-Control', 'no-store')
+  async revokeSessions(
+    @CurrentAuth() auth: AuthContext,
+    @Param('userId') id: string,
+  ): Promise<{ revoked: number }> {
+    return { revoked: await this.adminUsers.revokeSessions(auth.user, userId(id)) };
+  }
 }

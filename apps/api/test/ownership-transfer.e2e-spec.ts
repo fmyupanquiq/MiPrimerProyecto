@@ -215,13 +215,23 @@ describe('transferencia de la propiedad del proyecto (e2e, PostgreSQL real)', ()
       expect((await projectRow()).status).toBe('CLOSED');
     });
 
-    it('no se puede transferir un proyecto que está en la papelera (404)', async () => {
+    it('un proyecto en la papelera solo lo transfiere quien puede restaurarlo (Fase 8, §111.3)', async () => {
+      // Antes (Fase 2) respondía 404 para todos. Desde la Fase 8 el Administrador Global sí puede,
+      // porque si no, la protección de D8-6 dejaría atrapada la cuenta de quien posee un proyecto
+      // en la papelera. Quien no puede restaurarlo sigue recibiendo 404.
       await ctx.t.pool.query(
         `UPDATE projects SET status = 'TRASHED', previous_status = 'ACTIVE', deleted_at = now(),
            deleted_by = owner_id, purge_eligible_at = now() + interval '90 days' WHERE id = $1`,
         [projectId],
       );
-      await transfer('root', people.admin.id).expect(404);
+      await transfer('admin', people.admin.id).expect(404);
+      await transfer('collab', people.admin.id).expect(404);
+      await transfer('stranger', people.admin.id).expect(404);
+      expect((await projectRow()).ownerId).toBe(people.owner.id);
+
+      const response = await transfer('root', people.admin.id).expect(200);
+      expect(response.body).toMatchObject({ ownerId: people.admin.id, status: 'TRASHED' });
+      expect((await projectRow()).status).toBe('TRASHED'); // la papelera no se altera
     });
   });
 

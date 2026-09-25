@@ -8,6 +8,7 @@ import {
   type SetUserStatusInput,
 } from '@letfer/shared';
 import { and, desc, eq, sql, type SQL } from 'drizzle-orm';
+import { AuditService } from '../audit/audit.service.js';
 import { AppError } from '../common/app-error.js';
 import { escapeLike } from '../common/sql-like.js';
 import { DATABASE } from '../database/database.constants.js';
@@ -31,6 +32,7 @@ const userNotFound = () => new AppError(404, ErrorCode.NOT_FOUND, 'Usuario no en
 export class AdminUsersService {
   constructor(
     @Inject(DATABASE) private readonly db: Database,
+    private readonly audit: AuditService,
     private readonly users: UsersService,
     private readonly sessions: SessionService,
     private readonly protection: AccountProtectionService,
@@ -151,6 +153,25 @@ export class AdminUsersService {
         { actorUserId: actor.id, expectedVersion: input.version, ...reasonOf(input) },
         tx,
       );
+    });
+  }
+
+  /**
+   * Cierra todas las sesiones abiertas de un usuario (§104.7): p. ej. ante una cuenta comprometida.
+   * No cambia el estado de la cuenta. Devuelve cuántas cerró y lo audita.
+   */
+  async revokeSessions(actor: UserRow, targetId: string): Promise<number> {
+    return this.db.transaction(async (tx) => {
+      const target = await this.lock(tx, targetId);
+      const revoked = await this.sessions.revokeAllForUser(target.id, 'revoked_by_admin', {}, tx);
+      await this.audit.record(tx, {
+        action: 'admin.user_sessions.revoked',
+        entityType: 'user',
+        entityId: target.id,
+        actorUserId: actor.id,
+        metadata: { revokedSessions: revoked },
+      });
+      return revoked;
     });
   }
 

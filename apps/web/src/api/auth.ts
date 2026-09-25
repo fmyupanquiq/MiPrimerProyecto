@@ -1,5 +1,6 @@
 import type {
   AuthState,
+  SessionInfo,
   ForgotPasswordInput,
   LoginInput,
   RegisterInput,
@@ -15,6 +16,11 @@ export const authApi = {
   reauth: (password: string) =>
     apiFetch<{ reauthenticatedAt: string }>('/auth/reauth', { method: 'POST', body: { password } }),
   logout: () => apiFetch<void>('/auth/logout', { method: 'POST' }),
+  sessions: () => apiFetch<{ sessions: SessionInfo[] }>('/auth/sessions'),
+  revokeSession: (sessionId: string) =>
+    apiFetch<void>(`/auth/sessions/${sessionId}`, { method: 'DELETE' }),
+  revokeOtherSessions: () =>
+    apiFetch<{ revoked: number }>('/auth/sessions/revoke-others', { method: 'POST' }),
   forgotPassword: (input: ForgotPasswordInput) =>
     apiFetch<{ accepted: true }>('/auth/password/forgot', { method: 'POST', body: input }),
   resetPassword: (input: ResetPasswordInput) =>

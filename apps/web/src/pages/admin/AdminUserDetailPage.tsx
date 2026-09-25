@@ -50,6 +50,21 @@ export function AdminUserDetailPage() {
   const user = detail.data;
   const canManage = can('system.users.manage');
 
+  async function revokeSessions() {
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const { revoked } = await runWithReauth(() => adminUsersApi.revokeSessions(user.id));
+      setNotice(revoked === 1 ? 'Se cerró 1 sesión.' : `Se cerraron ${revoked} sesiones.`);
+      detail.reload();
+    } catch (caught) {
+      if (!isReauthCancelled(caught)) setError(describeApiError(caught));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function submit(action: 'disable' | 'enable') {
     setBusy(true);
     setError(null);
@@ -97,7 +112,19 @@ export function AdminUserDetailPage() {
           <dt className="text-slate-500">Último acceso</dt>
           <dd>{user.lastLoginAt ? formatDateTime(user.lastLoginAt) : 'Nunca'}</dd>
           <dt className="text-slate-500">Sesiones abiertas</dt>
-          <dd>{user.activeSessionCount}</dd>
+          <dd>
+            {user.activeSessionCount}
+            {canManage && user.activeSessionCount > 0 && (
+              <button
+                type="button"
+                className={`${btn} ml-3`}
+                disabled={busy}
+                onClick={() => void revokeSessions()}
+              >
+                Cerrar todas sus sesiones
+              </button>
+            )}
+          </dd>
           {user.deletedAt && (
             <>
               <dt className="text-slate-500">Eliminada el</dt>
