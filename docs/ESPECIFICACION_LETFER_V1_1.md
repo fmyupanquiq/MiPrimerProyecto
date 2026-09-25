@@ -2880,15 +2880,21 @@ restaurarla (re-registro). El Colaborador solo elimina sus apuestas pendientes. 
 existe una vista previa sin efectos con las filas, los saldos antes y después, los checkpoints que
 se invalidarían y los conflictos.
 
-La fecha de colocación no puede ser posterior a la de liquidación.
+La fecha de colocación no puede ser posterior a la de liquidación. Reabrir no elimina información
+financiera: los valores anteriores (retorno calculado y oficial, fecha de liquidación) se conservan
+en el registro de la corrección y en la auditoría, y la nueva liquidación genera valores nuevos.
+Cambiar la fecha de colocación de una apuesta liquidada solo se hace con la corrección de
+liquidación, porque mueve su efecto en el ledger.
 
 #### 112.4 Validación histórica (§74)
 
 Antes de escribir, LetFer reproduce la línea de tiempo de cada casa afectada. Si el saldo bruto
 queda negativo en algún punto, o el disponible actual queda negativo, la operación se rechaza (409
 `CORRECTION_CONFLICT`) y se explican los registros que generan el conflicto; no se escribe nada.
-El administrador debe corregir primero el historial real. El comprometido no se reconstruye por
-fecha: la comprobación histórica usa saldo bruto.
+El administrador debe corregir primero el historial real. El comprometido no tiene línea temporal
+propia: para esta validación, cada apuesta pendiente y cada retiro pendiente se modela como un
+débito desde su fecha de colocación o de solicitud, de modo que reabrir o restaurar no libera
+retroactivamente dinero que estaba comprometido cuando se hicieron operaciones posteriores.
 
 #### 112.5 Checkpoints (§74, §109.1.3)
 

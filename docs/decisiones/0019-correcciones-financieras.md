@@ -48,8 +48,8 @@ Verificados con `apps/api/test/bets-ledger-baseline.e2e-spec.ts` (pruebas de car
 - **D-A5. Validación histórica (§74).** Antes de escribir se reproduce la línea de tiempo de cada
   casa afectada con los cambios propuestos. Si el saldo bruto queda negativo en algún punto, o el
   disponible actual queda negativo, responde **409 `CORRECTION_CONFLICT`** con los registros que
-  originan el conflicto y no se escribe nada. Límite conocido: el comprometido no tiene historia por
-  fecha, así que la comprobación histórica usa saldo bruto.
+  originan el conflicto y no se escribe nada. El comprometido no tiene historia por fecha:
+  se modela como un débito desde la colocación o solicitud de cada pendiente (ver notas de 8.5.3).
 - **D-A6. Dashboard.** Los retornos no confirmados participan en P/L, ROI y Yield con su valor
   calculado, siempre con un aviso visible ("incluye N apuestas con retorno no confirmado") y el
   monto afectado. Nunca se confunde un calculado con un oficial (§77).
@@ -213,9 +213,43 @@ filtros = Σ efecto neto de apuestas en el ledger = variación de saldos.
   del ledger (filas crudas) = saldo del dashboard = saldo conciliable, y ledger = capital inicial +
   depósitos − retiros + extraordinarios + ganancia/pérdida de las apuestas. Se aplica en cada
   escenario de 8.5.2 y se ampliará en 8.5.3 con corregir, reabrir, papelera y restaurar.
-- **Pendiente para 8.5.3** (por decisión de la persona responsable): revisar explícitamente el
-  impacto sobre el comprometido histórico, que hoy no tiene línea temporal (el validador usa saldo
-  bruto).
+### 8.5.3 (corregir, reabrir, papelera y restaurar)
+
+- **Un solo camino** (`BetCorrectionsService`): bloquear proyecto y apuesta, cambiar la apuesta,
+  calcular con el motor qué filas revertir y añadir, validar la línea de tiempo y el disponible,
+  registrar la corrección, invalidar checkpoints y auditar. La vista previa ejecuta ese mismo camino
+  y lo revierte (rollback), así que no puede diferir de lo que se aplicaría; una corrección imposible
+  se previsualiza como `valid: false` (200) y al aplicarla responde 409 `CORRECTION_CONFLICT`.
+- **Comprometido histórico** (revisión explícita pedida). El comprometido no tiene línea temporal
+  propia: se calcula en vivo. Para validar el pasado, cada apuesta pendiente y cada retiro pendiente
+  se modela como un **débito desde su fecha de colocación o solicitud** (`BetHold`), tanto en la
+  línea de tiempo actual como en la simulada; la propia apuesta se trata igual antes y después del
+  cambio (al reabrir, su reserva pasa a ser una reserva; al liquidar, la reserva se sustituye por su
+  colocación real). Así reabrir o restaurar no "libera" retroactivamente dinero que estaba comprometido
+  cuando se hicieron retiros posteriores, algo que ni el saldo bruto ni el disponible de hoy detectan.
+  Límite conocido: una reserva se modela desde su fecha hasta hoy; no se conoce en qué instante exacto
+  dejó de existir una reserva ya resuelta más allá de lo que dice el ledger. El conflicto informa las
+  apuestas y retiros pendientes que pesan en él (`pendingIds`).
+- **Reabrir conserva la historia**: la fila de la apuesta limpia el retorno y la fecha de liquidación
+  (una pendiente no tiene retorno; lo exige `bets_settlement_shape`), pero `bet_corrections.before`, la
+  auditoría (`oldValues`) y las filas anuladas del ledger conservan el retorno calculado y el oficial
+  anteriores y el resto de valores. La nueva liquidación genera valores nuevos. Un monto que era solo
+  el calculado congelado vuelve a seguir la unidad de la etapa; uno confirmado se conserva.
+- **Eliminar o restaurar una liquidada** exige `bets.correct`, reautenticación y motivo (D-A11): la
+  reautenticación depende del estado de la apuesta, así que la comprueba el servicio con
+  `assertRecentAuth` (compartido con el guard). Una pendiente conserva sus permisos.
+- **Fechas (D-A10)**: la colocación no puede ser posterior a la liquidación al corregir, y la
+  liquidación no puede ser anterior a la colocación al liquidar. Editar directamente la fecha de
+  colocación de una liquidada (que movía la fecha de la apuesta sin mover el ledger, F2) ya no se
+  permite: se corrige con la corrección de liquidación.
+- **Checkpoints**: se invalidan los `MATCHED` de las casas afectadas de fecha igual o posterior a la
+  fecha más antigua de las filas anuladas y nuevas, y solo si el ledger cambia (§112.5).
+- **Historial**: `GET bets/:id/ledger` muestra las filas del ledger (vigentes, anuladas y reversiones)
+  y las correcciones con sus valores anteriores.
+- **Criterio de aceptación ampliado**: además de los escenarios paso a paso, una secuencia
+  pseudoaleatoria determinista (semilla fija) de liquidar, corregir, reabrir, eliminar, restaurar y
+  confirmar, con operaciones rechazadas incluidas, comprueba tras cada paso saldo del ledger = saldo
+  del dashboard = saldo conciliable, y al final que el efecto neto de cada apuesta es su ganancia.
 
 ## Plan de subfases
 
