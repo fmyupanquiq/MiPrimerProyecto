@@ -42,6 +42,8 @@ export class IntegrityService {
     const findings: IntegrityFinding[] = [
       ...(await this.checkNegativeAvailable(this.db, projectIds)),
       ...(await this.checkSettlementShape(this.db, projectId)),
+      ...(await this.checkBetLedgerNet(this.db, projectId)),
+      ...(await this.checkReversalIntegrity(this.db, projectId)),
       ...(await this.checkPendingBetReferences(this.db, projectId)),
       ...(await this.checkLedgerShape(this.db, projectId)),
       ...(await this.checkCheckpointInvalidation(this.db, projectId)),
@@ -132,20 +134,39 @@ export class IntegrityService {
       : [];
   }
 
-  /** b) `LOST` sin `BET_SETTLEMENT`; `WON`/`VOID`/`CASHOUT` con exactamente una (D-B2). */
+  /**
+   * b) Liquidaciones y filas vigentes (D-B2, §112.7): con reversiones ya no basta contar filas
+   * `BET_SETTLEMENT`; se cuentan las **vigentes** (las que ninguna reversión anuló). Una liquidada no
+   * eliminada tiene exactamente una colocación vigente y una liquidación vigente solo si su retorno
+   * efectivo es positivo y no es `LOST`; una pendiente o eliminada no tiene ninguna.
+   */
   private async checkSettlementShape(
     executor: DbExecutor,
     projectId: string | undefined,
   ): Promise<IntegrityFinding[]> {
     const result = await executor.execute<{ id: string }>(
-      sql`SELECT b.id FROM bets b
-          LEFT JOIN financial_movements fm
-            ON fm.operation_id = b.id AND fm.type = 'BET_SETTLEMENT'
-          WHERE b.status <> 'PENDING'
-            AND (${projectId ?? null}::uuid IS NULL OR b.project_id = ${projectId ?? null}::uuid)
-          GROUP BY b.id, b.status
-          HAVING (b.status = 'LOST' AND COUNT(fm.id) <> 0)
-              OR (b.status IN ('WON', 'VOID', 'CASHOUT') AND COUNT(fm.id) <> 1)`,
+      sql`WITH live AS (
+            SELECT fm.id, fm.type, fm.operation_id FROM financial_movements fm
+            WHERE fm.type IN ('BET_PLACEMENT', 'BET_SETTLEMENT')
+              AND NOT EXISTS (SELECT 1 FROM financial_movements r WHERE r.reverses_movement_id = fm.id)
+          )
+          SELECT b.id FROM bets b
+          LEFT JOIN live ON live.operation_id = b.id
+          WHERE (${projectId ?? null}::uuid IS NULL OR b.project_id = ${projectId ?? null}::uuid)
+          GROUP BY b.id
+          HAVING (
+                   (b.status = 'PENDING' OR b.deleted_at IS NOT NULL) AND COUNT(live.id) <> 0
+                 )
+              OR (
+                   b.status <> 'PENDING' AND b.deleted_at IS NULL AND (
+                     COUNT(live.id) FILTER (WHERE live.type = 'BET_PLACEMENT') <> 1
+                     OR COUNT(live.id) FILTER (WHERE live.type = 'BET_SETTLEMENT') <> CASE
+                          WHEN b.status = 'LOST' THEN 0
+                          WHEN COALESCE(b.official_realized_return, b.calculated_realized_return, 0) > 0 THEN 1
+                          ELSE 0
+                        END
+                   )
+                 )`,
     );
     const affected = result.rows.map((r) => `bet:${r.id}`);
     return affected.length > 0
@@ -153,7 +174,77 @@ export class IntegrityService {
           {
             check: 'SETTLEMENT_SHAPE',
             message:
-              'Una o más apuestas liquidadas no tienen la fila BET_SETTLEMENT esperada para su estado (D-B2).',
+              'Una o más apuestas no tienen las filas vigentes del ledger que corresponden a su estado (D-B2, §112.7).',
+            affected,
+          },
+        ]
+      : [];
+  }
+
+  /**
+   * b1/b2) El efecto neto de cada apuesta en el ledger (créditos − débitos de sus filas, con
+   * reversiones) es exactamente su ganancia o pérdida derivada (§112.6): una liquidada no eliminada,
+   * `retorno efectivo − monto` (`−monto` si es `LOST`); una pendiente o eliminada, cero. Es la misma
+   * cifra que suma el dashboard, y este chequeo la contrasta con lo que dicen los datos de la apuesta.
+   */
+  private async checkBetLedgerNet(
+    executor: DbExecutor,
+    projectId: string | undefined,
+  ): Promise<IntegrityFinding[]> {
+    const result = await executor.execute<{ id: string }>(
+      sql`SELECT b.id FROM bets b
+          JOIN stages s ON s.id = b.stage_id
+          CROSS JOIN LATERAL (
+            SELECT COALESCE(SUM(CASE WHEN fm.direction = 'CREDIT' THEN fm.amount ELSE -fm.amount END), 0) AS net
+            FROM financial_movements fm
+            WHERE fm.operation_id = b.id AND fm.type IN ('BET_PLACEMENT', 'BET_SETTLEMENT', 'REVERSAL')
+          ) ledger
+          WHERE (${projectId ?? null}::uuid IS NULL OR b.project_id = ${projectId ?? null}::uuid)
+            AND ledger.net <> CASE
+                  WHEN b.status = 'PENDING' OR b.deleted_at IS NOT NULL THEN 0
+                  WHEN b.status = 'LOST'
+                    THEN -COALESCE(b.official_amount, ROUND(s.unit_stake * b.stake, 2))
+                  ELSE COALESCE(b.official_realized_return, b.calculated_realized_return, 0)
+                       - COALESCE(b.official_amount, ROUND(s.unit_stake * b.stake, 2))
+                END`,
+    );
+    const affected = result.rows.map((r) => `bet:${r.id}`);
+    return affected.length > 0
+      ? [
+          {
+            check: 'BET_LEDGER_NET',
+            message:
+              'El efecto neto de una o más apuestas en el ledger no coincide con su ganancia o pérdida (§112.6).',
+            affected,
+          },
+        ]
+      : [];
+  }
+
+  /**
+   * b3/b4) Reversiones y correcciones (§112.1, §112.7): toda reversión de una operación de apuesta
+   * lleva su corrección, y esa corrección pertenece a la misma apuesta. (Que una fila no se anule dos
+   * veces y que la reversión coincida con la original lo garantizan la base de datos.)
+   */
+  private async checkReversalIntegrity(
+    executor: DbExecutor,
+    projectId: string | undefined,
+  ): Promise<IntegrityFinding[]> {
+    const result = await executor.execute<{ id: string }>(
+      sql`SELECT m.id FROM financial_movements m
+          LEFT JOIN bet_corrections c ON c.id = m.correction_id
+          WHERE m.type = 'REVERSAL'
+            AND EXISTS (SELECT 1 FROM bets b WHERE b.id = m.operation_id)
+            AND (m.correction_id IS NULL OR c.bet_id <> m.operation_id)
+            AND (${projectId ?? null}::uuid IS NULL OR m.project_id = ${projectId ?? null}::uuid)`,
+    );
+    const affected = result.rows.map((r) => `movement:${r.id}`);
+    return affected.length > 0
+      ? [
+          {
+            check: 'REVERSAL_INTEGRITY',
+            message:
+              'Una o más reversiones no tienen la corrección de su apuesta que las originó (§112.1).',
             affected,
           },
         ]
@@ -207,29 +298,48 @@ export class IntegrityService {
       : [];
   }
 
-  /** e) Todo checkpoint que debería estar `INVALIDATED` (§109.1.3) efectivamente lo está. */
+  /**
+   * e) Todo checkpoint que debería estar `INVALIDATED` (§109.1.3, §112.5) efectivamente lo está.
+   *
+   * Dos vías independientes de la aplicación:
+   * - **Ledger**: una fila se escribió DESPUÉS de crearse el checkpoint y con fecha efectiva anterior a
+   *   la del checkpoint (liquidaciones, reversiones y re-registros incluidos): el checkpoint vio otra
+   *   historia. Es la vía general y no depende de ninguna columna de la apuesta.
+   * - **Apuestas pendientes**: no dejan fila en el ledger (D-B7), así que su efecto sobre el
+   *   comprometido se detecta con \`financial_fields_updated_at\` (M1 de la revisión de la Fase 5.5).
+   *   Solo pendientes: en una liquidada o eliminada manda el ledger, y la fecha de un cambio posterior
+   *   a la del checkpoint no debe invalidarlo (§112.5).
+   */
   private async checkCheckpointInvalidation(
     executor: DbExecutor,
     projectId: string | undefined,
   ): Promise<IntegrityFinding[]> {
-    // M1 (revisión de arquitectura previa a integrar la Fase 5.5): compara contra
-    // `financial_fields_updated_at`, no contra `updated_at` — esa columna solo se mueve ante un
-    // cambio con efecto financiero real (disparador `bump_bet_financial_timestamp`), nunca ante
-    // una simple corrección de motivo (§107.9) o un traslado de etapa sin efecto en el
-    // comprometido, que antes se reportaban como falsos hallazgos.
-    const result = await executor.execute<{ id: string }>(
-      sql`SELECT DISTINCT c.id FROM reconciliation_checkpoints c
-          JOIN bets b ON b.house_id = c.house_id AND b.placed_at <= c.occurred_at
-          WHERE c.status = 'MATCHED' AND b.financial_fields_updated_at > c.created_at
-            AND (${projectId ?? null}::uuid IS NULL OR c.project_id = ${projectId ?? null}::uuid)`,
+    const project = sql`(${projectId ?? null}::uuid IS NULL OR c.project_id = ${projectId ?? null}::uuid)`;
+    const [viaLedger, viaPending] = await Promise.all([
+      executor.execute<{ id: string }>(
+        sql`SELECT DISTINCT c.id FROM reconciliation_checkpoints c
+            JOIN financial_movements m
+              ON (m.house_id = c.house_id OR m.from_house_id = c.house_id OR m.to_house_id = c.house_id)
+             AND m.occurred_at < c.occurred_at
+             AND m.created_at > c.created_at
+            WHERE c.status = 'MATCHED' AND ${project}`,
+      ),
+      executor.execute<{ id: string }>(
+        sql`SELECT DISTINCT c.id FROM reconciliation_checkpoints c
+            JOIN bets b ON b.house_id = c.house_id AND b.placed_at <= c.occurred_at
+            WHERE c.status = 'MATCHED' AND b.status = 'PENDING'
+              AND b.financial_fields_updated_at > c.created_at AND ${project}`,
+      ),
+    ]);
+    const affected = [...new Set([...viaLedger.rows, ...viaPending.rows].map((r) => r.id))].map(
+      (id) => `checkpoint:${id}`,
     );
-    const affected = result.rows.map((r) => `checkpoint:${r.id}`);
     return affected.length > 0
       ? [
           {
             check: 'CHECKPOINT_INVALIDATION',
             message:
-              'Uno o más checkpoints siguen MATCHED pese a una apuesta afectada modificada después (§74).',
+              'Uno o más checkpoints siguen MATCHED pese a un cambio posterior en su historia (§74).',
             affected,
           },
         ]

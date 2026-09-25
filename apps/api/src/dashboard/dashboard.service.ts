@@ -4,6 +4,7 @@ import {
   compareMoney,
   isPositiveMoney,
   percentageOf,
+  roundMoney,
   subtractMoney,
   ZERO_MONEY,
   type BankrollChart,
@@ -46,12 +47,15 @@ interface BreakdownRow extends Record<string, unknown> {
   count: string;
 }
 
+/** Las cifras monetarias del dashboard siempre salen con dos decimales (D-A13, §112.6). */
 function toBreakdownItem(row: BreakdownRow): DashboardBreakdownItem {
+  const profitLoss = roundMoney(row.profit_loss);
+  const totalStaked = roundMoney(row.total_staked);
   return {
     key: row.key ?? 'Sin especificar',
-    profitLoss: row.profit_loss,
-    yield: percentageOf(row.profit_loss, row.total_staked),
-    totalStaked: row.total_staked,
+    profitLoss,
+    yield: percentageOf(profitLoss, totalStaked),
+    totalStaked,
     count: Number(row.count),
   };
 }
@@ -81,7 +85,7 @@ export class DashboardService {
   /** `GET /dashboard/status` (§33): foto actual, sin filtros. */
   async status(access: ProjectAccess): Promise<DashboardStatus> {
     const executor = this.db;
-    const [balances, houseRows, countRows] = await Promise.all([
+    const [balances, houseRows, countRows, unconfirmedRows] = await Promise.all([
       computeHouseBalances(executor, access.project.id),
       executor
         .select({ id: houses.id, name: houses.name })
@@ -91,6 +95,12 @@ export class DashboardService {
         sql`SELECT status, COUNT(*) AS total FROM bets
             WHERE project_id = ${access.project.id}::uuid AND deleted_at IS NULL
             GROUP BY status`,
+      ),
+      // Ganadas con retorno solo calculado (§77, §112.6): el dashboard lo avisa siempre.
+      executor.execute<{ total: string }>(
+        sql`SELECT COUNT(*) AS total FROM bets
+            WHERE project_id = ${access.project.id}::uuid AND deleted_at IS NULL
+              AND status = 'WON' AND official_realized_return IS NULL`,
       ),
     ]);
 
@@ -110,6 +120,7 @@ export class DashboardService {
     const comprometido = addMoney(...porCasa.map((h) => h.committed));
 
     return {
+      retornosPorConfirmar: Number(unconfirmedRows.rows[0]?.total ?? 0),
       capitalActual,
       disponible,
       comprometido,
@@ -127,64 +138,84 @@ export class DashboardService {
     const allWhere = this.filteredBetsCte(access, filters, { settledOnly: false });
     const format = periodFormat(filters.period);
 
-    const [totalsResult, countRows, byHouse, byStage, bySport, byMarket, byPeriod, capital] =
-      await Promise.all([
-        executor.execute<{ profit_loss: MoneyString; total_staked: MoneyString }>(
-          sql`${settledWhere} SELECT
+    const [
+      totalsResult,
+      unconfirmedResult,
+      countRows,
+      byHouse,
+      byStage,
+      bySport,
+      byMarket,
+      byPeriod,
+      capital,
+    ] = await Promise.all([
+      executor.execute<{ profit_loss: MoneyString; total_staked: MoneyString }>(
+        sql`${settledWhere} SELECT
                 COALESCE(SUM(profit_loss), 0)::text AS profit_loss,
                 COALESCE(SUM(amount), 0)::text AS total_staked
               FROM filtered`,
-        ),
-        executor.execute<{ status: string; total: string }>(
-          sql`${allWhere} SELECT status, COUNT(*) AS total FROM filtered GROUP BY status`,
-        ),
-        executor.execute<BreakdownRow>(
-          sql`${settledWhere} SELECT house_name AS key,
+      ),
+      executor.execute<{ total: string; profit_loss: MoneyString }>(
+        sql`${settledWhere} SELECT
+                COUNT(*)::text AS total,
+                COALESCE(SUM(profit_loss), 0)::text AS profit_loss
+              FROM filtered WHERE unconfirmed`,
+      ),
+      executor.execute<{ status: string; total: string }>(
+        sql`${allWhere} SELECT status, COUNT(*) AS total FROM filtered GROUP BY status`,
+      ),
+      executor.execute<BreakdownRow>(
+        sql`${settledWhere} SELECT house_name AS key,
                 COALESCE(SUM(profit_loss), 0)::text AS profit_loss,
                 COALESCE(SUM(amount), 0)::text AS total_staked,
                 COUNT(*)::text AS count
               FROM filtered GROUP BY house_name ORDER BY house_name`,
-        ),
-        executor.execute<BreakdownRow>(
-          sql`${settledWhere} SELECT stage_name AS key,
+      ),
+      executor.execute<BreakdownRow>(
+        sql`${settledWhere} SELECT stage_name AS key,
                 COALESCE(SUM(profit_loss), 0)::text AS profit_loss,
                 COALESCE(SUM(amount), 0)::text AS total_staked,
                 COUNT(*)::text AS count
               FROM filtered GROUP BY stage_name ORDER BY stage_name`,
-        ),
-        executor.execute<BreakdownRow>(
-          sql`${settledWhere} SELECT sport_key AS key,
+      ),
+      executor.execute<BreakdownRow>(
+        sql`${settledWhere} SELECT sport_key AS key,
                 COALESCE(SUM(profit_loss), 0)::text AS profit_loss,
                 COALESCE(SUM(amount), 0)::text AS total_staked,
                 COUNT(*)::text AS count
               FROM filtered GROUP BY sport_key ORDER BY sport_key`,
-        ),
-        executor.execute<BreakdownRow>(
-          sql`${settledWhere} SELECT market_key AS key,
+      ),
+      executor.execute<BreakdownRow>(
+        sql`${settledWhere} SELECT market_key AS key,
                 COALESCE(SUM(profit_loss), 0)::text AS profit_loss,
                 COALESCE(SUM(amount), 0)::text AS total_staked,
                 COUNT(*)::text AS count
               FROM filtered GROUP BY market_key ORDER BY market_key`,
-        ),
-        executor.execute<BreakdownRow>(
-          sql`${settledWhere} SELECT
+      ),
+      executor.execute<BreakdownRow>(
+        sql`${settledWhere} SELECT
                 to_char(settled_at AT TIME ZONE ${access.project.timezone}, ${format}) AS key,
                 COALESCE(SUM(profit_loss), 0)::text AS profit_loss,
                 COALESCE(SUM(amount), 0)::text AS total_staked,
                 COUNT(*)::text AS count
               FROM filtered GROUP BY key ORDER BY key`,
-        ),
-        this.periodCapital(executor, projectId, filters),
-      ]);
+      ),
+      this.periodCapital(executor, projectId, filters),
+    ]);
 
     const totals = totalsResult.rows[0] ?? { profit_loss: ZERO_MONEY, total_staked: ZERO_MONEY };
-    const profitLoss = totals.profit_loss;
+    const profitLoss = roundMoney(totals.profit_loss);
+    const totalStaked = roundMoney(totals.total_staked);
 
     return {
       profitLoss,
-      yield: percentageOf(profitLoss, totals.total_staked),
+      yield: percentageOf(profitLoss, totalStaked),
       roi: percentageOf(profitLoss, capital.capitalInvested),
-      totalStaked: totals.total_staked,
+      totalStaked,
+      unconfirmedReturns: {
+        count: Number(unconfirmedResult.rows[0]?.total ?? 0),
+        profitLoss: roundMoney(unconfirmedResult.rows[0]?.profit_loss ?? ZERO_MONEY),
+      },
       capitalInvested: capital.capitalInvested,
       deposits: capital.deposits,
       withdrawals: capital.withdrawals,
@@ -247,7 +278,11 @@ export class DashboardService {
                 OVER (ORDER BY occurred_at, id)::text AS cumulative
             FROM financial_movements
             WHERE project_id = ${access.project.id}::uuid
-              AND type IN ('BET_PLACEMENT', 'BET_SETTLEMENT')
+              AND (
+                type IN ('BET_PLACEMENT', 'BET_SETTLEMENT')
+                -- Las reversiones de una apuesta anulan filas de la curva (§112.1).
+                OR (type = 'REVERSAL' AND operation_id IN (SELECT id FROM bets))
+              )
           )
           SELECT occurred_at, cumulative,
             MAX(cumulative::numeric) OVER (ORDER BY occurred_at, id)::text AS peak
@@ -412,21 +447,20 @@ export class DashboardService {
       );
     }
 
+    // El monto apostado y la ganancia/pérdida salen del LEDGER (§112.6): el efecto neto de las filas de
+    // la apuesta (colocación, liquidación y reversiones) es exactamente su ganancia o pérdida, y el
+    // monto apostado es su colocación vigente. Ninguna cifra depende de valores derivados de la apuesta
+    // que pudieran quedar desactualizados; la verificación de integridad (BET_LEDGER_NET) contrasta
+    // el ledger con los datos de la apuesta. Una apuesta pendiente no tiene efecto en el ledger.
     return sql`WITH filtered AS (
       SELECT
         b.id,
         b.status,
         s.name AS stage_name,
         h.name AS house_name,
-        COALESCE(b.official_amount, ROUND(s.unit_stake * b.stake, 2)) AS amount,
-        CASE
-          WHEN b.status = 'LOST'
-            THEN -COALESCE(b.official_amount, ROUND(s.unit_stake * b.stake, 2))
-          WHEN COALESCE(b.official_realized_return, b.calculated_realized_return) IS NOT NULL
-            THEN COALESCE(b.official_realized_return, b.calculated_realized_return)
-                 - COALESCE(b.official_amount, ROUND(s.unit_stake * b.stake, 2))
-          ELSE 0
-        END AS profit_loss,
+        COALESCE(l.staked, 0) AS amount,
+        COALESCE(l.net, 0) AS profit_loss,
+        (b.status = 'WON' AND b.official_realized_return IS NULL) AS unconfirmed,
         b.settled_at,
         (SELECT CASE WHEN COUNT(DISTINCT bs.sport) = 1 THEN MIN(bs.sport) ELSE 'Mixto' END
            FROM bet_selections bs WHERE bs.bet_id = b.id) AS sport_key,
@@ -435,6 +469,18 @@ export class DashboardService {
       FROM bets b
       JOIN stages s ON s.id = b.stage_id
       JOIN houses h ON h.id = b.house_id
+      LEFT JOIN LATERAL (
+        SELECT
+          SUM(CASE WHEN m.direction = 'CREDIT' THEN m.amount ELSE -m.amount END) AS net,
+          SUM(CASE
+                WHEN m.type = 'BET_PLACEMENT' THEN m.amount
+                WHEN m.type = 'REVERSAL' AND o.type = 'BET_PLACEMENT' THEN -m.amount
+                ELSE 0
+              END) AS staked
+        FROM financial_movements m
+        LEFT JOIN financial_movements o ON o.id = m.reverses_movement_id
+        WHERE m.operation_id = b.id AND m.type IN ('BET_PLACEMENT', 'BET_SETTLEMENT', 'REVERSAL')
+      ) l ON true
       WHERE ${sql.join(conditions, sql` AND `)}
     ) `;
   }

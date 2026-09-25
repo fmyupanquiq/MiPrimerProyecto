@@ -139,6 +139,8 @@ export const INTEGRITY_CHECK_LABELS: Record<string, string> = {
   PENDING_BET_REFERENCES: 'Referencias de apuestas pendientes',
   LEDGER_SHAPE: 'Forma del ledger',
   CHECKPOINT_INVALIDATION: 'Invalidación de checkpoints',
+  BET_LEDGER_NET: 'Efecto de la apuesta en el ledger',
+  REVERSAL_INTEGRITY: 'Reversiones y correcciones',
 };
 
 export const MAINTENANCE_STATUS_LABELS: Record<MaintenanceStatus, string> = {

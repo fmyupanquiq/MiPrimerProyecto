@@ -9,6 +9,10 @@ export const INTEGRITY_CHECKS = [
   'PENDING_BET_REFERENCES',
   'LEDGER_SHAPE',
   'CHECKPOINT_INVALIDATION',
+  /** El efecto neto de una apuesta en el ledger no es su ganancia o pérdida (§112.6, §112.7). */
+  'BET_LEDGER_NET',
+  /** Una reversión sin corrección o con una corrección de otra apuesta (§112.1, §112.7). */
+  'REVERSAL_INTEGRITY',
 ] as const;
 export type IntegrityCheck = (typeof INTEGRITY_CHECKS)[number];
 

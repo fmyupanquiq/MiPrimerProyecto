@@ -47,6 +47,8 @@ export interface DashboardHouseBalance {
 
 /** `GET /dashboard/status` (§33 "Estado financiero actual"): sin filtros, la foto de ahora mismo. */
 export interface DashboardStatus {
+  /** Ganadas liquidadas con retorno calculado, sin retorno oficial (§77, §112.6, D-A6). */
+  retornosPorConfirmar: number;
   capitalActual: MoneyString;
   disponible: MoneyString;
   comprometido: MoneyString;
@@ -76,6 +78,11 @@ export interface DashboardAnalysis {
   /** P/L ÷ capital invertido × 100 (D-M1): banca inicial + depósitos netos del periodo. */
   roi: MoneyString | null;
   totalStaked: MoneyString;
+  /**
+   * Aviso de retornos provisionales (§112.6, D-A6): las ganadas del análisis cuyo retorno es solo el
+   * calculado, y su ganancia provisional. Ya cuentan en `profitLoss`, `yield` y `roi`.
+   */
+  unconfirmedReturns: { count: number; profitLoss: MoneyString };
   capitalInvested: MoneyString;
   deposits: MoneyString;
   withdrawals: MoneyString;
