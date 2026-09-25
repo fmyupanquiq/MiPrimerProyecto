@@ -176,9 +176,50 @@ filtros = Σ efecto neto de apuestas en el ledger = variación de saldos.
 | Falsa precisión con retornos calculados | Insignia, aviso en dashboard, reporte de diferencias |
 | Complejidad de la interfaz de corrección | Vista previa obligatoria antes de aplicar |
 
+## Notas de implementación
+
+### 8.5.1 (motor y esquema)
+
+- El motor solo escribe la **diferencia** entre las filas vigentes y el efecto deseado (refina D-A1:
+  se revierten únicamente las filas afectadas). Lo que coincide no se toca.
+- El validador de línea de tiempo evalúa el saldo bruto por instante (filas del mismo instante
+  agrupadas, §107.6) y solo atribuye a la corrección los conflictos que ella introduce.
+
+### 8.5.2 (retorno provisional y confirmación)
+
+- **`amount_confirmed`** significa únicamente que un ticket, la casa o una persona confirmó el
+  **monto** (§76); nunca que LetFer congeló su propio cálculo. Se marca al registrar, editar o
+  liquidar con un monto indicado. Liquidar sin él congela el calculado en `official_amount` con
+  `amount_confirmed = false`, y `amountSource` sale de esa columna. La confirmación del **retorno**
+  no tiene columna propia: `official_realized_return IS NOT NULL` es "confirmado" y, si solo existe
+  `calculated_realized_return`, el retorno es provisional (`returnSource`). Confirmar el retorno no
+  confirma el monto.
+- La migración `0031` rellena `amount_confirmed` solo en apuestas pendientes con monto oficial: en
+  una ya liquidada no se puede saber si `official_amount` era indicado o congelado (no había datos
+  reales), así que se trata como no confirmada.
+- `WON` guarda siempre el retorno calculado (aunque llegue el oficial) para poder compararlos en
+  `return-differences`. `VOID` sin retorno indicado usa el monto y queda confirmado. `CASHOUT`
+  exige el oficial.
+- La reautenticación condicional (D-A12) usa `RequireRecentAuthWhen(predicado)`, evaluado sobre el
+  cuerpo crudo: solo puede endurecer la exigencia (un valor malformado igualmente falla después en
+  la validación del esquema).
+- Liquidar por primera vez ya usa el motor (`correctionId = null`) y, por tanto, también valida la
+  línea de tiempo: una colocación fechada antes del saldo que la respalda se rechaza con 409
+  `CORRECTION_CONFLICT`.
+- El disparador `bump_bet_financial_timestamp` **no** se amplía todavía a los retornos: la
+  comprobación (e) de integridad compara contra `placed_at` y daría falsos hallazgos. Se rehace en
+  8.5.4 junto con la regla de invalidación por fecha mínima afectada.
+- **Criterio de aceptación** (`test/support/financial-invariant.ts`): tras cualquier secuencia, saldo
+  del ledger (filas crudas) = saldo del dashboard = saldo conciliable, y ledger = capital inicial +
+  depósitos − retiros + extraordinarios + ganancia/pérdida de las apuestas. Se aplica en cada
+  escenario de 8.5.2 y se ampliará en 8.5.3 con corregir, reabrir, papelera y restaurar.
+- **Pendiente para 8.5.3** (por decisión de la persona responsable): revisar explícitamente el
+  impacto sobre el comprometido histórico, que hoy no tiene línea temporal (el validador usa saldo
+  bruto).
+
 ## Plan de subfases
 
-8.5.0 línea base y documentación (este borrador) · 8.5.1 migraciones, motor y validador ·
+8.5.0 línea base y documentación · 8.5.1 migraciones, motor y validador ·
 8.5.2 liquidación provisional, `confirm-return` y reporte · 8.5.3 corregir, reabrir, papelera y
 restaurar, y checkpoints · 8.5.4 integridad, dashboard y equivalencia · 8.5.5 web · 8.5.6 revisión
 final, integración y tag `v0.8.5-correcciones-financieras`.
