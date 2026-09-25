@@ -19,4 +19,9 @@ export interface TrashItem {
   purgeEligibleAt: string;
   /** `true` si la fecha de elegibilidad ya pasó. */
   purgeEligible: boolean;
+  /**
+   * `true` en una apuesta que estaba liquidada: restaurarla vuelve a registrar su efecto en el
+   * ledger y exige `bets.correct`, reautenticación y motivo (§112.3, D-A11). Siempre `false` en una etapa.
+   */
+  settled: boolean;
 }

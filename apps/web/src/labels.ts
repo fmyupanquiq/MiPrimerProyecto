@@ -1,6 +1,7 @@
 import type {
   AccountDeletionStatus,
   BackupStatus,
+  BetCorrectionKind,
   BetStatus,
   BetType,
   HouseStatus,
@@ -108,6 +109,14 @@ export const BET_STATUS_LABELS: Record<BetStatus, string> = {
   LOST: 'Perdida',
   VOID: 'Anulada',
   CASHOUT: 'Cash Out',
+};
+
+export const BET_CORRECTION_KIND_LABELS: Record<BetCorrectionKind, string> = {
+  RETURN_CONFIRMATION: 'Confirmación del retorno oficial',
+  SETTLEMENT_CORRECTION: 'Corrección de la liquidación',
+  REOPEN: 'Reapertura',
+  TRASH_REVERSAL: 'Envío a la papelera',
+  RESTORE_REPOST: 'Restauración',
 };
 
 export const MOVEMENT_DIRECTION_LABELS: Record<MovementDirection, string> = {

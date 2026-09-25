@@ -61,6 +61,7 @@ const stage = (overrides: Record<string, unknown> = {}) => ({
 });
 
 const statusBody = (overrides: Record<string, unknown> = {}) => ({
+  retornosPorConfirmar: 0,
   capitalActual: '700.00',
   disponible: '680.00',
   comprometido: '20.00',
@@ -82,6 +83,7 @@ const analysisBody = (overrides: Record<string, unknown> = {}) => ({
   yield: '95.00',
   roi: '2.71',
   totalStaked: '20.00',
+  unconfirmedReturns: { count: 0, profitLoss: '0.00' },
   capitalInvested: '750.00', // distinto del "capital actual" del estado (700.00): evita choques de texto
   deposits: '0.00',
   withdrawals: '0.00',

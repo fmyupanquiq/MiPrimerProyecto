@@ -19,6 +19,13 @@ import { useLoad } from '../../hooks/useLoad.js';
 import { BET_STATUS_LABELS, BET_TYPE_LABELS, formatDateTime } from '../../labels.js';
 import { Badge, btn, btnDanger, btnPrimary, inputClass, Notice, Section } from '../../ui.js';
 import { useProject } from './ProjectContext.js';
+import {
+  BetLedgerPanel,
+  ConfirmReturnPanel,
+  CorrectSettlementPanel,
+  ReopenPanel,
+  SettledTrashPanel,
+} from './BetFinancialPanels.js';
 import { TicketPanel } from './TicketPanel.js';
 
 const BADGE_TONE = {
@@ -486,14 +493,25 @@ function BetRow({
   const { project, can } = useProject();
   const { user } = useAuth();
   const runWithReauth = useReauth();
-  const [mode, setMode] = useState<'view' | 'edit' | 'settle' | 'move'>('view');
+  const [mode, setMode] = useState<
+    'view' | 'edit' | 'settle' | 'move' | 'confirm' | 'correct' | 'reopen' | 'trash' | 'restore'
+  >('view');
   const [showTickets, setShowTickets] = useState(false);
+  const [showLedger, setShowLedger] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const isOwn = user?.id === bet.createdBy.id;
   const canEdit = can('bets.update_any') || (can('bets.update_own') && isOwn);
-  const canTrash = can('bets.trash_any') || (can('bets.trash_own') && isOwn);
+  const settled = bet.status !== 'PENDING';
+  // Una liquidada tiene efecto en el ledger: eliminarla o restaurarla es del Administrador que puede
+  // corregir (D-A11). Una pendiente conserva los permisos de siempre.
+  const canTrash = settled
+    ? can('bets.correct')
+    : can('bets.trash_any') || (can('bets.trash_own') && isOwn);
+  const canRestoreBet = can('bets.restore') && (!settled || can('bets.correct'));
+  const canCorrect = can('bets.correct') && settled;
+  const canConfirmReturn = can('bets.confirm_return') && bet.returnSource === 'CALCULATED';
   // Liquidar es una operación financiera (inserta en el ledger): permiso propio, no depende de
   // la propiedad de la apuesta (revisión de arquitectura previa a integrar la Fase 4).
   const canSettle = can('bets.settle');
@@ -512,6 +530,10 @@ function BetRow({
   }
 
   async function restore() {
+    if (settled) {
+      setMode('restore');
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -531,10 +553,20 @@ function BetRow({
           <p className="font-medium">
             {BET_TYPE_LABELS[bet.betType]} · {bet.houseName}{' '}
             <Badge tone={BADGE_TONE[bet.status]}>{BET_STATUS_LABELS[bet.status]}</Badge>
+            {bet.returnSource === 'CALCULATED' && (
+              <Badge tone="amber">Retorno calculado, sin confirmar</Badge>
+            )}
           </p>
           <p className="text-sm text-slate-600">
             Stake {bet.stake} · Monto {formatPEN(bet.effectiveAmount)}
             {bet.amountSource === 'CALCULATED' && ' (calculado)'} · Cuota {bet.visibleTotalOdds}
+            {bet.effectiveReturn && (
+              <>
+                {' '}
+                · Retorno {formatPEN(bet.effectiveReturn)}{' '}
+                {bet.returnSource === 'CALCULATED' ? '(calculado)' : '(oficial)'}
+              </>
+            )}
             {bet.profitLoss !== null && (
               <>
                 {' '}
@@ -569,6 +601,26 @@ function BetRow({
                 Liquidar
               </button>
             )}
+            {canConfirmReturn && mode === 'view' && (
+              <button type="button" className={btnPrimary} onClick={() => setMode('confirm')}>
+                Confirmar retorno oficial
+              </button>
+            )}
+            {canCorrect && mode === 'view' && (
+              <>
+                <button type="button" className={btn} onClick={() => setMode('correct')}>
+                  Corregir liquidación
+                </button>
+                <button type="button" className={btn} onClick={() => setMode('reopen')}>
+                  Reabrir
+                </button>
+              </>
+            )}
+            {settled && (
+              <button type="button" className={btn} onClick={() => setShowLedger((v) => !v)}>
+                {showLedger ? 'Ocultar historial financiero' : 'Historial financiero'}
+              </button>
+            )}
             {can('bets.move_stage') && mode === 'view' && (
               <button type="button" className={btn} onClick={() => setMode('move')}>
                 Mover de etapa
@@ -579,14 +631,14 @@ function BetRow({
                 type="button"
                 className={btnDanger}
                 disabled={busy}
-                onClick={() => void trash()}
+                onClick={() => (settled ? setMode('trash') : void trash())}
               >
                 Papelera
               </button>
             )}
           </div>
         )}
-        {showTrashed && can('bets.restore') && (
+        {showTrashed && canRestoreBet && mode === 'view' && (
           <button
             type="button"
             className={btnPrimary}
@@ -599,6 +651,7 @@ function BetRow({
       </div>
 
       {showTickets && <BetTicketsSection betId={bet.id} />}
+      {showLedger && settled && <BetLedgerPanel betId={bet.id} />}
 
       {mode === 'edit' && (
         <EditBetForm
@@ -627,6 +680,60 @@ function BetRow({
           onDone={(message) => {
             setMode('view');
             onChanged(message);
+          }}
+          onCancel={() => setMode('view')}
+        />
+      )}
+      {mode === 'confirm' && (
+        <ConfirmReturnPanel
+          bet={bet}
+          onDone={(message) => {
+            setMode('view');
+            onChanged(message);
+          }}
+          onCancel={() => setMode('view')}
+        />
+      )}
+      {mode === 'correct' && (
+        <CorrectSettlementPanel
+          bet={bet}
+          onDone={(message) => {
+            setMode('view');
+            onChanged(message);
+          }}
+          onCancel={() => setMode('view')}
+        />
+      )}
+      {mode === 'reopen' && (
+        <ReopenPanel
+          bet={bet}
+          onDone={(message) => {
+            setMode('view');
+            onChanged(message);
+          }}
+          onCancel={() => setMode('view')}
+        />
+      )}
+      {mode === 'trash' && (
+        <SettledTrashPanel
+          action="trash"
+          label={`la apuesta de ${bet.houseName}`}
+          onSubmit={async (reason) => {
+            await betsApi.trash(project.id, bet.id, { reason });
+            setMode('view');
+            onChanged('Se envió la apuesta a la papelera y se revirtió su efecto en el ledger.');
+          }}
+          onCancel={() => setMode('view')}
+        />
+      )}
+      {mode === 'restore' && (
+        <SettledTrashPanel
+          action="restore"
+          label={`la apuesta de ${bet.houseName}`}
+          onSubmit={async (reason) => {
+            await betsApi.restore(project.id, bet.id, { reason });
+            setMode('view');
+            onChanged('Se restauró la apuesta y se volvió a registrar su efecto en el ledger.');
           }}
           onCancel={() => setMode('view')}
         />

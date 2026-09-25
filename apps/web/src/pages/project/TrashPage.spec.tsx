@@ -29,6 +29,7 @@ const BET = {
   deletionReason: 'Duplicada',
   purgeEligibleAt: '2026-06-30T00:00:00.000Z',
   purgeEligible: true,
+  settled: false,
 };
 const STAGE = {
   kind: 'STAGE',
@@ -40,6 +41,7 @@ const STAGE = {
   deletionReason: null,
   purgeEligibleAt: '2026-08-23T00:00:00.000Z',
   purgeEligible: false,
+  settled: false,
 };
 
 function open(permissions: string[], extra: Record<string, Handler> = {}) {

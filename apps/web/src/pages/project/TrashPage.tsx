@@ -7,6 +7,7 @@ import { trashApi } from '../../api/trash.js';
 import { useLoad } from '../../hooks/useLoad.js';
 import { formatDate } from '../../labels.js';
 import { Badge, btnPrimary, Notice, Section } from '../../ui.js';
+import { SettledTrashPanel } from './BetFinancialPanels.js';
 import { useProject } from './ProjectContext.js';
 
 const KIND_LABELS: Record<TrashItem['kind'], string> = { BET: 'Apuesta', STAGE: 'Etapa' };
@@ -25,12 +26,18 @@ export function ProjectTrashPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [restored, setRestored] = useState<string | null>(null);
+  // Una apuesta que estaba liquidada se restaura con motivo y contraseña (D-A11).
+  const [restoringSettled, setRestoringSettled] = useState<TrashItem | null>(null);
 
   if (!allowed) {
     return <Notice tone="info">No tienes permiso para ver la papelera de este proyecto.</Notice>;
   }
 
   async function restore(item: TrashItem) {
+    if (item.kind === 'BET' && item.settled) {
+      setRestoringSettled(item);
+      return;
+    }
     setBusyId(item.id);
     setError(null);
     setRestored(null);
@@ -47,7 +54,9 @@ export function ProjectTrashPage() {
   }
 
   const canRestore = (item: TrashItem) =>
-    can(item.kind === 'BET' ? 'bets.restore' : 'stages.restore');
+    item.kind === 'BET'
+      ? can('bets.restore') && (!item.settled || can('bets.correct'))
+      : can('stages.restore');
 
   return (
     <Section title="Papelera del proyecto">
@@ -82,7 +91,22 @@ export function ProjectTrashPage() {
                 {` · Restaurable como mínimo hasta el ${formatDate(item.purgeEligibleAt)}`}
               </p>
             </div>
-            {canRestore(item) && (
+            {restoringSettled?.id === item.id && (
+              <div className="w-full">
+                <SettledTrashPanel
+                  action="restore"
+                  label={item.label}
+                  onSubmit={async (reason) => {
+                    await betsApi.restore(project.id, item.id, { reason });
+                    setRestored(item.label);
+                    setRestoringSettled(null);
+                    items.reload();
+                  }}
+                  onCancel={() => setRestoringSettled(null)}
+                />
+              </div>
+            )}
+            {canRestore(item) && restoringSettled?.id !== item.id && (
               <button
                 type="button"
                 className={btnPrimary}

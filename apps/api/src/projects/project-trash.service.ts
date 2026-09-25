@@ -56,6 +56,7 @@ export class ProjectTrashService {
           deletionReason: bet.deletionReason,
           purgeEligibleAt: bet.purgeEligibleAt!.toISOString(),
           purgeEligible: bet.purgeEligibleAt!.getTime() <= now.getTime(),
+          settled: bet.status !== 'PENDING',
         });
       }
     }
@@ -81,6 +82,7 @@ export class ProjectTrashService {
           deletionReason: stage.deletionReason,
           purgeEligibleAt: stage.purgeEligibleAt!.toISOString(),
           purgeEligible: stage.purgeEligibleAt!.getTime() <= now.getTime(),
+          settled: false,
         });
       }
     }

@@ -16,6 +16,7 @@ import { ForgotPasswordPage } from './pages/ForgotPasswordPage.js';
 import { InvitePage } from './pages/InvitePage.js';
 import { LoginPage } from './pages/LoginPage.js';
 import { ProjectsPage } from './pages/ProjectsPage.js';
+import { ReturnsPage } from './pages/project/ReturnsPage.js';
 import { AuditPage } from './pages/project/AuditPage.js';
 import { BetsPage } from './pages/project/BetsPage.js';
 import { DashboardPage } from './pages/project/DashboardPage.js';
@@ -75,6 +76,7 @@ export function App() {
             <Route path="stages" element={<StagesPage />} />
             <Route path="finance" element={<FinancePage />} />
             <Route path="bets" element={<BetsPage />} />
+            <Route path="returns" element={<ReturnsPage />} />
             <Route path="members" element={<MembersPage />} />
             <Route path="audit" element={<AuditPage />} />
             <Route path="trash" element={<ProjectTrashPage />} />

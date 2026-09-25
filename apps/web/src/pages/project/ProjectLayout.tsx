@@ -85,6 +85,11 @@ export function ProjectLayout() {
         <NavLink to={`/projects/${project.id}/bets`} className={tabClass}>
           Apuestas
         </NavLink>
+        {permissions.has('bets.view') && (
+          <NavLink to={`/projects/${project.id}/returns`} className={tabClass}>
+            Retornos
+          </NavLink>
+        )}
         <NavLink to={`/projects/${project.id}/stages`} className={tabClass}>
           Etapas
         </NavLink>

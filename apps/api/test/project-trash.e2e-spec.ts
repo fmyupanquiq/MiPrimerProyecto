@@ -106,6 +106,20 @@ describe('papelera del proyecto (e2e, PostgreSQL real, §36, §111.2)', () => {
     });
   });
 
+  it('indica si la apuesta estaba liquidada: restaurarla exige motivo y reautenticación (D-A11)', async () => {
+    const { bet } = await seedTrash();
+    let items = itemsOf(await trash('owner').expect(200));
+    expect(items.find((item) => item.id === bet.id)!.settled).toBe(false);
+    expect(items.find((item) => item.kind === 'STAGE')!.settled).toBe(false);
+
+    await ctx.t.db
+      .update(bets)
+      .set({ status: 'LOST', settledAt: new Date('2026-04-01T00:00:00.000Z') })
+      .where(eq(bets.id, bet.id));
+    items = itemsOf(await trash('owner').expect(200));
+    expect(items.find((item) => item.id === bet.id)!.settled).toBe(true);
+  });
+
   it('marca como elegible para purga solo lo que ya cumplió la retención (según el reloj)', async () => {
     await seedTrash();
     const items = itemsOf(await trash('owner').expect(200));

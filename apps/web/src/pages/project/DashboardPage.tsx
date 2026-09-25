@@ -20,6 +20,7 @@ import {
   formatDate,
   roleLabel,
 } from '../../labels.js';
+import { Link } from 'react-router';
 import { inputClass, Notice, Section } from '../../ui.js';
 import { useProject } from './ProjectContext.js';
 
@@ -346,6 +347,22 @@ export function DashboardPage() {
         </dl>
       </Section>
 
+      {(status.data?.retornosPorConfirmar ?? 0) > 0 && (
+        <Notice tone="info">
+          <strong>
+            Hay {status.data?.retornosPorConfirmar}{' '}
+            {status.data?.retornosPorConfirmar === 1 ? 'apuesta ganada' : 'apuestas ganadas'} con
+            retorno calculado, sin confirmar.
+          </strong>{' '}
+          Ya cuentan en la ganancia, el Yield y el ROI con su valor calculado, pero son
+          provisionales hasta confirmar el retorno oficial.{' '}
+          <Link to={`/projects/${project.id}/returns`} className="underline">
+            Ver retornos por confirmar
+          </Link>
+          .
+        </Notice>
+      )}
+
       <Section title="Estado financiero actual">
         {status.error && <Notice tone="error">{status.error}</Notice>}
         {status.data && (
@@ -421,6 +438,16 @@ export function DashboardPage() {
                 value={money(analysis.data.extraordinary)}
               />
             </div>
+            {analysis.data.unconfirmedReturns.count > 0 && (
+              <Notice tone="info">
+                Este análisis incluye {analysis.data.unconfirmedReturns.count}{' '}
+                {analysis.data.unconfirmedReturns.count === 1
+                  ? 'apuesta ganada con retorno calculado'
+                  : 'apuestas ganadas con retorno calculado'}{' '}
+                (sin confirmar), con una ganancia provisional de{' '}
+                {formatPEN(analysis.data.unconfirmedReturns.profitLoss)}.
+              </Notice>
+            )}
             <p className="text-sm text-slate-500">
               Total: {analysis.data.counts.total} · Pendientes: {analysis.data.counts.pending} ·
               Ganadas: {analysis.data.counts.won} · Perdidas: {analysis.data.counts.lost} ·
