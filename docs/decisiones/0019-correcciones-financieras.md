@@ -278,6 +278,28 @@ filtros = Σ efecto neto de apuestas en el ledger = variación de saldos.
   iguales a lo que dicen las apuestas; curva de rendimiento terminada en ese P/L; aviso de retornos
   por confirmar igual a las ganadas provisionales; y verificación de integridad sin hallazgos.
 
+### 8.5.5 (interfaz web)
+
+- **Apuestas** (`BetFinancialPanels.tsx`): insignia "Retorno calculado, sin confirmar" y retorno con su
+  fuente; acciones solo para quien tiene el permiso (`bets.confirm_return`, `bets.correct`).
+- **Confirmar retorno**: compara retorno calculado, oficial y diferencia; con diferencia exige una
+  confirmación explícita y la contraseña (D-A12). Si la API detecta una diferencia que la web no vio
+  (409 `RETURN_MISMATCH`), muestra los valores de la API.
+- **Corregir liquidación**: motivo obligatorio; "Ver impacto" muestra las filas del ledger, el saldo y
+  el disponible de cada casa antes y después, la ganancia o pérdida y las conciliaciones que se
+  invalidarían; solo se aplica lo que se revisó (cualquier cambio de datos obliga a recalcular). Una
+  corrección que se rechazaría explica el conflicto, incluidas las reservas pendientes que pesan.
+- **Reabrir**: advierte que revierte los efectos financieros y que los valores anteriores quedan en el
+  historial; motivo, impacto y contraseña.
+- **Papelera y restauración de una liquidada**: motivo y contraseña, con la advertencia de la reversión
+  o del nuevo registro. La papelera del proyecto marca las apuestas que estaban liquidadas
+  (`TrashItem.settled`).
+- **Historial financiero** de la apuesta: filas del ledger (vigente, anulada, reversión) y
+  correcciones con los valores anteriores.
+- **Retornos** (nueva pestaña): retornos por confirmar y comparación de calculado y oficial por casa
+  (evidencia para D-B8, solo lectura). **Dashboard**: aviso visible de retornos no confirmados en el
+  estado y en el análisis.
+
 ## Plan de subfases
 
 8.5.0 línea base y documentación · 8.5.1 migraciones, motor y validador ·
