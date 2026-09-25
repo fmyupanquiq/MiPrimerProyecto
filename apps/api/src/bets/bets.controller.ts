@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Header, HttpCode, Param, Post, Patch, Query } from '@nestjs/common';
 import {
+  confirmBetReturnSchema,
   createBetSchema,
   listBetsQuerySchema,
   moveBetStageSchema,
@@ -9,15 +10,18 @@ import {
   ErrorCode,
   type BetDetail,
   type BetSummary,
+  type ConfirmBetReturnInput,
   type CreateBetInput,
   type ListBetsQuery,
   type MoveBetStageInput,
+  type ReturnDifferencesReport,
   type SettleBetInput,
   type TrashBetInput,
+  type UnconfirmedReturnItem,
   type UpdateBetInput,
 } from '@letfer/shared';
 import { CurrentAuth, type AuthContext } from '../auth/auth-context.js';
-import { RequireRecentAuth } from '../auth/recent-auth.guard.js';
+import { RequireRecentAuth, RequireRecentAuthWhen } from '../auth/recent-auth.guard.js';
 import type { ProjectAccess } from '../authorization/authorization.service.js';
 import { CurrentProject, ProjectRoute } from '../authorization/decorators.js';
 import { AppError } from '../common/app-error.js';
@@ -56,6 +60,22 @@ export class BetsController {
     return this.bets.list(access, query);
   }
 
+  /** Ganadas liquidadas con retorno calculado, pendientes de confirmar el oficial (§77, §112.2). */
+  @Get('unconfirmed-returns')
+  @ProjectRoute('bets.view')
+  @Header('Cache-Control', 'no-store')
+  unconfirmedReturns(@CurrentProject() access: ProjectAccess): Promise<UnconfirmedReturnItem[]> {
+    return this.bets.unconfirmedReturns(access);
+  }
+
+  /** Comparación de retornos calculados y oficiales (evidencia para el redondeo, D-B8). */
+  @Get('return-differences')
+  @ProjectRoute('bets.view')
+  @Header('Cache-Control', 'no-store')
+  returnDifferences(@CurrentProject() access: ProjectAccess): Promise<ReturnDifferencesReport> {
+    return this.bets.returnDifferences(access);
+  }
+
   @Get(':betId')
   @ProjectRoute('bets.view')
   @Header('Cache-Control', 'no-store')
@@ -88,6 +108,30 @@ export class BetsController {
     @Body({ schema: updateBetSchema }) body: UpdateBetInput,
   ): Promise<BetDetail> {
     return this.bets.update(access, auth.user, betIdOrNotFound(betId), body);
+  }
+
+  /**
+   * Confirma el retorno oficial de una ganada liquidada con retorno calculado (§77, §112.2). Sin
+   * diferencia no exige reautenticación; si difiere, hace falta `acknowledgeDifference: true`, que
+   * sí la exige (D-A12). El Colaborador no puede (D-A8), tampoco en sus propias apuestas.
+   */
+  @Post(':betId/confirm-return')
+  @HttpCode(200)
+  @ProjectRoute('bets.confirm_return')
+  @RequireRecentAuthWhen(
+    (body) =>
+      typeof body === 'object' &&
+      body !== null &&
+      (body as { acknowledgeDifference?: unknown }).acknowledgeDifference === true,
+  )
+  @Header('Cache-Control', 'no-store')
+  confirmReturn(
+    @CurrentAuth() auth: AuthContext,
+    @CurrentProject() access: ProjectAccess,
+    @Param('betId') betId: string,
+    @Body({ schema: confirmBetReturnSchema }) body: ConfirmBetReturnInput,
+  ): Promise<BetDetail> {
+    return this.bets.confirmReturn(access, auth.user, betIdOrNotFound(betId), body);
   }
 
   /** Operación financiera (inserta en el ledger): de administrador, no depende de la propiedad. */

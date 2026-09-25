@@ -1,12 +1,14 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
   addMoney,
+  calculateBetReturn,
   compareMoney,
   deriveEffectiveOdds,
-  isPositiveMoney,
   multiplyMoney,
   subtractMoney,
+  sumMoney,
   BET_TRASH_LIMITS,
+  ErrorCode,
   PROJECT_TRASH_RETENTION_DAYS,
   ZERO_MONEY,
   type AmountSource,
@@ -15,19 +17,27 @@ import {
   type BetSelectionSummary,
   type BetSummary,
   type BetType,
+  type ConfirmBetReturnInput,
   type CreateBetInput,
   type ListBetsQuery,
   type MoneyString,
   type MoveBetStageInput,
   type PermissionCode,
+  type ReturnDifferenceItem,
+  type ReturnDifferencesByHouse,
+  type ReturnDifferencesReport,
+  type ReturnMismatchDetails,
+  type ReturnSource,
   type SettleBetInput,
   type TrashBetInput,
+  type UnconfirmedReturnItem,
   type UpdateBetInput,
 } from '@letfer/shared';
 import { and, count, desc, eq, gte, inArray, isNotNull, isNull } from 'drizzle-orm';
 import { diffFields } from '../audit/audit-values.js';
 import { AuditService } from '../audit/audit.service.js';
 import type { ProjectAccess } from '../authorization/authorization.service.js';
+import { AppError } from '../common/app-error.js';
 import { Clock } from '../common/clock.js';
 import { startOfDayInTimeZone } from '../common/timezone.js';
 import { lockByKey } from '../database/advisory-lock.js';
@@ -39,7 +49,6 @@ import {
   auditLogs,
   betSelections,
   bets,
-  financialMovements,
   houses,
   reconciliationCheckpoints,
   stages,
@@ -54,6 +63,15 @@ import {
 } from '../database/schema/index.js';
 import { fullName } from '../projects/project-mappers.js';
 import { computeHouseBalances } from '../finance/balances.js';
+import {
+  applyBetLedgerPlan,
+  assertAvailableNotNegative,
+  betFinancialSnapshot,
+  desiredBetLedgerLines,
+  effectiveBetReturn,
+  planBetLedgerChange,
+  recordBetCorrection,
+} from '../finance/bet-ledger.js';
 import { assertFinanceReady, financeNotFound } from '../finance/finance-errors.js';
 import {
   betConflict,
@@ -72,6 +90,39 @@ function deriveBetType(selections: readonly BetSelectionInput[]): BetType {
   const groups = new Set(selections.map((s) => s.eventGroup));
   if (groups.size === 1) return selections.length === 1 ? 'SIMPLE' : 'CREATED';
   return 'MULTIPLE';
+}
+
+/**
+ * Retornos que quedan guardados al liquidar (§77, §112.2, D-A3): `WON` siempre guarda el calculado
+ * (`monto × cuota visible`) y el oficial solo si se indicó; `VOID` es oficial (por defecto, el
+ * monto: sin ganancia ni pérdida, §21.4); `CASHOUT` exige el oficial; `LOST` no lleva retorno.
+ */
+function settlementReturns(
+  input: SettleBetInput,
+  amount: MoneyString,
+  visibleTotalOdds: string,
+): { official: MoneyString | null; calculated: MoneyString | null } {
+  switch (input.status) {
+    case 'LOST':
+      return { official: null, calculated: null };
+    case 'WON':
+      return {
+        official: input.officialRealizedReturn ?? null,
+        calculated: calculateBetReturn(amount, visibleTotalOdds),
+      };
+    case 'VOID':
+      return { official: input.officialRealizedReturn ?? amount, calculated: null };
+    case 'CASHOUT':
+      return { official: input.officialRealizedReturn ?? ZERO_MONEY, calculated: null };
+  }
+}
+
+function returnSourceOf(returns: {
+  official: MoneyString | null;
+  calculated: MoneyString | null;
+}): ReturnSource | null {
+  if (returns.official !== null) return 'OFFICIAL';
+  return returns.calculated !== null ? 'CALCULATED' : null;
 }
 
 interface SummaryContext {
@@ -173,6 +224,8 @@ export class BetsService {
           betType,
           stakeAmount: input.stake,
           officialAmount: input.officialAmount ?? null,
+          // Un monto indicado al registrar viene de un ticket o de una persona que lo confirma (§76).
+          amountConfirmed: input.officialAmount !== undefined,
           visibleTotalOdds: input.visibleTotalOdds,
           officialPotentialReturn: input.officialPotentialReturn ?? null,
           placedAt: new Date(input.placedAt),
@@ -254,7 +307,10 @@ export class BetsService {
           patch.stageId = newStage.id;
         }
         if (input.stake !== undefined) patch.stakeAmount = input.stake;
-        if (input.officialAmount !== undefined) patch.officialAmount = input.officialAmount;
+        if (input.officialAmount !== undefined) {
+          patch.officialAmount = input.officialAmount;
+          patch.amountConfirmed = true; // indicado por una persona o un ticket (§76)
+        }
         if (input.visibleTotalOdds !== undefined) patch.visibleTotalOdds = input.visibleTotalOdds;
         if (input.officialPotentialReturn !== undefined) {
           patch.officialPotentialReturn = input.officialPotentialReturn;
@@ -368,6 +424,9 @@ export class BetsService {
       if (bet.status !== 'PENDING') throw betConflict('Esta apuesta ya está liquidada.');
 
       const stage = await this.stageById(tx, bet.stageId);
+      // Un monto indicado al liquidar lo confirma una persona (§76); si no, se conserva el que ya
+      // estaba confirmado, o se congela el calculado SIN marcarlo como confirmado (§112.2).
+      const amountConfirmed = input.officialAmount !== undefined || bet.amountConfirmed;
       const officialAmount =
         input.officialAmount ??
         bet.officialAmount ??
@@ -380,43 +439,16 @@ export class BetsService {
       if (compareMoney(grossBalance, officialAmount) < 0) throw betInsufficientBalance();
 
       const settledAt = new Date(input.settledAt);
-      await tx.insert(financialMovements).values({
-        projectId: access.project.id,
-        stageId: bet.stageId,
-        type: 'BET_PLACEMENT',
-        direction: 'DEBIT',
-        houseId: bet.houseId,
-        amount: officialAmount,
-        operationId: bet.id,
-        occurredAt: bet.placedAt,
-        createdBy: actor.id,
-      });
-
-      // D-B2: sin fila de liquidación cuando no hay retorno positivo (perdida, o un cash out
-      // degenerado de $0 tratado igual por consistencia con el CHECK de monto > 0 del ledger).
-      const realizedReturn =
-        input.status === 'LOST' ? null : (input.officialRealizedReturn ?? null);
-      if (realizedReturn !== null && isPositiveMoney(realizedReturn)) {
-        await tx.insert(financialMovements).values({
-          projectId: access.project.id,
-          stageId: bet.stageId,
-          type: 'BET_SETTLEMENT',
-          direction: 'CREDIT',
-          houseId: bet.houseId,
-          amount: realizedReturn,
-          operationId: bet.id,
-          occurredAt: settledAt,
-          createdBy: actor.id,
-        });
-      }
-
+      const returns = settlementReturns(input, officialAmount, bet.visibleTotalOdds);
       const updated = expectUpdated(
         await tx
           .update(bets)
           .set({
             status: input.status,
             officialAmount,
-            officialRealizedReturn: realizedReturn,
+            amountConfirmed,
+            officialRealizedReturn: returns.official,
+            calculatedRealizedReturn: returns.calculated,
             settledAt,
             settledTimeKnown: input.settledTimeKnown,
             version: nextVersion(bets.version),
@@ -425,6 +457,22 @@ export class BetsService {
           .returning(),
         'bets',
       );
+
+      // El efecto en el ledger (BET_PLACEMENT y, con retorno positivo, BET_SETTLEMENT; D-B2) lo
+      // calcula y valida el motor único de §112.1, también para la primera liquidación: además del
+      // saldo bruto actual, comprueba la línea de tiempo (una colocación fechada antes de un depósito
+      // dejaría la casa en negativo en el pasado, §74).
+      const plan = await planBetLedgerChange(tx, {
+        projectId: access.project.id,
+        betId: bet.id,
+        desired: desiredBetLedgerLines(updated, stage),
+        now: this.clock.now(),
+      });
+      await applyBetLedgerPlan(tx, plan, {
+        actorId: actor.id,
+        correctionId: null,
+        stageId: updated.stageId,
+      });
       // El BET_PLACEMENT recién insertado está fechado en bet.placedAt (§107.3), que puede ser
       // anterior a un checkpoint existente: esa fotografía asumía "sin ledger todavía" (D-B7) y
       // acaba de dejar de ser cierta (§74, §109.1.3).
@@ -442,11 +490,218 @@ export class BetsService {
         projectId: access.project.id,
         actorUserId: actor.id,
         oldValues: { status: 'PENDING' },
-        newValues: { status: input.status, officialAmount, officialRealizedReturn: realizedReturn },
+        newValues: {
+          status: input.status,
+          officialAmount,
+          amountConfirmed,
+          officialRealizedReturn: returns.official,
+          calculatedRealizedReturn: returns.calculated,
+          returnSource: returnSourceOf(returns),
+        },
       });
       return updated;
     });
     return this.detailOf(this.db, updated);
+  }
+
+  /**
+   * Confirma el retorno oficial de una ganada liquidada con retorno calculado (§77, §112.2).
+   *
+   * - Solo una `WON` con retorno calculado sin confirmar; una ya confirmada se corrige con la
+   *   corrección de liquidación (8.5.3), nunca aquí.
+   * - Si el oficial coincide con el calculado, solo se marca confirmado (el ledger ya es correcto).
+   * - Si difiere y no hay `acknowledgeDifference`, 409 `RETURN_MISMATCH` con calculado, oficial y
+   *   diferencia, sin cambiar nada. Con la confirmación explícita (que el controlador exige con
+   *   reautenticación reciente, D-A12) el oficial pasa a ser la autoridad: el motor de §112.1
+   *   revierte la liquidación calculada y registra la oficial, valida la línea de tiempo, se
+   *   invalidan los checkpoints afectados (§112.5) y se audita.
+   * - `amount_confirmed` no se toca: confirmar el retorno no confirma el monto (§76).
+   */
+  async confirmReturn(
+    access: ProjectAccess,
+    actor: UserRow,
+    betId: string,
+    input: ConfirmBetReturnInput,
+  ): Promise<BetDetail> {
+    const confirmed = await this.db.transaction(async (tx) => {
+      await lockByKey(tx, `finance:${access.project.id}`);
+      const bet = await this.lockOwned(tx, access.project.id, betId);
+      this.assertNotTrashed(bet);
+      if (bet.status !== 'WON' || bet.calculatedRealizedReturn === null) {
+        throw betConflict(
+          'Solo una apuesta ganada con retorno calculado admite esta confirmación.',
+        );
+      }
+      if (bet.officialRealizedReturn !== null) {
+        throw betConflict('El retorno oficial de esta apuesta ya está confirmado.');
+      }
+
+      const calculated = bet.calculatedRealizedReturn;
+      const official = input.officialRealizedReturn;
+      const delta = subtractMoney(official, calculated);
+      const differs = compareMoney(official, calculated) !== 0;
+      if (differs && !input.acknowledgeDifference) {
+        const details: ReturnMismatchDetails = { calculated, official, delta };
+        throw new AppError(
+          409,
+          ErrorCode.RETURN_MISMATCH,
+          'El retorno oficial difiere del calculado: confirma la diferencia para continuar.',
+          { details },
+        );
+      }
+
+      const stage = await this.stageById(tx, bet.stageId);
+      const updated = expectUpdated(
+        await tx
+          .update(bets)
+          .set({ officialRealizedReturn: official, version: nextVersion(bets.version) })
+          .where(and(eq(bets.id, bet.id), eq(bets.version, input.version)))
+          .returning(),
+        'bets',
+      );
+      const plan = await planBetLedgerChange(tx, {
+        projectId: access.project.id,
+        betId: bet.id,
+        desired: desiredBetLedgerLines(updated, stage),
+        now: this.clock.now(),
+      });
+      const correction = await recordBetCorrection(tx, {
+        projectId: access.project.id,
+        betId: bet.id,
+        kind: 'RETURN_CONFIRMATION',
+        before: betFinancialSnapshot(bet),
+        after: betFinancialSnapshot(updated),
+        reason: input.reason?.trim() ? input.reason.trim() : null,
+        actorId: actor.id,
+      });
+      await applyBetLedgerPlan(tx, plan, {
+        actorId: actor.id,
+        correctionId: correction.id,
+        reason: input.reason?.trim() || 'Confirmación del retorno oficial',
+        stageId: updated.stageId,
+      });
+      if (plan.changed) {
+        await assertAvailableNotNegative(tx, access.project.id, plan.affectedHouseIds);
+        for (const houseId of plan.affectedHouseIds) {
+          await this.invalidateAffectedCheckpoints(
+            tx,
+            houseId,
+            plan.earliestAffectedAt!,
+            'Se confirmó un retorno oficial distinto del calculado, con efecto en el ledger en o antes de este checkpoint.',
+          );
+        }
+      }
+
+      await this.audit.record(tx, {
+        action: 'bet.return_confirmed',
+        entityType: 'bet',
+        entityId: bet.id,
+        projectId: access.project.id,
+        actorUserId: actor.id,
+        oldValues: { officialRealizedReturn: null, returnSource: 'CALCULATED' },
+        newValues: { officialRealizedReturn: official, returnSource: 'OFFICIAL' },
+        metadata: {
+          calculatedRealizedReturn: calculated,
+          delta,
+          differed: differs,
+          ledgerChanged: plan.changed,
+          correctionId: correction.id,
+          ...(input.reason?.trim() && { reason: input.reason.trim() }),
+        },
+      });
+      return updated;
+    });
+    return this.detailOf(this.db, confirmed);
+  }
+
+  /** Ganadas liquidadas cuyo retorno sigue siendo el calculado, las más recientes primero (§77). */
+  async unconfirmedReturns(access: ProjectAccess): Promise<UnconfirmedReturnItem[]> {
+    const rows = await this.db
+      .select({ bet: bets, houseName: houses.name, stage: stages })
+      .from(bets)
+      .innerJoin(houses, eq(houses.id, bets.houseId))
+      .innerJoin(stages, eq(stages.id, bets.stageId))
+      .where(
+        and(
+          eq(bets.projectId, access.project.id),
+          eq(bets.status, 'WON'),
+          isNull(bets.officialRealizedReturn),
+          isNull(bets.deletedAt),
+        ),
+      )
+      .orderBy(desc(bets.settledAt), desc(bets.id));
+    return rows.map(({ bet, houseName, stage }) => {
+      const effectiveAmount = bet.officialAmount ?? multiplyMoney(stage.unitStake, bet.stakeAmount);
+      const calculated = bet.calculatedRealizedReturn ?? ZERO_MONEY;
+      return {
+        betId: bet.id,
+        houseName,
+        stageName: stage.name,
+        settledAt: bet.settledAt!.toISOString(),
+        effectiveAmount,
+        calculatedRealizedReturn: calculated,
+        provisionalProfit: subtractMoney(calculated, effectiveAmount),
+      };
+    });
+  }
+
+  /**
+   * Compara los retornos calculado y oficial de las ganadas que tienen ambos (§77). Es la
+   * evidencia para decidir el redondeo (D-B8): no decide nada ni modifica datos.
+   */
+  async returnDifferences(access: ProjectAccess): Promise<ReturnDifferencesReport> {
+    const rows = await this.db
+      .select({ bet: bets, houseName: houses.name, stage: stages })
+      .from(bets)
+      .innerJoin(houses, eq(houses.id, bets.houseId))
+      .innerJoin(stages, eq(stages.id, bets.stageId))
+      .where(
+        and(
+          eq(bets.projectId, access.project.id),
+          eq(bets.status, 'WON'),
+          isNotNull(bets.officialRealizedReturn),
+          isNotNull(bets.calculatedRealizedReturn),
+          isNull(bets.deletedAt),
+        ),
+      )
+      .orderBy(desc(bets.settledAt), desc(bets.id));
+
+    const items: ReturnDifferenceItem[] = rows.map(({ bet, houseName, stage }) => ({
+      betId: bet.id,
+      houseId: bet.houseId,
+      houseName,
+      betType: bet.betType,
+      settledAt: bet.settledAt!.toISOString(),
+      effectiveAmount: bet.officialAmount ?? multiplyMoney(stage.unitStake, bet.stakeAmount),
+      visibleTotalOdds: bet.visibleTotalOdds,
+      calculatedRealizedReturn: bet.calculatedRealizedReturn!,
+      officialRealizedReturn: bet.officialRealizedReturn!,
+      delta: subtractMoney(bet.officialRealizedReturn!, bet.calculatedRealizedReturn!),
+    }));
+    const differing = items.filter((item) => compareMoney(item.delta, ZERO_MONEY) !== 0);
+
+    const byHouse = new Map<string, ReturnDifferencesByHouse>();
+    for (const item of items) {
+      const current = byHouse.get(item.houseId) ?? {
+        houseId: item.houseId,
+        houseName: item.houseName,
+        compared: 0,
+        differing: 0,
+        totalDelta: ZERO_MONEY,
+      };
+      current.compared += 1;
+      if (compareMoney(item.delta, ZERO_MONEY) !== 0) current.differing += 1;
+      current.totalDelta = addMoney(current.totalDelta, item.delta);
+      byHouse.set(item.houseId, current);
+    }
+
+    return {
+      compared: items.length,
+      differing: differing.length,
+      totalDelta: sumMoney(items.map((item) => item.delta)),
+      byHouse: [...byHouse.values()].sort((a, b) => a.houseName.localeCompare(b.houseName)),
+      items: differing.slice(0, 200),
+    };
   }
 
   /** Mueve una apuesta a otra etapa del proyecto (§25: solo administradores autorizados). */
@@ -770,14 +1025,21 @@ export class BetsService {
   private toSummary(bet: BetRow, ctx: SummaryContext): BetSummary {
     const effectiveAmount =
       bet.officialAmount ?? multiplyMoney(ctx.stageUnitStake, bet.stakeAmount);
-    const amountSource: AmountSource = bet.officialAmount ? 'CONFIRMED' : 'CALCULATED';
+    // `official_amount` puede ser el monto calculado congelado al liquidar: solo `amount_confirmed`
+    // dice si alguien lo confirmó (§76, §112.2).
+    const amountSource: AmountSource = bet.amountConfirmed ? 'CONFIRMED' : 'CALCULATED';
+    const effectiveReturn = effectiveBetReturn(bet);
+    const returnSource = returnSourceOf({
+      official: bet.officialRealizedReturn,
+      calculated: bet.calculatedRealizedReturn,
+    });
     let profitLoss: MoneyString | null = null;
     let effectiveOdds = null;
     if (bet.status === 'LOST') {
       profitLoss = subtractMoney(ZERO_MONEY, effectiveAmount);
-    } else if (bet.officialRealizedReturn !== null) {
-      profitLoss = subtractMoney(bet.officialRealizedReturn, effectiveAmount);
-      effectiveOdds = deriveEffectiveOdds(bet.officialRealizedReturn, effectiveAmount);
+    } else if (effectiveReturn !== null) {
+      profitLoss = subtractMoney(effectiveReturn, effectiveAmount);
+      effectiveOdds = deriveEffectiveOdds(effectiveReturn, effectiveAmount);
     }
     return {
       id: bet.id,
@@ -794,6 +1056,9 @@ export class BetsService {
       visibleTotalOdds: bet.visibleTotalOdds,
       officialPotentialReturn: bet.officialPotentialReturn,
       officialRealizedReturn: bet.officialRealizedReturn,
+      calculatedRealizedReturn: bet.calculatedRealizedReturn,
+      effectiveReturn,
+      returnSource,
       effectiveOdds,
       profitLoss,
       status: bet.status,

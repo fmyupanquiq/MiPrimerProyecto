@@ -9,8 +9,9 @@ import { insertMember, insertProject } from './support/factories.js';
  * Fase 8.5.0 (ADR 0019, borrador): pruebas de CARACTERIZACIÓN del comportamiento actual de `main`.
  *
  * No fijan lo deseado: documentan, con PostgreSQL real, tres inconsistencias entre la apuesta, el
- * ledger y el dashboard que la Fase 8.5 debe resolver (F1, F2, F5) más dos limitaciones del modelo
- * (F3, F4). Cada bloque indica qué subfase lo corrige; al corregirlo, la aserción que describe el
+ * ledger y el dashboard que la Fase 8.5 debe resolver (F1, F2, F5, F6). F3 y F4 (monto calculado
+ * congelado como confirmado, retorno provisional) quedaron resueltas en la subfase 8.5.2 y se
+ * prueban en `bets-provisional-return.e2e-spec.ts`. Cada bloque indica qué subfase lo corrige; al corregirlo, la aserción que describe el
  * defecto se invierte (o se elimina) en ese mismo commit. Mientras tanto están en verde para no
  * bloquear `npm run check`.
  */
@@ -103,7 +104,7 @@ describe('línea base de la Fase 8.5.0: apuestas liquidadas frente al ledger (ca
         houseId,
         stake: '2.00',
         visibleTotalOdds: '1.95',
-        placedAt: overrides.placedAt ?? '2026-06-01T08:00:00.000Z',
+        placedAt: overrides.placedAt ?? '2026-06-01T13:00:00.000Z',
         selections: [selection],
       }).expect(201)
     ).body as BetBody;
@@ -111,7 +112,7 @@ describe('línea base de la Fase 8.5.0: apuestas liquidadas frente al ledger (ca
       await post(`/bets/${created.id}/settle`, {
         status: 'WON',
         officialRealizedReturn: '39.00',
-        settledAt: overrides.settledAt ?? '2026-06-01T10:00:00.000Z',
+        settledAt: overrides.settledAt ?? '2026-06-01T14:00:00.000Z',
         settledTimeKnown: true,
         version: created.version,
       }).expect(200)
@@ -154,7 +155,7 @@ describe('línea base de la Fase 8.5.0: apuestas liquidadas frente al ledger (ca
     it('la apuesta y su movimiento quedan con fechas distintas', async () => {
       const bet = await settledWinner();
       const before = (await movementsOf(bet.id)).find((m) => m.type === 'BET_PLACEMENT')!;
-      expect(before.occurredAt.toISOString()).toBe('2026-06-01T08:00:00.000Z');
+      expect(before.occurredAt.toISOString()).toBe('2026-06-01T13:00:00.000Z');
 
       const edited = (
         await request(ctx.server)
@@ -167,7 +168,7 @@ describe('línea base de la Fase 8.5.0: apuestas liquidadas frente al ledger (ca
 
       // DEFECTO: el ledger conserva la fecha anterior y no se registró ninguna corrección.
       const after = (await movementsOf(bet.id)).find((m) => m.type === 'BET_PLACEMENT')!;
-      expect(after.occurredAt.toISOString()).toBe('2026-06-01T08:00:00.000Z');
+      expect(after.occurredAt.toISOString()).toBe('2026-06-01T13:00:00.000Z');
       expect(await movementsOf(bet.id)).toHaveLength(2);
     });
 
@@ -213,31 +214,7 @@ describe('línea base de la Fase 8.5.0: apuestas liquidadas frente al ledger (ca
     });
   });
 
-  describe('F3 y F4: limitaciones del modelo respecto de §76 y §77', () => {
-    it('F3: liquidar congela el monto calculado en official_amount y amountSource pasa a CONFIRMED', async () => {
-      const bet = await settledWinner();
-      expect(bet).toMatchObject({ officialAmount: '20.00', amountSource: 'CONFIRMED' });
-      // Nunca hubo un monto oficial: se calculó (2.00 × 10.00) y se guardó como si lo fuera.
-    });
-
-    it('F4: no se puede liquidar una ganada sin retorno oficial (no existe el retorno provisional)', async () => {
-      const created = (
-        await post('/bets', {
-          houseId,
-          stake: '2.00',
-          visibleTotalOdds: '1.95',
-          placedAt: '2026-06-01T08:00:00.000Z',
-          selections: [selection],
-        }).expect(201)
-      ).body as BetBody;
-      const response = await post(`/bets/${created.id}/settle`, {
-        status: 'WON',
-        settledAt: '2026-06-01T10:00:00.000Z',
-        version: created.version,
-      });
-      expect(response.status).toBe(400);
-    });
-
+  describe('§107.9: limitación vigente hasta la subfase 8.5.3', () => {
     it('una apuesta liquidada solo admite corregir motivo y fechas (409 con cualquier campo financiero)', async () => {
       const bet = await settledWinner();
       const response = await request(ctx.server)

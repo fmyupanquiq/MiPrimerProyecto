@@ -81,6 +81,7 @@ describe('matriz de roles de sistema (§105.2)', () => {
         'bets.trash_any',
         'bets.restore',
         'bets.move_stage',
+        'bets.confirm_return',
         'reconciliations.view',
         'reconciliations.confirm',
         'integrity.view',
@@ -118,6 +119,14 @@ describe('matriz de roles de sistema (§105.2)', () => {
     expect([...perms('READER')].sort()).toEqual(
       [...readOnlyFinance, 'bets.view', 'tickets.view'].sort(),
     );
+  });
+
+  it('confirmar el retorno oficial es del Administrador de Proyecto: nunca del Colaborador ni del Lector (D-A8)', () => {
+    expect(perms('PROJECT_ADMIN')).toContain('bets.confirm_return');
+    expect(perms('PROJECT_OWNER')).not.toContain('bets.confirm_return'); // el propietario la tiene por su membresía
+    for (const role of ['COLLABORATOR', 'READER'] as const) {
+      expect(perms(role)).not.toContain('bets.confirm_return');
+    }
   });
 
   it('el Administrador de Proyecto no puede reabrir, enviar a papelera ni restaurar (§87)', () => {

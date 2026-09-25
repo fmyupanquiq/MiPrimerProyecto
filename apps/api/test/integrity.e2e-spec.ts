@@ -245,7 +245,7 @@ describe('verificación de integridad del ledger (e2e, PostgreSQL real, §38, §
             houseId,
             stake: '1.00',
             visibleTotalOdds: '1.95',
-            placedAt: '2026-06-01T08:00:00.000Z',
+            placedAt: '2026-06-01T12:10:00.000Z', // después del capital inicial (12:00)
             selections: [
               {
                 eventGroup: 0,
@@ -262,10 +262,11 @@ describe('verificación de integridad del ledger (e2e, PostgreSQL real, §38, §
         await request(ctx.server)
           .post(`/api/projects/${projectId}/bets/${created.id}/settle`)
           .set('Cookie', cookies.owner)
-          .send({ status: 'LOST', settledAt: '2026-06-01T09:00:00.000Z', version: created.version })
+          .send({ status: 'LOST', settledAt: '2026-06-01T12:20:00.000Z', version: created.version })
           .expect(200)
       ).body as { version: number };
 
+      ctx.clock.set('2026-06-01T12:30:00.000Z'); // el checkpoint es posterior a la apuesta
       const checkpoint = (
         await request(ctx.server)
           .post(`/api/projects/${projectId}/houses/${houseId}/reconciliations`)

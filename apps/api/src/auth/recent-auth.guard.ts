@@ -23,6 +23,20 @@ export const REQUIRE_RECENT_AUTH_KEY = 'letfer:require-recent-auth';
  */
 export const RequireRecentAuth = () => SetMetadata(REQUIRE_RECENT_AUTH_KEY, true);
 
+export const REQUIRE_RECENT_AUTH_WHEN_KEY = 'letfer:require-recent-auth-when';
+
+/** Decide, a partir del cuerpo crudo de la petición, si esta llamada exige reautenticación. */
+export type RecentAuthPredicate = (body: unknown) => boolean;
+
+/**
+ * Como `RequireRecentAuth`, pero solo cuando el cuerpo lo pide (p. ej. confirmar un retorno que
+ * difiere del calculado, D-A12). El predicado solo puede **endurecer** la exigencia: se evalúa sobre
+ * el cuerpo sin validar y un valor malformado que no cumpla el predicado igualmente falla después
+ * en la validación del esquema, así que no abre ninguna vía para saltarse la reautenticación.
+ */
+export const RequireRecentAuthWhen = (predicate: RecentAuthPredicate) =>
+  SetMetadata(REQUIRE_RECENT_AUTH_WHEN_KEY, predicate);
+
 @Injectable()
 export class RecentAuthGuard implements CanActivate {
   constructor(
@@ -32,13 +46,19 @@ export class RecentAuthGuard implements CanActivate {
   ) {}
 
   canActivate(context: ExecutionContext): boolean {
-    const required = this.reflector.getAllAndOverride<boolean | undefined>(
+    const targets = [context.getHandler(), context.getClass()];
+    const request = context.switchToHttp().getRequest<Request>();
+    const always = this.reflector.getAllAndOverride<boolean | undefined>(
       REQUIRE_RECENT_AUTH_KEY,
-      [context.getHandler(), context.getClass()],
+      targets,
     );
-    if (!required) return true;
+    const predicate = this.reflector.getAllAndOverride<RecentAuthPredicate | undefined>(
+      REQUIRE_RECENT_AUTH_WHEN_KEY,
+      targets,
+    );
+    if (!always && !(predicate && predicate((request.body as unknown) ?? null))) return true;
 
-    const { session } = requireAuthContext(context.switchToHttp().getRequest<Request>());
+    const { session } = requireAuthContext(request);
     const ageMs = this.clock.now().getTime() - session.reauthenticatedAt.getTime();
     if (ageMs > this.config.reauthWindowSeconds * 1000) {
       throw new AppError(

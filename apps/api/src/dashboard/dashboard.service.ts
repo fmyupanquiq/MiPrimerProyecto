@@ -422,8 +422,8 @@ export class DashboardService {
         CASE
           WHEN b.status = 'LOST'
             THEN -COALESCE(b.official_amount, ROUND(s.unit_stake * b.stake, 2))
-          WHEN b.official_realized_return IS NOT NULL
-            THEN b.official_realized_return
+          WHEN COALESCE(b.official_realized_return, b.calculated_realized_return) IS NOT NULL
+            THEN COALESCE(b.official_realized_return, b.calculated_realized_return)
                  - COALESCE(b.official_amount, ROUND(s.unit_stake * b.stake, 2))
           ELSE 0
         END AS profit_loss,

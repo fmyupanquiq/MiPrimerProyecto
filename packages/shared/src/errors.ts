@@ -21,6 +21,8 @@ export const ErrorCode = {
   OWNS_PROJECTS: 'OWNS_PROJECTS',
   /** Una corrección financiera dejaría una casa con saldo negativo en algún punto (§112.4). */
   CORRECTION_CONFLICT: 'CORRECTION_CONFLICT',
+  /** El retorno oficial difiere del calculado y falta la confirmación explícita (§77, §112.2). */
+  RETURN_MISMATCH: 'RETURN_MISMATCH',
   INVALID_TOKEN: 'INVALID_TOKEN',
   RATE_LIMITED: 'RATE_LIMITED',
   PAYLOAD_TOO_LARGE: 'PAYLOAD_TOO_LARGE',

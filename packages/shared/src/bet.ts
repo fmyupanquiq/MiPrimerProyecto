@@ -97,9 +97,13 @@ export const updateBetSchema = createBetSchema
 export type UpdateBetInput = z.infer<typeof updateBetSchema>;
 
 /**
- * Liquida una apuesta pendiente (§21, §77, §78). `officialRealizedReturn` es obligatorio salvo
- * en `LOST` (D-B2: una pérdida no tiene retorno, se determina por su ausencia).
- * `officialAmount` permite confirmar/corregir el monto en el mismo paso si aún no era oficial.
+ * Liquida una apuesta pendiente (§21, §77, §78, §112.2). El retorno depende del estado:
+ * - `WON`: `officialRealizedReturn` es opcional; sin él se liquida con un retorno **calculado no
+ *   confirmado** (`monto × cuota visible`) que luego se confirma con `confirm-return`.
+ * - `VOID`: opcional; sin él, el retorno es el monto y queda confirmado (§21.4).
+ * - `CASHOUT`: obligatorio (no hay manera de calcularlo).
+ * - `LOST`: no lleva retorno (D-B2: se determina por su ausencia).
+ * `officialAmount` confirma el monto en el mismo paso si aún no era oficial (§76).
  */
 export const settleBetSchema = z
   .object({
@@ -121,15 +125,36 @@ export const settleBetSchema = z
       }
       return;
     }
-    if (value.officialRealizedReturn === undefined) {
+    if (value.status === 'CASHOUT' && value.officialRealizedReturn === undefined) {
       ctx.addIssue({
         code: 'custom',
         path: ['officialRealizedReturn'],
-        message: 'Indica el retorno oficial realizado.',
+        message: 'Un cash out exige el retorno oficial realizado.',
       });
     }
   });
 export type SettleBetInput = z.infer<typeof settleBetSchema>;
+
+/**
+ * Confirma el retorno oficial de una apuesta ganada liquidada con retorno calculado (§77, §112.2).
+ * Si difiere del calculado, la API responde 409 `RETURN_MISMATCH` hasta que llegue
+ * `acknowledgeDifference: true`, que además exige reautenticación reciente (D-A12).
+ */
+export const confirmBetReturnSchema = z.object({
+  officialRealizedReturn: moneyInputSchema({ positive: true }),
+  acknowledgeDifference: z.boolean().default(false),
+  reason: z.string().trim().max(REASON_MAX_LENGTH).optional(),
+  version: z.number().int().positive(),
+});
+export type ConfirmBetReturnInput = z.infer<typeof confirmBetReturnSchema>;
+
+/** Detalle de un 409 `RETURN_MISMATCH`: los tres valores que la persona debe ver antes de confirmar. */
+export interface ReturnMismatchDetails {
+  calculated: MoneyString;
+  official: MoneyString;
+  /** `official − calculated`. */
+  delta: MoneyString;
+}
 
 /** Mueve una apuesta a otra etapa del proyecto (§25: solo administradores autorizados). */
 export const moveBetStageSchema = z.object({
@@ -164,11 +189,18 @@ export interface BetSelectionSummary {
 }
 
 /**
- * Fuente del monto/retorno efectivos (§76, §77): `CONFIRMED` cuando hay un valor oficial;
- * `CALCULATED` cuando LetFer lo deriva (`stake × unidad`, o ausente mientras no se liquida).
- * Se deriva de los valores, nunca se guarda (D-B7).
+ * Fuente del monto efectivo (§76): `CONFIRMED` solo cuando un ticket, la casa o una persona lo
+ * confirmó (`amount_confirmed`); `CALCULATED` cuando lo derivó LetFer (`stake × unidad`), aunque
+ * quedara congelado en `official_amount` al liquidar. Nunca es una "aceptación" del cálculo.
  */
 export type AmountSource = 'CALCULATED' | 'CONFIRMED';
+
+/**
+ * Fuente del retorno efectivo (§77, §112.2): `OFFICIAL` cuando hay retorno oficial; `CALCULATED`
+ * cuando solo hay el calculado no confirmado (ganada provisional); `null` si no hay retorno
+ * (pendiente o perdida).
+ */
+export type ReturnSource = 'OFFICIAL' | 'CALCULATED';
 
 export interface BetSummary {
   id: string;
@@ -186,9 +218,17 @@ export interface BetSummary {
   visibleTotalOdds: OddsString;
   officialPotentialReturn: MoneyString | null;
   officialRealizedReturn: MoneyString | null;
-  /** `retorno oficial ÷ monto efectivo`; solo cuando hay un retorno positivo conocido (§22). */
+  /** Retorno calculado no confirmado (`monto × cuota visible`); solo en una ganada (§112.2). */
+  calculatedRealizedReturn: MoneyString | null;
+  /** Retorno efectivo: el oficial si existe; si no, el calculado (§107.5). */
+  effectiveReturn: MoneyString | null;
+  returnSource: ReturnSource | null;
+  /** `retorno efectivo ÷ monto efectivo`; solo cuando hay un retorno positivo conocido (§22). */
   effectiveOdds: OddsString | null;
-  /** `null` mientras está `PENDING`; en los demás casos, ganancia/pérdida derivada (§107.5). */
+  /**
+   * `null` mientras está `PENDING`; en los demás casos, ganancia/pérdida derivada (§107.5) con el
+   * retorno efectivo: si `returnSource` es `CALCULATED`, es provisional.
+   */
   profitLoss: MoneyString | null;
   status: BetStatus;
   placedAt: string;
@@ -208,4 +248,52 @@ export interface BetDetail extends BetSummary {
   selections: BetSelectionSummary[];
   /** Tickets vinculados a esta apuesta (§110), más recientes primero. */
   tickets: TicketSummary[];
+}
+
+/** Una ganada cuyo retorno oficial aún no se ha confirmado (§77, §112.2). */
+export interface UnconfirmedReturnItem {
+  betId: string;
+  houseName: string;
+  stageName: string;
+  settledAt: string;
+  effectiveAmount: MoneyString;
+  calculatedRealizedReturn: MoneyString;
+  /** Ganancia provisional (retorno calculado − monto). */
+  provisionalProfit: MoneyString;
+}
+
+/** Una ganada con retorno calculado y oficial, para comparar ambos (§77, evidencia de D-B8). */
+export interface ReturnDifferenceItem {
+  betId: string;
+  houseId: string;
+  houseName: string;
+  betType: BetType;
+  settledAt: string;
+  effectiveAmount: MoneyString;
+  visibleTotalOdds: OddsString;
+  calculatedRealizedReturn: MoneyString;
+  officialRealizedReturn: MoneyString;
+  /** `oficial − calculado`. */
+  delta: MoneyString;
+}
+
+export interface ReturnDifferencesByHouse {
+  houseId: string;
+  houseName: string;
+  compared: number;
+  differing: number;
+  totalDelta: MoneyString;
+}
+
+/**
+ * Comparación de retornos calculados y oficiales de las apuestas ganadas del proyecto. Reúne la
+ * evidencia para decidir la política de redondeo (D-B8) sin decidirla.
+ */
+export interface ReturnDifferencesReport {
+  compared: number;
+  differing: number;
+  totalDelta: MoneyString;
+  byHouse: ReturnDifferencesByHouse[];
+  /** Solo las que difieren, las más recientes primero (máximo 200). */
+  items: ReturnDifferenceItem[];
 }

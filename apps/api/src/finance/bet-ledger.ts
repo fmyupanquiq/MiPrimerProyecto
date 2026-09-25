@@ -323,9 +323,10 @@ export async function applyBetLedgerPlan(
   plan: BetLedgerPlan,
   context: {
     actorId: string;
-    correctionId: string;
+    /** Corrección que ancla las filas; `null` al liquidar por primera vez (no es una corrección). */
+    correctionId: string | null;
     /** Motivo de la corrección: se copia a cada `REVERSAL`, donde es obligatorio. */
-    reason: string;
+    reason?: string;
     /** Etapa vigente de la apuesta: la llevan las filas nuevas (D-A9). */
     stageId: string;
   },
@@ -333,6 +334,9 @@ export async function applyBetLedgerPlan(
   if (plan.conflicts.length > 0) throw correctionConflict(plan.conflicts);
   if (!plan.changed) return { reversalIds: [], insertedIds: [] };
 
+  if (plan.reversals.length > 0 && !context.reason?.trim()) {
+    throw new Error('Una reversión exige el motivo de la corrección (§112.1).');
+  }
   const reversalIds: string[] = [];
   for (const row of plan.reversals) {
     const [inserted] = await tx
@@ -348,7 +352,7 @@ export async function applyBetLedgerPlan(
         occurredAt: row.occurredAt,
         reversesMovementId: row.id,
         correctionId: context.correctionId,
-        reason: context.reason,
+        reason: context.reason!,
         createdBy: context.actorId,
       })
       .returning({ id: financialMovements.id });

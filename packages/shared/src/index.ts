@@ -21,6 +21,7 @@ export function configureSpanishValidationMessages(): void {
 }
 export * from './bet.js';
 export * from './bet-correction.js';
+export * from './bet-return.js';
 export * from './dashboard.js';
 export * from './financial-movement.js';
 export * from './house.js';

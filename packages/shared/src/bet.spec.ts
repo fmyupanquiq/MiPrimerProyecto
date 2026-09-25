@@ -3,6 +3,7 @@ import {
   createBetSchema,
   isStakeString,
   moveBetStageSchema,
+  confirmBetReturnSchema,
   settleBetSchema,
   trashBetSchema,
   updateBetSchema,
@@ -83,13 +84,31 @@ describe('settleBetSchema (§21, §78, D-B2)', () => {
     expect(settleBetSchema.safeParse({ ...base, status: 'LOST' }).success).toBe(true);
   });
 
-  it('WON, VOID y CASHOUT exigen officialRealizedReturn', () => {
+  it('solo el cash out exige officialRealizedReturn; WON y VOID lo admiten opcional (§112.2, D-A3)', () => {
+    expect(settleBetSchema.safeParse({ ...base, status: 'CASHOUT' }).success).toBe(false);
     for (const status of ['WON', 'VOID', 'CASHOUT'] as const) {
-      expect(settleBetSchema.safeParse({ ...base, status }).success).toBe(false);
       expect(
         settleBetSchema.safeParse({ ...base, status, officialRealizedReturn: '50.00' }).success,
       ).toBe(true);
     }
+    // Sin retorno oficial: una ganada queda con retorno calculado y una anulada, con el monto.
+    for (const status of ['WON', 'VOID'] as const) {
+      expect(settleBetSchema.safeParse({ ...base, status }).success).toBe(true);
+    }
+  });
+
+  it('confirmBetReturnSchema exige un retorno positivo y una versión', () => {
+    const ok = { officialRealizedReturn: '38.50', version: 2 };
+    expect(confirmBetReturnSchema.parse(ok)).toMatchObject({ acknowledgeDifference: false });
+    expect(
+      confirmBetReturnSchema.safeParse({ ...ok, officialRealizedReturn: '0.00' }).success,
+    ).toBe(false);
+    expect(confirmBetReturnSchema.safeParse({ ...ok, acknowledgeDifference: 'sí' }).success).toBe(
+      false,
+    );
+    expect(confirmBetReturnSchema.safeParse({ officialRealizedReturn: '38.50' }).success).toBe(
+      false,
+    );
   });
 
   it('settledTimeKnown por defecto es true', () => {

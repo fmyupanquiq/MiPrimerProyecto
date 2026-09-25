@@ -85,6 +85,14 @@ export const PERMISSIONS = {
   },
   'bets.restore': { scope: 'PROJECT', description: 'Restaurar una apuesta desde la papelera' },
   'bets.move_stage': { scope: 'PROJECT', description: 'Mover una apuesta a otra etapa' },
+  /**
+   * Confirmar el retorno oficial de una apuesta ganada liquidada con retorno calculado (§77, §112.2,
+   * D-A8). No está disponible para el Colaborador, ni para sus propias apuestas.
+   */
+  'bets.confirm_return': {
+    scope: 'PROJECT',
+    description: 'Confirmar el retorno oficial de una apuesta ganada',
+  },
 
   // --- Confianza y recuperación (Fase 5.5, §32, §38, §74, §80, §109) ---
   'reconciliations.view': {
@@ -255,6 +263,8 @@ export const SYSTEM_ROLE_DEFINITIONS: readonly SystemRoleDefinition[] = [
       'bets.trash_any',
       'bets.restore',
       'bets.move_stage',
+      // Correcciones financieras (Fase 8.5, §112.8, D-A8).
+      'bets.confirm_return',
       // Confianza y recuperación (Fase 5.5, §109.5: conciliar e investigar son de administrador).
       'reconciliations.view',
       'reconciliations.confirm',

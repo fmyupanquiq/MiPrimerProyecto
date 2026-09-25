@@ -1,11 +1,13 @@
 -- Correcciones financieras de apuestas (Fase 8.5, §112, ADR 0019): integridad garantizada por la
 -- base de datos.
 --
--- 1. `amount_confirmed` (0030) nace en `false`. Hasta ahora `official_amount` se trataba siempre
---    como confirmado (`amountSource = CONFIRMED`): se conserva ese significado para lo existente
---    (una apuesta con monto oficial queda confirmada). Desde la subfase 8.5.2 la liquidación
---    distingue el monto calculado congelado del confirmado.
-UPDATE bets SET amount_confirmed = true WHERE official_amount IS NOT NULL;
+-- 1. `amount_confirmed` (0030) nace en `false` y solo significa que un ticket, la casa o una persona
+--    confirmó el monto (§76, §112.2): nunca que LetFer congeló su propio cálculo. Hasta ahora
+--    `official_amount` se llenaba también al liquidar con el monto calculado, así que en una apuesta
+--    ya liquidada no se puede saber de dónde venía: se trata como NO confirmada (conservador; no
+--    había datos reales). Solo una apuesta pendiente con monto oficial lo tiene por indicación
+--    directa de una persona o de un ticket, y queda confirmada.
+UPDATE bets SET amount_confirmed = true WHERE official_amount IS NOT NULL AND status = 'PENDING';
 --> statement-breakpoint
 -- 2. `bet_corrections` es un histórico de solo inserción (§112.1): una corrección ya aplicada no
 --    se edita ni se borra. Reutiliza `prevent_modification` (0000_base_functions.sql), igual que
