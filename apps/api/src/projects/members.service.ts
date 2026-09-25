@@ -49,8 +49,10 @@ export class MembersService {
   ) {}
 
   /**
-   * Miembros del proyecto. Por defecto solo los activos; consultar a quienes salieron o fueron
-   * expulsados exige poder gestionar roles. El correo solo se muestra a quien gestiona roles.
+   * Miembros del proyecto. Por defecto solo los operativos (membresía activa y cuenta `ACTIVE`);
+   * consultar a quienes salieron, fueron expulsados o tienen la cuenta deshabilitada o eliminada
+   * (`ALL`) exige poder gestionar roles y conserva el historial. El correo solo se muestra a quien
+   * gestiona roles.
    */
   async list(access: ProjectAccess, filter: MemberListFilter): Promise<MemberSummary[]> {
     const canManage = access.permissions.has('members.update_role');
@@ -64,7 +66,12 @@ export class MembersService {
       .where(
         filter === 'ALL'
           ? eq(projectMembers.projectId, access.project.id)
-          : and(eq(projectMembers.projectId, access.project.id), eq(projectMembers.status, filter)),
+          : and(
+              eq(projectMembers.projectId, access.project.id),
+              eq(projectMembers.status, filter),
+              // Una cuenta deshabilitada o eliminada no cuenta como miembro operativo (§111.3).
+              filter === 'ACTIVE' ? eq(users.status, 'ACTIVE') : undefined,
+            ),
       )
       .orderBy(asc(users.firstName), asc(users.lastName), asc(projectMembers.id));
 
@@ -78,6 +85,7 @@ export class MembersService {
       roleName: role.name,
       isOwner: user.id === access.project.ownerId,
       status: member.status,
+      accountStatus: user.status,
       joinedAt: member.joinedAt.toISOString(),
       leftAt: member.leftAt ? member.leftAt.toISOString() : null,
       removedAt: member.removedAt ? member.removedAt.toISOString() : null,

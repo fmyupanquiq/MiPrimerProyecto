@@ -23,6 +23,7 @@ interface MemberBody {
   roleName: string;
   isOwner: boolean;
   status: string;
+  accountStatus: string;
   version: number;
   code?: string;
 }
@@ -111,6 +112,41 @@ describe('miembros del proyecto (e2e, PostgreSQL real)', () => {
         expect(list.filter((m) => m.isOwner)).toHaveLength(1);
       }
       await get('stranger', '/members').expect(404);
+    });
+
+    it('una cuenta deshabilitada o eliminada no es miembro operativo, pero conserva el historial (H2)', async () => {
+      await ctx.t.pool.query(`UPDATE users SET status = 'DISABLED' WHERE id = $1`, [
+        people.collab.id,
+      ]);
+      await ctx.t.pool.query(
+        `UPDATE users SET status = 'DELETED', deleted_at = now() WHERE id = $1`,
+        [people.reader.id],
+      );
+
+      // Vista operativa: solo cuentas activas.
+      for (const actor of ['owner', 'admin', 'root'] as const) {
+        expect((await members(actor)).map((m) => m.firstName)).toEqual(['Olga', 'Adela']);
+      }
+      // Historial: la membresía sigue ahí y se ve con el estado de la cuenta.
+      const all = await members('admin', 'ALL');
+      expect(all.map((m) => [m.firstName, m.accountStatus])).toEqual([
+        ['Olga', 'ACTIVE'],
+        ['Adela', 'ACTIVE'],
+        ['Carlos', 'DISABLED'],
+        ['Rosa', 'DELETED'],
+      ]);
+      expect(all.every((m) => m.status === 'ACTIVE')).toBe(true);
+      const rows = await ctx.t.db
+        .select()
+        .from(projectMembers)
+        .where(eq(projectMembers.projectId, projectId));
+      expect(rows).toHaveLength(4);
+
+      // Reactivar la cuenta la devuelve a la vista operativa.
+      await ctx.t.pool.query(`UPDATE users SET status = 'ACTIVE' WHERE id = $1`, [
+        people.collab.id,
+      ]);
+      expect((await members('owner')).map((m) => m.firstName)).toEqual(['Olga', 'Adela', 'Carlos']);
     });
 
     it('los correos solo se ven con permiso para gestionar roles (§105.4)', async () => {

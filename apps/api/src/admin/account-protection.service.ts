@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ErrorCode } from '@letfer/shared';
 import { and, eq, ne, sql } from 'drizzle-orm';
 import { AuditService } from '../audit/audit.service.js';
@@ -46,6 +46,8 @@ const ownsProjects = (owned: { id: string; name: string }[]) =>
  */
 @Injectable()
 export class AccountProtectionService {
+  private readonly logger = new Logger(AccountProtectionService.name);
+
   constructor(
     @Inject(DATABASE) private readonly db: Database,
     private readonly audit: AuditService,
@@ -117,12 +119,21 @@ export class AccountProtectionService {
     input: { actor: UserRow; targetUserId: string; attempted: DeactivationAttempt },
     blocked: AppError,
   ): Promise<void> {
-    await this.audit.record(this.db, {
-      action: 'admin.user_deactivation.blocked',
-      entityType: 'user',
-      entityId: input.targetUserId,
-      actorUserId: input.actor.id,
-      metadata: { attempted: input.attempted, reason: blocked.code },
-    });
+    // Si el registro falla no se convierte el rechazo esperado (409) en un 500: la protección ya
+    // actuó y la persona debe recibir su motivo. El fallo queda en los registros del servidor.
+    try {
+      await this.audit.record(this.db, {
+        action: 'admin.user_deactivation.blocked',
+        entityType: 'user',
+        entityId: input.targetUserId,
+        actorUserId: input.actor.id,
+        metadata: { attempted: input.attempted, reason: blocked.code },
+      });
+    } catch (auditError) {
+      this.logger.error(
+        `No se pudo auditar el intento bloqueado (${blocked.code}) sobre ${input.targetUserId}`,
+        auditError,
+      );
+    }
   }
 }

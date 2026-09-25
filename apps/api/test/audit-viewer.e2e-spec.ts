@@ -294,6 +294,37 @@ describe('visor de auditoría (e2e, PostgreSQL real, §111.1, D8-2)', () => {
       });
     });
 
+    it('la auditoría del proyecto oculta ip, userAgent y sessionId; la global los conserva (H1)', async () => {
+      const sessionId = '5f1c9d0e-0000-4000-8000-000000000001';
+      const connection = {
+        actorUserId: people.collab.id,
+        ip: '203.0.113.7',
+        userAgent: 'Mozilla/5.0 (prueba)',
+        sessionId,
+      };
+      await seed([
+        { action: 'test.conn', projectId: projectA, ...connection },
+        { action: 'test.conn', projectId: projectB, ...connection },
+      ]);
+
+      for (const actor of ['owner', 'admin', 'root'] as const) {
+        const [entry] = pageOf(await projectAudit(actor, '?action=test.conn').expect(200)).items;
+        expect(entry).toMatchObject({ ip: null, userAgent: null, sessionId: null });
+        expect(JSON.stringify(entry)).not.toContain('203.0.113.7');
+        expect(JSON.stringify(entry)).not.toContain(sessionId);
+      }
+
+      const global = pageOf(await globalAudit('root', '?action=test.conn').expect(200)).items;
+      expect(global).toHaveLength(2);
+      for (const entry of global) {
+        expect(entry).toMatchObject({
+          ip: '203.0.113.7',
+          userAgent: 'Mozilla/5.0 (prueba)',
+          sessionId,
+        });
+      }
+    });
+
     it('vuelve a redactar los valores sensibles al leer', async () => {
       await seed([
         {

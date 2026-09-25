@@ -35,6 +35,7 @@ const member = (overrides: Record<string, unknown>) => ({
   roleName: 'Colaborador',
   isOwner: false,
   status: 'ACTIVE',
+  accountStatus: 'ACTIVE',
   joinedAt: '2026-06-01T12:00:00.000Z',
   leftAt: null,
   removedAt: null,

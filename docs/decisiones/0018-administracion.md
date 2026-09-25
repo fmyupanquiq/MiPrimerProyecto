@@ -50,6 +50,11 @@ Administrador Global las aprobó la persona responsable del producto tras el pla
   repetir filas que compartan milisegundo. `limit` por defecto 50, máximo 100.
 - Solo lectura. Al leer se vuelve a aplicar `redactSensitive` a los valores (defensa en profundidad:
   aunque una entrada antigua hubiera guardado algo indebido, no se devuelve).
+- **Datos de conexión.** La auditoría por proyecto devuelve `ip`, `userAgent` y `sessionId` siempre
+  como `null`: el Administrador de Proyecto no debe ver las direcciones ni los navegadores de otros
+  miembros. El recorte depende de la ruta, no de quién consulta: el Administrador Global tampoco
+  los ve por `/projects/:projectId/audit-logs`, pero sí en `/admin/audit-logs`, que los conserva.
+  `requestId` se mantiene en ambas (correlaciona sin identificar a la persona).
 - `audit.view` se concede solo a `PROJECT_ADMIN`. `system.audit.view` solo a `GLOBAL_ADMIN` (la
   matriz ya le otorga todos los permisos).
 
@@ -81,7 +86,7 @@ Administrador Global las aprobó la persona responsable del producto tras el pla
   disparador de PostgreSQL rechaza cualquier `UPDATE` que deje al sistema sin Administrador Global
   activo (defensa en profundidad, también frente a dos administradores que se deshabilitan a la vez
   o a escrituras fuera de la API). El intento bloqueado se audita **fuera** de la transacción que
-  se revierte (`admin.last_global_admin.blocked`, con la acción intentada).
+  se revierte (`admin.user_deactivation.blocked`, con la acción intentada y el motivo).
 - Consecuencia sobre la Fase 3: `hasOtherEligibleApprover` (autoaprobación de retiros, §79) ya
   no cuenta a miembros cuya cuenta no está `ACTIVE`; un administrador deshabilitado o eliminado no
   puede aprobar nada, así que no debe impedir la autoaprobación de otro.
@@ -111,8 +116,16 @@ Administrador Global las aprobó la persona responsable del producto tras el pla
   intentos de acceso y tokens de recuperación usados, invalidados o vencidos, todo con más de
   `MAINTENANCE_RETENTION_DAYS` (30 por defecto). Nunca tablas de negocio, ledger, auditoría ni
   invitaciones.
+- **Retención mínima.** `MAINTENANCE_RETENTION_DAYS` no puede ser menor de 7: un valor inferior
+  (0, 1, negativo o no numérico) hace fallar el arranque con un error que nombra la variable, para
+  que una mala configuración no borre rastro de seguridad reciente.
 - Tarea programada interna (una vez al día, mismo patrón que los backups: sin cron externo) más
   `POST /admin/maintenance/purge` bajo demanda (`system.maintenance.run`). Cada ejecución se audita.
+- **Reintentos de la tarea programada.** Una ejecución completada cierra el día (UTC). Si falla, se
+  reintenta como pronto 6 horas después y como mucho 3 veces por día; agotado el tope, espera al
+  día siguiente. Así una avería persistente no llena `maintenance_runs` ni la auditoría con un
+  fallo por hora. Ninguna purga, manual o programada, corre mientras hay una restauración de backup
+  en curso (modo mantenimiento, D-R1): responde 503.
 
 ## Fuera de alcance (esta fase)
 
@@ -128,6 +141,7 @@ Administrador Global las aprobó la persona responsable del producto tras el pla
 ## Consecuencias
 
 - Aparecen 5 permisos globales y 1 de proyecto; `reconcileRbac` los sincroniza al arrancar.
-- Tres migraciones nuevas: tabla de solicitudes de eliminación, disparador de último
-  Administrador Global y tabla de ejecuciones de mantenimiento.
+- Cuatro migraciones nuevas: `0026` (tabla de solicitudes de eliminación), `0027` (disparadores:
+  `updated_at` y no borrado de solicitudes, y protección del último Administrador Global), `0028`
+  (tabla de ejecuciones de mantenimiento) y `0029` (inmutabilidad de `maintenance_runs`).
 - La papelera de tickets sigue sin existir (ADR 0017): un ticket sigue el ciclo de su apuesta.

@@ -7,6 +7,7 @@ export const APP_CONFIG = Symbol('APP_CONFIG');
 
 const DAY = 24 * 60 * 60;
 const HOUR = 60 * 60;
+const MIN_MAINTENANCE_RETENTION_DAYS = 7;
 
 const positiveInt = (fallback: number) => z.coerce.number().int().positive().default(fallback);
 const booleanFlag = (fallback: boolean) =>
@@ -77,7 +78,12 @@ const envSchema = z.object({
   // Mantenimiento (§111.6, ADR 0018): purga diaria de registros auxiliares caducados. Solo
   // sesiones, intentos de acceso y tokens de recuperación con más de N días desde que dejaron de
   // valer; nunca datos de negocio ni auditoría.
-  MAINTENANCE_RETENTION_DAYS: positiveInt(30),
+  // Mínimo de 7 días: un valor menor borraría rastro de seguridad reciente (sesiones, intentos).
+  MAINTENANCE_RETENTION_DAYS: z.coerce
+    .number()
+    .int()
+    .min(MIN_MAINTENANCE_RETENTION_DAYS)
+    .default(30),
   MAINTENANCE_CHECK_INTERVAL_SECONDS: positiveInt(HOUR),
   MAINTENANCE_SCHEDULE_HOUR_UTC: z.coerce.number().int().min(0).max(23).default(4),
   MAINTENANCE_SCHEDULER_ENABLED: booleanFlag(true),

@@ -5,9 +5,15 @@ import {
   type OnApplicationBootstrap,
   type OnApplicationShutdown,
 } from '@nestjs/common';
-import type { MaintenancePurged, MaintenanceRunSummary, MaintenanceTrigger } from '@letfer/shared';
-import { and, desc, eq, sql, type SQL } from 'drizzle-orm';
+import {
+  ErrorCode,
+  type MaintenancePurged,
+  type MaintenanceRunSummary,
+  type MaintenanceTrigger,
+} from '@letfer/shared';
+import { and, desc, eq, gte, sql, type SQL } from 'drizzle-orm';
 import { AuditService } from '../audit/audit.service.js';
+import { AppError } from '../common/app-error.js';
 import { MaintenanceModeService } from '../backups/maintenance-mode.service.js';
 import { Clock } from '../common/clock.js';
 import { APP_CONFIG, type AppConfig } from '../config/app-config.js';
@@ -25,6 +31,9 @@ import {
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const PURGE_LOCK = 'maintenance:purge';
 const HISTORY_LIMIT = 30;
+/** Tope de intentos programados fallidos por día (UTC) y espera mínima entre ellos (L3). */
+const MAX_FAILED_SCHEDULED_PER_DAY = 3;
+const FAILED_RETRY_DELAY_MS = 6 * 60 * 60 * 1000;
 const NOTHING_PURGED: MaintenancePurged = { sessions: 0, loginAttempts: 0, passwordResetTokens: 0 };
 
 /**
@@ -89,19 +98,35 @@ export class MaintenanceService implements OnApplicationBootstrap, OnApplication
     const now = this.clock.now();
     if (now.getUTCHours() < this.config.maintenance.scheduleHourUtc) return null;
 
-    const [last] = await this.db
-      .select({ startedAt: maintenanceRuns.startedAt })
+    // Intentos programados de hoy (UTC). Uno completado basta; un fallo se reintenta con espera y
+    // con tope, para que una avería persistente no llene el historial ni la auditoría (L3).
+    const dayStart = new Date(`${now.toISOString().slice(0, 10)}T00:00:00.000Z`);
+    const today = await this.db
+      .select({ startedAt: maintenanceRuns.startedAt, status: maintenanceRuns.status })
       .from(maintenanceRuns)
-      .where(and(eq(maintenanceRuns.trigger, 'SCHEDULED'), eq(maintenanceRuns.status, 'COMPLETED')))
-      .orderBy(desc(maintenanceRuns.startedAt))
-      .limit(1);
-    const today = now.toISOString().slice(0, 10);
-    if (last && last.startedAt.toISOString().slice(0, 10) === today) return null;
+      .where(
+        and(eq(maintenanceRuns.trigger, 'SCHEDULED'), gte(maintenanceRuns.startedAt, dayStart)),
+      )
+      .orderBy(desc(maintenanceRuns.startedAt));
+    if (today.some((run) => run.status === 'COMPLETED')) return null;
+    if (today.length >= MAX_FAILED_SCHEDULED_PER_DAY) return null;
+    const lastFailure = today[0];
+    if (lastFailure && now.getTime() - lastFailure.startedAt.getTime() < FAILED_RETRY_DELAY_MS) {
+      return null;
+    }
     return this.purge('SCHEDULED', null);
   }
 
   /** Ejecuta la purga. Un fallo no se propaga: queda registrado como ejecución `FAILED`. */
   async purge(trigger: MaintenanceTrigger, actor: UserRow | null): Promise<MaintenanceRunSummary> {
+    // Ninguna purga (manual o programada) compite con una restauración de backup en curso (D-R1).
+    if (this.maintenanceMode.isActive()) {
+      throw new AppError(
+        503,
+        ErrorCode.SERVICE_UNAVAILABLE,
+        'LetFer está restaurando un backup: inténtalo de nuevo en unos minutos.',
+      );
+    }
     const startedAt = this.clock.now();
     const retentionDays = this.config.maintenance.retentionDays;
     const cutoff = new Date(startedAt.getTime() - retentionDays * MS_PER_DAY);

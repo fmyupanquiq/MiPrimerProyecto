@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { MemberStatus } from './project.js';
+import type { UserStatus } from './user.js';
 
 /** Cambio de rol de un miembro. `version` es la de la membresía leída por el cliente (§96). */
 export const changeMemberRoleSchema = z.object({
@@ -28,6 +29,8 @@ export interface MemberSummary {
   roleName: string;
   isOwner: boolean;
   status: MemberStatus;
+  /** Estado de la cuenta: una `DISABLED`/`DELETED` conserva su historial pero no es miembro operativo. */
+  accountStatus: UserStatus;
   joinedAt: string;
   leftAt: string | null;
   removedAt: string | null;

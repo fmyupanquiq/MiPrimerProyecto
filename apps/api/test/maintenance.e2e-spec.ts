@@ -367,6 +367,74 @@ describe('mantenimiento: purga de registros auxiliares (e2e, PostgreSQL real, §
     });
   });
 
+  describe('modo mantenimiento y reintentos (L3, L4)', () => {
+    it('la purga manual no corre durante una restauración de backup: 503 y no queda ejecución', async () => {
+      const mode = ctx.app.get(MaintenanceModeService, { strict: false });
+      await seedAuxiliary();
+      const before = await remaining();
+      mode.activate();
+      try {
+        // Por HTTP lo corta el middleware global; el servicio además se protege por sí mismo.
+        await purge('root').expect(503);
+        await expect(
+          ctx.app.get(MaintenanceService, { strict: false }).purge('MANUAL', people.root),
+        ).rejects.toMatchObject({ status: 503 });
+      } finally {
+        mode.deactivate();
+      }
+      expect(await remaining()).toEqual(before);
+      expect(await ctx.t.db.select().from(maintenanceRuns)).toHaveLength(0);
+      await purge('root').expect(200);
+    });
+
+    it('un fallo persistente de la purga programada no acumula intentos: espera y tope diario', async () => {
+      const service = ctx.app.get(MaintenanceService, { strict: false });
+      // eslint-disable-next-line @typescript-eslint/unbound-method -- se invoca con `this` del original
+      const original = AuditService.prototype.record;
+      // Falla solo el registro de una purga completada; el del fallo sí se puede guardar.
+      vi.spyOn(AuditService.prototype, 'record').mockImplementation(function (
+        this: AuditService,
+        ...args: Parameters<AuditService['record']>
+      ) {
+        if (args[1].action === 'maintenance.purge.completed') {
+          return Promise.reject(new Error('detalle interno'));
+        }
+        return original.apply(this, args);
+      });
+
+      ctx.clock.set('2026-06-01T05:00:00.000Z');
+      expect(await service.maybeRunScheduled()).toMatchObject({ status: 'FAILED' });
+      ctx.clock.set('2026-06-01T06:00:00.000Z'); // demasiado pronto para reintentar
+      expect(await service.maybeRunScheduled()).toBeNull();
+      ctx.clock.set('2026-06-01T11:00:00.000Z');
+      expect(await service.maybeRunScheduled()).toMatchObject({ status: 'FAILED' });
+      ctx.clock.set('2026-06-01T17:00:00.000Z');
+      expect(await service.maybeRunScheduled()).toMatchObject({ status: 'FAILED' });
+      ctx.clock.set('2026-06-01T23:00:00.000Z'); // tope de 3 fallos por día
+      expect(await service.maybeRunScheduled()).toBeNull();
+      expect(await ctx.t.db.select().from(maintenanceRuns)).toHaveLength(3);
+
+      // Al día siguiente vuelve a intentarlo; sin fallo se completa y no se repite ese día.
+      vi.restoreAllMocks();
+      ctx.clock.set('2026-06-02T05:00:00.000Z');
+      expect(await service.maybeRunScheduled()).toMatchObject({ status: 'COMPLETED' });
+      ctx.clock.set('2026-06-02T12:00:00.000Z');
+      expect(await service.maybeRunScheduled()).toBeNull();
+      expect(await ctx.t.db.select().from(maintenanceRuns)).toHaveLength(4);
+    });
+
+    it('tras un fallo, el reintento posterior que sí funciona cierra el día', async () => {
+      const service = ctx.app.get(MaintenanceService, { strict: false });
+      vi.spyOn(AuditService.prototype, 'record').mockRejectedValueOnce(new Error('caída puntual'));
+      ctx.clock.set('2026-06-01T05:00:00.000Z');
+      expect(await service.maybeRunScheduled()).toMatchObject({ status: 'FAILED' });
+      ctx.clock.set('2026-06-01T11:30:00.000Z');
+      expect(await service.maybeRunScheduled()).toMatchObject({ status: 'COMPLETED' });
+      ctx.clock.set('2026-06-01T20:00:00.000Z');
+      expect(await service.maybeRunScheduled()).toBeNull();
+    });
+  });
+
   describe('fallos', () => {
     it('si la purga falla no se elimina nada, queda una ejecución FAILED sin detalles internos', async () => {
       await seedAuxiliary();

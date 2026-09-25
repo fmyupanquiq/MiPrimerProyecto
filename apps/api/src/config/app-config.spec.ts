@@ -55,6 +55,18 @@ describe('loadConfig', () => {
     expect(attempt).not.toThrow(/secret-pass/);
   });
 
+  it('exige un mínimo de 7 días de retención del mantenimiento (L5)', () => {
+    expect(loadConfig(baseEnv).maintenance.retentionDays).toBe(30);
+    expect(
+      loadConfig({ ...baseEnv, MAINTENANCE_RETENTION_DAYS: '7' }).maintenance.retentionDays,
+    ).toBe(7);
+    for (const value of ['0', '1', '6', '-3', 'abc']) {
+      expect(() => loadConfig({ ...baseEnv, MAINTENANCE_RETENTION_DAYS: value })).toThrow(
+        /MAINTENANCE_RETENTION_DAYS/,
+      );
+    }
+  });
+
   it('rechaza números inválidos', () => {
     expect(() => loadConfig({ ...baseEnv, PORT: 'abc' })).toThrow(/PORT/);
     expect(() => loadConfig({ ...baseEnv, LOCKOUT_MAX_FAILURES: '0' })).toThrow(

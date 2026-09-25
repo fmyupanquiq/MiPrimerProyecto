@@ -1,8 +1,15 @@
 import type { AdminUserDetail, AdminUserPage } from '@letfer/shared';
 import { and, eq } from 'drizzle-orm';
 import request from 'supertest';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { auditLogs, sessions, users, type UserRow } from '../src/database/schema/index.js';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { AuditService } from '../src/audit/audit.service.js';
+import {
+  auditLogs,
+  projects,
+  sessions,
+  users,
+  type UserRow,
+} from '../src/database/schema/index.js';
 import {
   bodyOf,
   createTestApp,
@@ -48,6 +55,8 @@ describe('administración de usuarios (e2e, PostgreSQL real, §111.3, §111.4)',
       cookies[actor as Actor] = sessionCookie(await login(ctx.server, user.email).expect(200))!;
     }
   }
+
+  afterEach(() => vi.restoreAllMocks());
 
   beforeEach(() => seed());
 
@@ -264,6 +273,45 @@ describe('administración de usuarios (e2e, PostgreSQL real, §111.3, §111.4)',
         entityId: people.owner.id,
         metadata: { attempted: 'disable', reason: 'OWNS_PROJECTS' },
       });
+    });
+
+    it('deshabilitar y crear un proyecto a la vez nunca deja una cuenta deshabilitada siendo propietaria (L1)', async () => {
+      for (let round = 0; round < 8; round++) {
+        await seed();
+        const [disabled, created] = await Promise.all([
+          disable('root', people.plain),
+          post('plain', '/projects', { name: `Carrera ${round}` }),
+        ]);
+        const owned = await ctx.t.db
+          .select()
+          .from(projects)
+          .where(eq(projects.ownerId, people.plain.id));
+        const status = await statusOf(people.plain);
+        // Invariante (D8-6): nunca deshabilitada y propietaria a la vez.
+        expect(status === 'ACTIVE' || owned.length === 0, `ronda ${round}`).toBe(true);
+        if (created.status === 201) {
+          expect(disabled.status).toBe(409);
+          expect(bodyOf(disabled).code).toBe('OWNS_PROJECTS');
+          expect(owned).toHaveLength(1);
+        } else {
+          expect(disabled.status).toBe(200);
+          expect(created.status).toBeOneOf([401, 403]);
+          expect(owned).toHaveLength(0);
+        }
+      }
+    });
+
+    it('si falla la auditoría del intento bloqueado, la respuesta sigue siendo el 409 esperado (L7)', async () => {
+      await insertProject(ctx.t.db, { owner: people.owner, name: 'Grupo Norte' });
+      vi.spyOn(AuditService.prototype, 'record').mockRejectedValueOnce(
+        new Error('auditoría caída'),
+      );
+
+      const response = await disable('root', people.owner).expect(409);
+      expect(bodyOf(response).code).toBe('OWNS_PROJECTS');
+      expect(await statusOf(people.owner)).toBe('ACTIVE');
+      // No quedó rastro del intento, pero tampoco se convirtió el rechazo en un 500.
+      expect(await blockedAudits()).toHaveLength(0);
     });
 
     it('también bloquea si el proyecto está en la papelera', async () => {

@@ -4,7 +4,7 @@ import { describeApiError } from '../../api/errors.js';
 import { membersApi } from '../../api/projects.js';
 import { useAuth } from '../../auth/AuthContext.js';
 import { useLoad } from '../../hooks/useLoad.js';
-import { formatDate, MEMBER_STATUS_LABELS, roleLabel } from '../../labels.js';
+import { formatDate, MEMBER_STATUS_LABELS, roleLabel, USER_STATUS_LABELS } from '../../labels.js';
 import { Badge, btn, btnDanger, inputClass, Notice, Section } from '../../ui.js';
 import { InvitationsPanel } from './InvitationsPanel.js';
 import { useProject } from './ProjectContext.js';
@@ -141,6 +141,8 @@ export function MembersPage() {
                       </td>
                       <td className="py-2 pr-3">
                         {MEMBER_STATUS_LABELS[member.status]}
+                        {member.accountStatus !== 'ACTIVE' &&
+                          ` · cuenta ${USER_STATUS_LABELS[member.accountStatus].toLowerCase()}`}
                         {member.leftAt && ` (${formatDate(member.leftAt)})`}
                         {member.removedAt && ` (${formatDate(member.removedAt)})`}
                       </td>

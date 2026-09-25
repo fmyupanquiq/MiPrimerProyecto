@@ -42,7 +42,8 @@ export function decodeAuditCursor(cursor: string): { at: string; id: string } {
 /**
  * Visor de auditoría (§10, §35, §111.1): solo lectura, con filtros y paginación por cursor sobre
  * `(occurred_at, id)`. El cursor conserva los microsegundos del instante para no perder ni
- * repetir filas que compartan milisegundo.
+ * repetir filas que compartan milisegundo. La auditoría por proyecto oculta `ip`, `userAgent` y
+ * `sessionId`; la global los conserva.
  */
 @Injectable()
 export class AuditQueryService {
@@ -105,9 +106,11 @@ export class AuditQueryService {
       oldValues: log.oldValues ? redactSensitive(log.oldValues) : null,
       newValues: log.newValues ? redactSensitive(log.newValues) : null,
       metadata: log.metadata ? redactSensitive(log.metadata) : null,
-      ip: log.ip,
-      userAgent: log.userAgent,
-      sessionId: log.sessionId,
+      // Datos de conexión de las personas: solo en la auditoría global (Administrador Global).
+      // La del proyecto no los revela a quien administra el proyecto (H1, D8-2).
+      ip: scope.kind === 'global' ? log.ip : null,
+      userAgent: scope.kind === 'global' ? log.userAgent : null,
+      sessionId: scope.kind === 'global' ? log.sessionId : null,
       requestId: log.requestId,
     }));
     return {

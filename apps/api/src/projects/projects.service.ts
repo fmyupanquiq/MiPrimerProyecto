@@ -56,6 +56,18 @@ export class ProjectsService {
    */
   async create(actor: UserRow, input: CreateProjectInput): Promise<ProjectDetail> {
     const projectId = await this.db.transaction(async (tx) => {
+      // Bloquea la fila de quien crea (FOR SHARE) y confirma que su cuenta sigue activa: deshabilitar
+      // o eliminar bloquea esa misma fila (FOR UPDATE) y comprueba que no posea proyectos. Sin esto,
+      // la cuenta podría quedar deshabilitada siendo propietaria de un proyecto recién creado (D8-6).
+      const [creator] = await tx
+        .select({ status: users.status })
+        .from(users)
+        .where(eq(users.id, actor.id))
+        .for('share')
+        .limit(1);
+      if (creator?.status !== 'ACTIVE') {
+        throw new AppError(403, ErrorCode.FORBIDDEN, 'Tu cuenta no está activa.');
+      }
       const [project] = await tx
         .insert(projects)
         .values({
