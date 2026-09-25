@@ -32,6 +32,16 @@ export function AdminLayout() {
         <NavLink to="/admin" end className={tabClass}>
           Sistema
         </NavLink>
+        {can('system.users.view') && (
+          <NavLink to="/admin/users" className={tabClass}>
+            Usuarios
+          </NavLink>
+        )}
+        {can('system.account_deletions.decide') && (
+          <NavLink to="/admin/deletions" className={tabClass}>
+            Eliminación de cuentas
+          </NavLink>
+        )}
         {can('system.audit.view') && (
           <NavLink to="/admin/audit" className={tabClass}>
             Auditoría

@@ -349,10 +349,13 @@ export class WithdrawalsService {
       .select({ id: projectMembers.id })
       .from(projectMembers)
       .innerJoin(rolePermissions, eq(rolePermissions.roleId, projectMembers.roleId))
+      .innerJoin(users, eq(users.id, projectMembers.userId))
       .where(
         and(
           eq(projectMembers.projectId, projectId),
           eq(projectMembers.status, 'ACTIVE'),
+          // Una cuenta deshabilitada o eliminada (§104.6) no puede aprobar: no cuenta (§111.3).
+          eq(users.status, 'ACTIVE'),
           ne(projectMembers.userId, excludeUserId),
           eq(rolePermissions.permissionCode, 'withdrawals.approve'),
         ),

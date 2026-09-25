@@ -48,12 +48,12 @@ export function AppShell() {
           </div>
           {user && (
             <div className="flex items-center gap-3 text-sm">
-              <span>
+              <Link to="/account" title="Mi cuenta" className="hover:underline">
                 <strong>
                   {user.firstName} {user.lastName}
                 </strong>{' '}
                 <span className="text-slate-500">({user.email})</span>
-              </span>
+              </Link>
               <button
                 type="button"
                 onClick={() => void onLogout()}

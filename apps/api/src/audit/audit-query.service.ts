@@ -7,6 +7,7 @@ import {
 } from '@letfer/shared';
 import { and, desc, eq, gte, isNull, lte, sql, type SQL } from 'drizzle-orm';
 import { AppError } from '../common/app-error.js';
+import { escapeLike } from '../common/sql-like.js';
 import { DATABASE } from '../database/database.constants.js';
 import type { Database } from '../database/database.module.js';
 import { auditLogs, users } from '../database/schema/index.js';
@@ -37,9 +38,6 @@ export function decodeAuditCursor(cursor: string): { at: string; id: string } {
   }
   return { at, id };
 }
-
-/** Escapa `%`, `_` y `\` para usar un texto literal como prefijo de `LIKE`. */
-const escapeLike = (value: string) => value.replace(/[\\%_]/g, (char) => `\\${char}`);
 
 /**
  * Visor de auditoría (§10, §35, §111.1): solo lectura, con filtros y paginación por cursor sobre

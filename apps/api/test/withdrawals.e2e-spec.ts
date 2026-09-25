@@ -1,7 +1,12 @@
 import { eq } from 'drizzle-orm';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { auditLogs, financialMovements, type UserRow } from '../src/database/schema/index.js';
+import {
+  auditLogs,
+  financialMovements,
+  users,
+  type UserRow,
+} from '../src/database/schema/index.js';
 import {
   bodyOf,
   createTestApp,
@@ -234,6 +239,19 @@ describe('solicitudes de retiro (e2e, PostgreSQL real, §16.2, §79, D5)', () =>
         .from(auditLogs)
         .where(eq(auditLogs.action, 'withdrawal.approved'));
       expect(log!.metadata).toMatchObject({ selfApproved: true });
+    });
+
+    it('un administrador con la cuenta deshabilitada o eliminada no cuenta como otro aprobador (§111.3)', async () => {
+      const created = (
+        await withdraw('owner', { houseId, amount: '120.00', reason: 'Pago' }).expect(201)
+      ).body as WithdrawalBody;
+      await reauthAs('owner');
+      // Mientras `admin` esté activo, el propietario no puede aprobar su propia solicitud.
+      await approve('owner', created.id, { version: created.version }).expect(403);
+
+      await ctx.t.db.update(users).set({ status: 'DISABLED' }).where(eq(users.id, people.admin.id));
+      const approved = await approve('owner', created.id, { version: created.version }).expect(200);
+      expect((approved.body as WithdrawalBody).status).toBe('APPROVED');
     });
 
     it('el Administrador Global siempre puede aprobar', async () => {

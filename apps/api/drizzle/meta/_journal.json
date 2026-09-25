@@ -183,6 +183,20 @@
       "when": 1790255429921,
       "tag": "0025_ticket_analyses_immutable",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1790298886071,
+      "tag": "0026_neat_night_nurse",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1790298902887,
+      "tag": "0027_account_deletion_and_last_admin_triggers",
+      "breakpoints": true
     }
   ]
 }

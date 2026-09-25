@@ -258,9 +258,14 @@ describe('visor de auditoría (e2e, PostgreSQL real, §111.1, D8-2)', () => {
       expect(await actions('?from=2026-05-15T00:00:00Z&to=2026-05-22T00:00:00Z')).toEqual([
         'bet.settled',
       ]);
-      // `%` y `_` son texto, no comodines.
+      // `%` y `_` son texto, no comodines: no coinciden con nada...
       expect(await actions('?action=%25')).toEqual([]);
       expect(await actions('?action=bet_')).toEqual([]);
+      // ...pero sí encuentran una acción que los contiene de forma literal.
+      await seed([{ action: 'promo.100%_off', projectId: projectA }]);
+      expect(await actions('?action=promo.100%25')).toEqual(['promo.100%_off']);
+      expect(await actions('?action=promo.100%25_o')).toEqual(['promo.100%_off']);
+      expect(await actions('?action=promo.1%2500')).toEqual([]);
     });
 
     it('rechaza un rango invertido y un tamaño de página excesivo', async () => {

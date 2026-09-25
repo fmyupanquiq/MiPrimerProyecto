@@ -154,7 +154,7 @@ export class UsersService {
   async setStatus(
     userId: string,
     status: UserStatus,
-    options: { actorUserId?: string | null; reason?: string },
+    options: { actorUserId?: string | null; reason?: string; expectedVersion?: number },
     executor: DbExecutor = this.db,
   ): Promise<UserRow> {
     const [before] = await executor.select().from(users).where(eq(users.id, userId)).limit(1);
@@ -168,11 +168,21 @@ export class UsersService {
           }
         : { ...restoreValues(), deletedBy: null };
 
-    const [updated] = await executor
+    // Con `expectedVersion` (§96) una edición sobre datos ya cambiados falla en vez de pisarlos.
+    const changed = await executor
       .update(users)
       .set({ status, ...deletion, version: nextVersion(users.version) })
-      .where(eq(users.id, userId))
+      .where(
+        and(
+          eq(users.id, userId),
+          options.expectedVersion === undefined
+            ? undefined
+            : eq(users.version, options.expectedVersion),
+        ),
+      )
       .returning();
+    const updated =
+      options.expectedVersion === undefined ? changed[0]! : expectUpdated(changed, 'users');
 
     // Desactivar o eliminar la cuenta cierra sus sesiones (§104.6); reactivarla no las revive.
     const revokedSessions =
@@ -194,7 +204,7 @@ export class UsersService {
       newValues: { status },
       metadata: { ...(options.reason && { reason: options.reason }), revokedSessions },
     });
-    return updated!;
+    return updated;
   }
 
   /** Registra el último acceso (§2). */

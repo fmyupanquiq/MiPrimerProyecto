@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AdminModule } from './admin/admin.module.js';
 import { AuditModule } from './audit/audit.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { AuthorizationModule } from './authorization/authorization.module.js';
@@ -38,6 +39,7 @@ import { UsersModule } from './users/users.module.js';
     BackupsModule,
     TicketsModule,
     RegistrationModule,
+    AdminModule,
   ],
   controllers: [HealthController],
   providers: [HealthService],

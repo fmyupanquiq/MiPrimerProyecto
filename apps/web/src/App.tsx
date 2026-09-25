@@ -4,8 +4,12 @@ import { AuthProvider, useAuth } from './auth/AuthContext.js';
 import { loginPathFor } from './auth/redirect.js';
 import { ReauthProvider } from './auth/ReauthContext.js';
 import { AdminPage } from './pages/AdminPage.js';
+import { AccountPage } from './pages/AccountPage.js';
+import { AdminAccountDeletionsPage } from './pages/admin/AdminAccountDeletionsPage.js';
 import { AdminAuditPage } from './pages/admin/AdminAuditPage.js';
 import { AdminLayout } from './pages/admin/AdminLayout.js';
+import { AdminUserDetailPage } from './pages/admin/AdminUserDetailPage.js';
+import { AdminUsersPage } from './pages/admin/AdminUsersPage.js';
 import { AppShell } from './pages/AppShell.js';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage.js';
 import { InvitePage } from './pages/InvitePage.js';
@@ -58,7 +62,11 @@ export function App() {
           <Route path="/admin" element={<AdminLayout />}>
             <Route index element={<AdminPage />} />
             <Route path="audit" element={<AdminAuditPage />} />
+            <Route path="users" element={<AdminUsersPage />} />
+            <Route path="users/:userId" element={<AdminUserDetailPage />} />
+            <Route path="deletions" element={<AdminAccountDeletionsPage />} />
           </Route>
+          <Route path="/account" element={<AccountPage />} />
           <Route path="/projects/:projectId" element={<ProjectLayout />}>
             <Route index element={<DashboardPage />} />
             <Route path="setup" element={<ProjectSetupPage />} />

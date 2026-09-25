@@ -1,4 +1,5 @@
 import type {
+  AccountDeletionStatus,
   BackupStatus,
   BetStatus,
   BetType,
@@ -14,6 +15,7 @@ import type {
   StageStatus,
   TicketAnalysisStatus,
   TicketExtraction,
+  UserStatus,
   WithdrawalStatus,
 } from '@letfer/shared';
 
@@ -23,6 +25,8 @@ const ROLE_LABELS: Record<string, string> = {
   COLLABORATOR: 'Colaborador',
   READER: 'Lector',
   PROJECT_OWNER: 'Propietario',
+  GLOBAL_ADMIN: 'Administrador Global',
+  USER: 'Usuario',
 };
 
 export const roleLabel = (key: string | null | undefined, fallback = ''): string =>
@@ -32,6 +36,19 @@ export const PROJECT_STATUS_LABELS: Record<ProjectStatus, string> = {
   ACTIVE: 'Activo',
   CLOSED: 'Cerrado',
   TRASHED: 'En la papelera',
+};
+
+export const USER_STATUS_LABELS: Record<UserStatus, string> = {
+  ACTIVE: 'Activa',
+  DISABLED: 'Deshabilitada',
+  DELETED: 'Eliminada',
+};
+
+export const ACCOUNT_DELETION_STATUS_LABELS: Record<AccountDeletionStatus, string> = {
+  PENDING: 'Pendiente',
+  APPROVED: 'Aprobada',
+  REJECTED: 'Rechazada',
+  CANCELLED: 'Cancelada',
 };
 
 export const MEMBER_STATUS_LABELS: Record<MemberStatus, string> = {
