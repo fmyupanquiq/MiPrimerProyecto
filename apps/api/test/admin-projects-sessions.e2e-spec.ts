@@ -189,6 +189,74 @@ describe('administración de proyectos y sesiones (e2e, PostgreSQL real, §111.5
     });
   });
 
+  describe('carrera entre transferir la propiedad y eliminar la cuenta destino (D8-6)', () => {
+    let projectId: string;
+
+    beforeEach(async () => {
+      const { project } = await insertProject(ctx.t.db, { owner: people.owner, name: 'Grupo' });
+      projectId = project.id;
+      await insertMember(ctx.t.db, {
+        projectId,
+        userId: people.admin.id,
+        roleKey: 'PROJECT_ADMIN',
+      });
+    });
+
+    const projectOwner = async () =>
+      (await ctx.t.db.select().from(projects).where(eq(projects.id, projectId)))[0]!.ownerId;
+
+    it('si la cuenta destino está siendo eliminada, la transferencia espera y luego se rechaza', async () => {
+      // Otra transacción (la aprobación de la eliminación) ya tiene bloqueada la fila del usuario.
+      const other = await ctx.t.pool.connect();
+      try {
+        await other.query('BEGIN');
+        await other.query('SELECT id FROM users WHERE id = $1 FOR UPDATE', [people.admin.id]);
+
+        let settled = false;
+        const pending = post('root', `/projects/${projectId}/transfer-ownership`, {
+          newOwnerId: people.admin.id,
+        }).then((response) => {
+          settled = true;
+          return response;
+        });
+        await new Promise((resolve) => setTimeout(resolve, 400));
+        expect(settled).toBe(false); // sigue esperando el bloqueo: no se adelanta
+
+        await other.query("UPDATE users SET status = 'DELETED', deleted_at = now() WHERE id = $1", [
+          people.admin.id,
+        ]);
+        await other.query('COMMIT');
+
+        const response = await pending;
+        expect(response.status).toBe(409);
+        expect(bodyOf(response).code).toBe('INVALID_STATE');
+        expect(await projectOwner()).toBe(people.owner.id); // la propiedad no cambió
+      } finally {
+        other.release();
+      }
+    });
+
+    it('si la propiedad se transfiere primero, aprobar la eliminación queda bloqueado (OWNS_PROJECTS)', async () => {
+      const created = (await post('admin', '/users/me/deletion-request', {}).expect(201)).body as {
+        id: string;
+        version: number;
+      };
+      await post('root', `/projects/${projectId}/transfer-ownership`, {
+        newOwnerId: people.admin.id,
+      }).expect(200);
+
+      const response = await post('root', `/admin/account-deletions/${created.id}/approve`, {
+        version: created.version,
+      }).expect(409);
+      expect(bodyOf(response).code).toBe('OWNS_PROJECTS');
+      const account = (
+        await ctx.t.db.select().from(users).where(eq(users.id, people.admin.id))
+      )[0]!;
+      expect(account.status).toBe('ACTIVE');
+      expect(await projectOwner()).toBe(people.admin.id);
+    });
+  });
+
   it('el Administrador Global lista todos los proyectos y todas las papeleras', async () => {
     const active = (await insertProject(ctx.t.db, { owner: people.owner, name: 'Activo' })).project;
     const other = (await insertProject(ctx.t.db, { owner: people.admin, name: 'Ajeno' })).project;

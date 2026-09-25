@@ -305,7 +305,10 @@ export class ProjectsService {
             eq(projectMembers.status, 'ACTIVE'),
           ),
         )
-        .for('update', { of: projectMembers })
+        // También bloquea la fila del usuario: si a la vez se aprueba su eliminación (que la bloquea
+        // y comprueba que no posea proyectos), una de las dos espera a la otra. Sin esto, la cuenta
+        // podría quedar eliminada siendo propietaria de un proyecto (D8-6).
+        .for('update', { of: [projectMembers, users] })
         .limit(1);
       if (!target || target.user.status !== 'ACTIVE') {
         throw new AppError(

@@ -119,6 +119,24 @@ cuerpo si ambos difieren. Si una regla debe cambiar: primero se actualiza la esp
   `project.setupComplete` sea falso, en vez de mostrar su contenido. Mismos patrones de la Fase 2
   (`useReauth`, `useLoad`, `stubApi`) para las acciones y pruebas nuevas.
 
+## Convenciones de la Fase 8 (ADR 0018, §111)
+
+- **Auditoría**: `audit_logs` no se purga ni se edita. El visor por proyecto fija el proyecto
+  desde la ruta (nunca acepta un `projectId` del cliente); paginación por cursor con
+  microsegundos. La redacción de claves (`password`/`token`/`hash`/`secret`) también afecta a los
+  metadatos: no nombres así un contador.
+- **Protección de cuentas**: deshabilitar o eliminar pasa siempre por `AccountProtectionService`
+  (`guard` + `assertCanDeactivate`): nunca el último Administrador Global activo
+  (`LAST_GLOBAL_ADMIN`, con disparador en la base de datos) ni a quien es propietario de algún
+  proyecto (`OWNS_PROJECTS`). El intento bloqueado se audita **fuera** de la transacción revertida.
+- **Eliminación de cuenta**: solicitud (`account_deletion_requests`, una pendiente por usuario) →
+  aprueba el Administrador Global con `@RequireRecentAuth()`; siempre borrado lógico.
+- **Papelera**: solo lectura + restaurar por los endpoints existentes; "elegible para purga" es
+  informativo. **No hay purga física** de datos de negocio (decisión futura, §89).
+- **Mantenimiento**: solo purga sesiones, intentos de acceso y tokens de recuperación caducados
+  (`MaintenanceService`); la purga y su registro (`maintenance_runs`, inmutable) van en una
+  transacción. Un `null` suelto no se serializa en Nest: responde un objeto (`{ request: … }`).
+
 ## Comandos (desde la raíz)
 
 - `npm run check`: formato, lint, tipos, pruebas y build (ejecútalo antes de dar algo por hecho).
