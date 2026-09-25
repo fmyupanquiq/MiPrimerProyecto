@@ -238,6 +238,38 @@ describe('Papelera de proyectos', () => {
     expect(screen.getByRole('button', { name: 'Restaurar Grupo viejo' })).toBeTruthy();
   });
 
+  it('marca "Elegible para purga" solo cuando ya pasó la retención (informativo, D8-3)', async () => {
+    stubApi({
+      'GET /auth/me': AUTH_STATE,
+      'GET /projects/trash': {
+        status: 200,
+        body: [
+          projectSummary({
+            id: 'p-old',
+            name: 'Proyecto vencido',
+            status: 'TRASHED',
+            previousStatus: 'ACTIVE',
+            deletedAt: '2020-01-01T00:00:00.000Z',
+            purgeEligibleAt: '2020-03-31T00:00:00.000Z',
+          }),
+          projectSummary({
+            id: 'p-new',
+            name: 'Proyecto reciente',
+            status: 'TRASHED',
+            previousStatus: 'ACTIVE',
+            deletedAt: '2099-01-01T00:00:00.000Z',
+            purgeEligibleAt: '2099-03-31T00:00:00.000Z',
+          }),
+        ],
+      },
+    });
+    renderApp('/projects/trash');
+    await screen.findByText('Proyecto vencido');
+    expect(screen.getAllByText('Elegible para purga')).toHaveLength(1);
+    // Solo se ofrece restaurar: nunca eliminar definitivamente.
+    expect(screen.queryByRole('button', { name: /eliminar|purgar/i })).toBeNull();
+  });
+
   it('está vacía si no hay proyectos borrados', async () => {
     stubApi({ 'GET /auth/me': AUTH_STATE, 'GET /projects/trash': { status: 200, body: [] } });
     renderApp('/projects/trash');

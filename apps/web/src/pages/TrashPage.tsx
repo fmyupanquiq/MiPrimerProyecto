@@ -4,7 +4,7 @@ import { describeApiError } from '../api/errors.js';
 import { isReauthCancelled, useReauth } from '../auth/ReauthContext.js';
 import { useLoad } from '../hooks/useLoad.js';
 import { formatDate, PROJECT_STATUS_LABELS } from '../labels.js';
-import { btnPrimary, Notice } from '../ui.js';
+import { Badge, btnPrimary, Notice } from '../ui.js';
 
 /**
  * Papelera de proyectos (§9, §105.5): los propios (o todos, para el Administrador Global). Un
@@ -37,6 +37,7 @@ export function TrashPage() {
       <h1 className="text-2xl font-semibold">Papelera</h1>
       <p className="text-sm text-slate-600">
         Los proyectos enviados a la papelera se conservan al menos 90 días y se pueden restaurar.
+        Pasado ese plazo quedan elegibles para purga, pero no se eliminan automáticamente.
       </p>
       {error && <Notice tone="error">{error}</Notice>}
       {restored && <Notice tone="success">«{restored}» se restauró correctamente.</Notice>}
@@ -52,7 +53,12 @@ export function TrashPage() {
             className="flex flex-wrap items-center justify-between gap-3 rounded border border-slate-200 bg-white p-4"
           >
             <div>
-              <p className="font-medium">{project.name}</p>
+              <p className="flex flex-wrap items-center gap-2 font-medium">
+                {project.name}
+                {project.purgeEligibleAt && new Date(project.purgeEligibleAt) <= new Date() && (
+                  <Badge tone="amber">Elegible para purga</Badge>
+                )}
+              </p>
               <p className="text-xs text-slate-500">
                 {project.deletedAt && `Enviado a la papelera el ${formatDate(project.deletedAt)}`}
                 {project.previousStatus &&

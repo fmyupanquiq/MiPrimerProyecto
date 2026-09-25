@@ -5,6 +5,8 @@ import { InvitationsPublicController } from './invitations-public.controller.js'
 import { InvitationsService } from './invitations.service.js';
 import { MembersController } from './members.controller.js';
 import { MembersService } from './members.service.js';
+import { ProjectTrashController } from './project-trash.controller.js';
+import { ProjectTrashService } from './project-trash.service.js';
 import { ProjectLifecycleService } from './project-lifecycle.service.js';
 import { ProjectsController } from './projects.controller.js';
 import { ProjectsService } from './projects.service.js';
@@ -15,6 +17,7 @@ import { ProjectsService } from './projects.service.js';
     MembersController,
     InvitationsController,
     InvitationsPublicController,
+    ProjectTrashController,
   ],
   providers: [
     ProjectsService,
@@ -22,6 +25,7 @@ import { ProjectsService } from './projects.service.js';
     MembersService,
     InvitationsService,
     InvitationAcceptanceService,
+    ProjectTrashService,
   ],
   exports: [
     ProjectsService,

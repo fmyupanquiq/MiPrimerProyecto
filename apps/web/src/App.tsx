@@ -19,6 +19,7 @@ import { MembersPage } from './pages/project/MembersPage.js';
 import { ProjectLayout } from './pages/project/ProjectLayout.js';
 import { ProjectSetupPage } from './pages/project/ProjectSetupPage.js';
 import { SettingsPage } from './pages/project/SettingsPage.js';
+import { ProjectTrashPage } from './pages/project/TrashPage.js';
 import { StagesPage } from './pages/project/StagesPage.js';
 import { ResetPasswordPage } from './pages/ResetPasswordPage.js';
 import { TrashPage } from './pages/TrashPage.js';
@@ -66,6 +67,7 @@ export function App() {
             <Route path="bets" element={<BetsPage />} />
             <Route path="members" element={<MembersPage />} />
             <Route path="audit" element={<AuditPage />} />
+            <Route path="trash" element={<ProjectTrashPage />} />
             <Route path="settings" element={<SettingsPage />} />
           </Route>
         </Route>

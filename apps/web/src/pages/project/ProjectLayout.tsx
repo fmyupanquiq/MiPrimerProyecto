@@ -94,6 +94,11 @@ export function ProjectLayout() {
         <NavLink to={`/projects/${project.id}/members`} className={tabClass}>
           Miembros
         </NavLink>
+        {(permissions.has('bets.restore') || permissions.has('stages.restore')) && (
+          <NavLink to={`/projects/${project.id}/trash`} className={tabClass}>
+            Eliminados
+          </NavLink>
+        )}
         {permissions.has('audit.view') && (
           <NavLink to={`/projects/${project.id}/audit`} className={tabClass}>
             Auditoría
