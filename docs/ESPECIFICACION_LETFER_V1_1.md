@@ -2750,3 +2750,77 @@ De proyecto: `tickets.view` (todo rol, igual que `bets.view`),
 `tickets.upload` y `tickets.analyze` (Administrador de Proyecto y
 Colaborador, igual que `bets.create`). Sin permiso de eliminación en
 esta fase.
+
+## 111. Administración (Fase 8)
+
+**Estado:** Aprobada.\
+Precisa y completa los §4.1, §6, §8, §9, §10, §35, §36, §38, §87, §89 y
+§104.10 con las decisiones de la Fase 8 (D8-1 a D8-10, ADR 0018). Si
+alguna regla anterior las contradice, prevalece este apartado. Fuera de
+alcance: purga física de datos de negocio o de auditoría, avatar,
+creación de Administradores Globales, roles personalizados y su
+interfaz, exportación de la auditoría y reconstrucción de balances.
+
+### 111.1 Auditoría (D8-1, D8-2)
+
+La auditoría se consulta por proyecto (Administrador de Proyecto, permiso
+`audit.view`, solo su proyecto) y de forma global (Administrador Global,
+`system.audit.view`). Colaborador y Lector no acceden. Es de solo
+lectura, admite filtros (fechas, actor, acción, entidad) y paginación por
+cursor, y no expone valores que la política de redacción oculta.
+`audit_logs` no se purga en esta fase: debe poder explicar la historia
+del sistema (§89, §103).
+
+### 111.2 Papelera (D8-3)
+
+Cada proyecto muestra su papelera de apuestas y etapas a quien puede
+restaurarlas (`bets.restore`, `stages.restore`); el Administrador Global
+y los propietarios ven la papelera de proyectos. Cada elemento indica
+quién lo eliminó, cuándo y desde cuándo es elegible para purga (§89). La
+elegibilidad es informativa: no se ejecuta ninguna purga física en esta
+fase y la decisión de purgar queda pendiente de una política explícita.
+
+### 111.3 Usuarios y eliminación de cuenta (D8-5, D8-6)
+
+El Administrador Global lista y consulta usuarios, y puede deshabilitar y
+reactivar cuentas (reautenticación reciente). La eliminación de cuenta
+(§8) es una solicitud del usuario (`account_deletion_requests`, con los
+estados `PENDING`, `APPROVED`, `REJECTED` y `CANCELLED`, una sola
+pendiente por usuario) que solo el Administrador Global aprueba o
+rechaza; aprobar exige reautenticación y deja la cuenta eliminada
+lógicamente (§104.6), sin borrado físico. Un usuario propietario de algún
+proyecto no puede ser deshabilitado ni eliminado hasta transferir la
+propiedad de todos sus proyectos (§87).
+
+### 111.4 Protección del último Administrador Global (D8-10)
+
+El sistema no puede quedarse sin un Administrador Global activo. Se
+impide deshabilitar o eliminar lógicamente al último, tanto desde la API
+como directamente en la base de datos, incluso ante operaciones
+simultáneas. Todo intento bloqueado queda auditado.
+
+### 111.5 Administración de proyectos y sesiones
+
+El Administrador Global ve todos los proyectos y transfiere su
+propiedad (§6, §87) desde la interfaz. Cada usuario ve y cierra sus
+sesiones abiertas; el Administrador Global puede cerrar las de un
+usuario (§104.7).
+
+### 111.6 Mantenimiento (D8-4)
+
+Una tarea diaria interna, ejecutable también bajo demanda por el
+Administrador Global, elimina únicamente registros auxiliares caducados
+(sesiones expiradas o revocadas, intentos de acceso y tokens de
+recuperación vencidos o usados) con más de 30 días de antigüedad
+(configurable). Nunca toca datos de negocio, ledger, invitaciones ni
+auditoría. Cada ejecución queda registrada y auditada. "Recalcular
+balances" (§38) no requiere una herramienta aparte: los saldos se
+calculan siempre desde el ledger y su coherencia se comprueba con la
+verificación de integridad (§109.2).
+
+### 111.7 Permisos nuevos
+
+De proyecto: `audit.view` (Administrador de Proyecto). Globales, reservados
+al Administrador Global: `system.audit.view`, `system.users.view`,
+`system.users.manage`, `system.account_deletions.decide` y
+`system.maintenance.run`.
