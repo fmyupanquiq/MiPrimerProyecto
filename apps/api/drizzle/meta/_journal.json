@@ -225,6 +225,20 @@
       "when": 1790321454104,
       "tag": "0031_bet_corrections_immutable_and_reversal_trigger",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1790428076613,
+      "tag": "0032_wandering_nicolaos",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1790428084703,
+      "tag": "0033_import_batches_immutability",
+      "breakpoints": true
     }
   ]
 }

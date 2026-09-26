@@ -1,4 +1,4 @@
-import { integer, numeric, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { customType, integer, numeric, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { v7 as uuidv7 } from 'uuid';
 
 /** Genera un identificador UUIDv7 (ordenado en el tiempo, ADR 0005). */
@@ -49,3 +49,8 @@ export const odds = (name: string) => numeric(name, { precision: 12, scale: 6 })
 
 /** Stake: multiplicador numérico, nunca un porcentaje (regla crítica 1, §12). `NUMERIC(10,4)`. */
 export const stake = (name: string) => numeric(name, { precision: 10, scale: 4 });
+
+/** Contenido binario (`bytea`), leído y escrito como `Buffer`. */
+export const bytea = customType<{ data: Buffer; driverData: Buffer }>({
+  dataType: () => 'bytea',
+});

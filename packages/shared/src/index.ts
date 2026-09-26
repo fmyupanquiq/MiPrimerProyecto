@@ -25,6 +25,7 @@ export * from './bet-return.js';
 export * from './dashboard.js';
 export * from './financial-movement.js';
 export * from './house.js';
+export * from './import-batch.js';
 export * from './invitation.js';
 export * from './member.js';
 export * from './money.js';
