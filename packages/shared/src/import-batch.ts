@@ -17,3 +17,16 @@ export type ImportTrafficLight = (typeof IMPORT_TRAFFIC_LIGHTS)[number];
 
 /** Tamaño máximo del archivo original (§113.9): un archivo mayor se rechaza antes del staging. */
 export const IMPORT_MAX_FILE_BYTES = 10 * 1024 * 1024;
+
+/**
+ * Acciones de auditoría de un lote (§113.9): una por lote y paso, nunca una por fila. El detalle por
+ * fila vive en `import_rows`. La huella del archivo se registra con la clave `sha256`, no `hash`:
+ * la redacción de la auditoría oculta cualquier clave que contenga `hash`.
+ */
+export const IMPORT_AUDIT_ACTIONS = {
+  uploaded: 'import.batch_uploaded',
+  validated: 'import.batch_validated',
+  imported: 'import.batch_imported',
+  annulled: 'import.batch_annulled',
+} as const;
+export type ImportAuditAction = (typeof IMPORT_AUDIT_ACTIONS)[keyof typeof IMPORT_AUDIT_ACTIONS];

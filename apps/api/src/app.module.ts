@@ -13,6 +13,7 @@ import { MailModule } from './mail/mail.module.js';
 import { FinanceModule } from './finance/finance.module.js';
 import { HealthController } from './health/health.controller.js';
 import { HealthService } from './health/health.service.js';
+import { ImportsModule } from './imports/imports.module.js';
 import { IntegrityModule } from './integrity/integrity.module.js';
 import { ProjectsModule } from './projects/projects.module.js';
 import { ReconciliationsModule } from './reconciliations/reconciliations.module.js';
@@ -36,6 +37,7 @@ import { UsersModule } from './users/users.module.js';
     DashboardModule,
     ReconciliationsModule,
     IntegrityModule,
+    ImportsModule,
     BackupsModule,
     TicketsModule,
     RegistrationModule,

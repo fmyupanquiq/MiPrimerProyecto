@@ -162,6 +162,15 @@ export const PERMISSIONS = {
     scope: 'GLOBAL',
     description: 'Ejecutar la purga de registros auxiliares caducados',
   },
+
+  // --- Importación del historial (Fase 9, §113.9, ADR 0020) ---
+  /** Consultar lotes, informes y archivos originales de las importaciones del proyecto. */
+  'imports.view': { scope: 'PROJECT', description: 'Consultar los lotes de importación' },
+  /**
+   * Subir, validar, previsualizar, confirmar y anular un lote (§113.9). Confirmar y anular exigen
+   * además reautenticación y motivo; la comprobación del backup previo la hace la confirmación.
+   */
+  'import.run': { scope: 'PROJECT', description: 'Ejecutar y anular importaciones del historial' },
 } as const satisfies Record<string, PermissionDefinition>;
 
 export type PermissionCode = keyof typeof PERMISSIONS;
@@ -285,6 +294,9 @@ export const SYSTEM_ROLE_DEFINITIONS: readonly SystemRoleDefinition[] = [
       'tickets.analyze',
       // Administración (Fase 8, §111.1): solo la auditoría de su propio proyecto.
       'audit.view',
+      // Importación del historial (Fase 9, §113.9): Colaborador y Lector no la reciben.
+      'imports.view',
+      'import.run',
     ],
   },
   {

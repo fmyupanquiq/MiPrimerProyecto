@@ -91,6 +91,8 @@ describe('matriz de roles de sistema (§105.2)', () => {
         'tickets.upload',
         'tickets.analyze',
         'audit.view',
+        'imports.view',
+        'import.run',
       ].sort(),
     );
     const readOnlyFinance = [
@@ -300,5 +302,30 @@ describe('límite de asignación (§105.2)', () => {
 
   it('el conjunto vacío siempre es subconjunto', () => {
     expect(isPermissionSubset([], new Set())).toBe(true);
+  });
+});
+
+describe('Fase 9 (§113.9): permisos de importación', () => {
+  it('imports.view e import.run son de proyecto y solo los tiene el Administrador de Proyecto (y el Global)', () => {
+    for (const code of ['imports.view', 'import.run'] as const) {
+      expect(PERMISSIONS[code].scope).toBe('PROJECT');
+      const holders = SYSTEM_ROLE_DEFINITIONS.filter((role) => role.permissions.includes(code)).map(
+        (role) => role.key,
+      );
+      expect(holders.sort(), code).toEqual(['GLOBAL_ADMIN', 'PROJECT_ADMIN']);
+      for (const role of ['PROJECT_OWNER', 'COLLABORATOR', 'READER', 'USER'] as const) {
+        expect(perms(role)).not.toContain(code);
+      }
+    }
+  });
+
+  it('las acciones de auditoría de un lote no llevan claves ocultables por la redacción', async () => {
+    const { IMPORT_AUDIT_ACTIONS } = await import('./import-batch.js');
+    expect(Object.values(IMPORT_AUDIT_ACTIONS).sort()).toEqual([
+      'import.batch_annulled',
+      'import.batch_imported',
+      'import.batch_uploaded',
+      'import.batch_validated',
+    ]);
   });
 });

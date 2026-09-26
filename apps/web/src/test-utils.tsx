@@ -182,6 +182,8 @@ export const OWNER_PERMISSIONS = [
   'tickets.view',
   'tickets.upload',
   'tickets.analyze',
+  'imports.view',
+  'import.run',
 ];
 
 export function projectDetail(overrides: Record<string, unknown> = {}) {
