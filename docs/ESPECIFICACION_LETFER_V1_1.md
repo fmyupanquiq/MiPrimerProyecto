@@ -213,6 +213,8 @@ retención y la purga se rigen por el §89.
 
 ## 10. Auditoría del núcleo
 
+> **Fase 9 (§113):** Los eventos de importación registran la huella del archivo con la clave `sha256`, nunca `hash`, que la redacción oculta (§113.9).
+
 Se registrarán acciones relevantes: creación de proyectos, invitaciones,
 aceptación/rechazo, cambios de rol, expulsiones, etc.
 
@@ -307,6 +309,8 @@ El saldo inicial de una casa añadida posteriormente debe proceder de:
 Nunca se crea dinero simplemente asignando un saldo sin origen.
 
 ## 16. Movimientos financieros
+
+> **Fase 9 (§113):** El capital inicial de una importación es un movimiento histórico con fecha desconocida (§113.3).
 
 Tipos principales:
 
@@ -550,6 +554,8 @@ La fecha real de colocación no cambia.
 
 ## 26. Eliminación de apuestas
 
+> **Fase 9 (§113):** Una apuesta anulada por un lote no se lista ni se restaura individualmente (§113.8).
+
 Eliminación lógica con papelera durante **90 días** (ver §89).
 
 Se conserva quién eliminó, cuándo y motivo cuando corresponda.
@@ -747,6 +753,8 @@ Debe poder analizarse globalmente y por casa.
 
 ## 35. Auditoría
 
+> **Fase 9 (§113):** Los eventos de importación registran la huella con la clave `sha256` (§113.9).
+
 Acciones relevantes incluyen, entre otras:
 
 -   Crear/editar/eliminar/restaurar apuesta.
@@ -768,6 +776,8 @@ ordinarios.
 
 ## 36. Papelera y recuperación
 
+> **Fase 9 (§113):** Una apuesta anulada por un lote no se lista ni se restaura individualmente (§113.8).
+
 -   Apuestas: 90 días; tickets asociados siguen la misma retención.
 -   Etapas: eliminación lógica conservando apuestas, movimientos,
     tickets e historial.
@@ -779,6 +789,8 @@ El significado exacto de la retención de 90 días y la política de purga
 se rigen por el §89.
 
 ## 37. Backups
+
+> **Fase 9 (§113):** El archivo original de una importación forma parte de los backups y de la restauración (§113.9).
 
 -   Backup automático diario.
 -   Referencia MVP: aproximadamente 30 generaciones diarias rotativas.
@@ -1059,6 +1071,8 @@ Los nombres finales pueden variar; la separación conceptual no.
 
 ## 55. Tiempos de una apuesta
 
+> **Fase 9 (§113):** Las fechas y horas desconocidas de una importación siguen el §113.4.
+
 Guardar separadamente:
 
 -   `placed_at`: cuándo ocurrió realmente.
@@ -1184,6 +1198,8 @@ Estas funciones no deben retrasar v1.
 
 ## 65. Migración del Excel
 
+> **Fase 9 (§113):** El detalle, las reglas y la verificación de la migración se precisan en el §113.
+
 El archivo histórico se importará solo después de que el modelo LetFer
 esté funcionando.
 
@@ -1217,6 +1233,8 @@ Casos financieros obligatorios incluyen:
 -   Restauración/recalculo cuando corresponda.
 
 ## 67. Orden de construcción
+
+> **Fase 9 (§113):** La Fase 9 (importación controlada del historial) se define en el §113.
 
 ### Fase 0 --- Preparación
 
@@ -1388,6 +1406,8 @@ referencia cruzada correspondiente):
 
 ## 71. Fecha de liquidación
 
+> **Fase 9 (§113):** Las fechas y horas desconocidas de una importación siguen el §113.4.
+
 Además de la fecha/hora real de colocación y de los timestamps internos,
 una apuesta tendrá:
 
@@ -1481,6 +1501,8 @@ La regla de invalidación de checkpoints y la validación histórica se
 precisan en los §112.4 y §112.5.
 
 ## 75. Apuesta real con saldo insuficiente en LetFer
+
+> **Fase 9 (§113):** La validación previa del lote (§113.6) es el proceso especial que cita esta sección.
 
 La existencia real de una apuesta en la casa no autoriza a LetFer a
 inventar saldo ni permitir un saldo disponible negativo.
@@ -1655,6 +1677,8 @@ No se pospondrá la integridad del historial hasta la Fase 8.
 
 ## 82. Backups antes de datos reales
 
+> **Fase 9 (§113):** Confirmar una importación real exige un backup reciente (§113.9).
+
 La configuración de producción definitiva sigue en la Fase 11, pero
 antes de comenzar pruebas con datos reales debe existir una estrategia
 funcional de respaldo y restauración.
@@ -1764,6 +1788,8 @@ Administrador Global.
 
 ## 88. Matriz base de permisos
 
+> **Fase 9 (§113):** Se añaden `import.run` e `imports.view` para el Administrador de Proyecto (§113.9).
+
 La implementación tendrá permisos granulares. Como base:
 
 **Administrador Global** - Acceso global autorizado a todas las
@@ -1806,6 +1832,8 @@ del sistema no se destruyen simplemente porque expire la papelera de una
 entidad visible.
 
 ## 90. Clasificación de tipo de apuesta
+
+> **Fase 9 (§113):** En las apuestas de un lote, la cuota de cada selección puede ser nula; la cuota total es la autoridad (§113.5).
 
 `betType` se almacena para preservar la clasificación confirmada y
 facilitar consultas, pero el backend valida que sea compatible con la
@@ -1864,6 +1892,8 @@ Las consultas del dashboard deben definir expresamente qué categorías
 incluyen para evitar mezclar rendimiento con aportes de capital.
 
 ## 93. Zona horaria y fechas parciales
+
+> **Fase 9 (§113):** Las fechas y horas desconocidas de una importación siguen el §113.4.
 
 Cada proyecto tiene una zona horaria IANA configurada.
 
@@ -2469,6 +2499,8 @@ hace reabriéndola (§112.3).
 
 ## 108. Dashboard, métricas y gráficos (Fase 5)
 
+> **Fase 9 (§113):** El capital invertido se calcula con las filas vigentes del ledger: las reversiones de movimientos que no son de apuesta también cuentan (§113.8).
+
 **Estado:** Aprobada.\
 Precisa y completa los §33, §34, §59 a §60, §91 y §92 con las
 decisiones de la Fase 5 (D-M1 a D-M10). Si alguna regla anterior las
@@ -2550,6 +2582,8 @@ tabla ni columna nueva: el dashboard deriva enteramente de `bets`,
 `bet_selections`, `financial_movements`, `stages` y `houses`.
 
 ## 109. Confianza y recuperación (Fase 5.5)
+
+> **Fase 9 (§113):** La verificación de integridad reconoce los lotes: una apuesta de un lote anulado está eliminada y sin efecto neto en el ledger (§113.8).
 
 **Estado:** Aprobada.\
 Precisa y completa los §32, §37, §38, §72, §74, §80 y §82 con las
@@ -2841,6 +2875,8 @@ al Administrador Global: `system.audit.view`, `system.users.view`,
 
 ### 112. Correcciones financieras de apuestas liquidadas (Fase 8.5)
 
+> **Fase 9 (§113):** La anulación de un lote reutiliza las reversiones (§113.8).
+
 **Estado:** Aprobada.\
 Precisa y completa los §21, §24, §25, §26, §73, §74, §76, §77, §78, §107, §108 y §109 con las
 decisiones de la Fase 8.5 (D-A1 a D-A13, ADR 0019). Si alguna regla anterior las contradice,
@@ -2933,3 +2969,145 @@ Colaborador y el Lector no los reciben.
 
 Mover una apuesta de etapa (§25) no reescribe la etapa de sus filas del ledger: son inmutables y
 ningún cálculo la usa. La etapa vigente de una apuesta es siempre la de la propia apuesta.
+
+### 113. Migración del historial de apuestas (Fase 9)
+
+**Estado:** Aprobada.\
+Precisa y completa los §16, §26, §36, §37, §55, §65, §71, §72, §75, §76, §77, §82, §88, §90, §93, §108, §109 y
+§112 con las decisiones de la Fase 9 (ADR 0020). Si alguna regla anterior las contradice, prevalece este
+apartado. Fuera de alcance: importar depósitos, retiros o transferencias, replicar hojas de resumen, decidir el
+redondeo (D-B8), revertir transferencias e importar sobre un proyecto operativo.
+
+#### 113.1 Principio
+
+La migración **absorbe un registro histórico de apuestas** dentro del modelo LetFer; no replica una hoja de
+cálculo ni migra un sistema financiero. El archivo de origen es una fuente histórica, **no la fuente de verdad
+financiera**: las cifras que calcula (retornos, ganancias, saldos, contadores, porcentajes, metas) no son datos
+oficiales, no se importan y LetFer las recalcula con sus reglas; solo sirven de control informativo.
+
+#### 113.2 Fuente y lote
+
+Cada archivo de origen (`.xlsx`) corresponde a **una casa** y genera **un lote** (`batch_id`). La casa se toma
+del nombre del archivo, se normaliza, se asocia a una casa existente del proyecto y se confirma en la vista
+previa; una casa desconocida no se crea en silencio. El lote conserva el **archivo original dentro del sistema**
+con su huella `sha256`, quién y cuándo lo importó, el plan de etapas confirmado y su informe. Un lote pasa por los
+estados subido, validado, importado y anulado.
+
+La primera importación se hace en un **proyecto de ensayo separado**. Además, el sistema solo acepta importar en
+un **proyecto apto**: con la configuración inicial completa, sin checkpoints de conciliación de esa casa y sin
+apuestas ni movimientos de esa casa fuera de un lote. El proyecto de ensayo se configura con el setup habitual
+con las casas en cero y la unidad de la primera ronda; el capital entra por la vía histórica (§113.3).
+
+#### 113.3 Qué se importa
+
+- **Capital inicial.** El saldo inicial declarado del archivo se convierte en un movimiento `INITIAL_CAPITAL`
+  histórico por casa, **fechado antes de la primera apuesta de esa casa y con fecha desconocida**
+  (`occurred_at_known = false`): no se inventa una fecha oficial. Pertenece a la etapa de la primera ronda.
+- **Etapas.** Cada ronda del archivo es una etapa, con su unidad, su fecha de inicio opcional (`starts_at`) y el
+  lote que la creó. Las rondas anteriores quedan cerradas y la última puede quedar activa. La unidad y las fronteras
+  exactas se confirman con la persona responsable antes de importar **[PENDIENTE D-X7]**.
+- **Apuestas.** Fecha, monto, cuota total visible, resultado, texto de las selecciones y deporte. El monto del
+  archivo es el monto oficial **no confirmado** de la apuesta; el stake se calcula como `monto / unidad de la
+  etapa`, es informativo y, si el resultado no es un múltiplo exacto, se avisa sin bloquear.
+- **Estados.** Ganada, perdida y pendiente; una pendiente compromete saldo. Otros valores bloquean la validación
+  con su número de fila.
+- **Retornos.** Una ganada se liquida con el retorno **calculado** por LetFer (§77) y queda marcada como
+  provisional, salvo evidencia de que el valor proviene de la casa; confirmar el oficial después sigue el §112.2.
+  El redondeo de ese cálculo sigue la política vigente **[PENDIENTE D-B8]**.
+- **Autoría.** Quien ejecuta la importación, salvo una columna fiable de autor.
+- **No se importan** los cálculos del archivo ni las hojas de resumen.
+
+#### 113.4 Fechas y horas desconocidas
+
+Si solo se conoce una fecha, se conserva que la hora es desconocida (`placed_time_known = false`) y se usa un
+instante técnico que **nunca** se presenta como oficial ni se usa para inventar orden entre apuestas:
+
+- una fecha sin hora es **12:00 en la zona del proyecto**;
+- el capital inicial de una casa es **00:00 de la fecha de su primera apuesta**, siempre anterior a ella.
+
+Sin fecha de liquidación, `settled_at = placed_at` con `settled_time_known = false`. Como el orden dentro de un
+mismo instante no tiene autoridad (§107.6), el número de fila solo sirve de desempate técnico y la validación agrupa
+por instante; además avisa si, en el peor orden posible (todas las colocaciones antes que las liquidaciones), el
+saldo de una casa quedaría negativo. Si una importación posterior añade apuestas anteriores al capital de la casa,
+se rechaza y hay que anular el lote anterior.
+
+#### 113.5 Selecciones, cuotas y tipos
+
+Una apuesta múltiple importada conserva **únicamente la cuota total visible y el texto de las selecciones**; no se
+exigen cuotas individuales. En las apuestas de un lote, la cuota de cada selección puede ser nula y la cuota total de
+la apuesta es la autoridad (§90). Si no hay selecciones desglosadas, se importa con la descripción histórica.
+
+El tipo (simple, creada o múltiple) lo deriva LetFer del texto: cada bloque marcado con `*` es un evento y, sin
+marcas, hay uno solo. Si el tipo derivado difiere del declarado en el archivo, se avisa (amarillo) y el tipo
+declarado se conserva en el informe del lote.
+
+#### 113.6 Clasificación de filas, validación y confirmación
+
+Antes de escribir nada, LetFer clasifica cada fila y valida el archivo completo:
+
+- **Plantilla o vacía:** sin monto, cuota, resultado ni descripción; no se importa y se cuenta.
+- **Parcial:** con algún dato pero sin todos los obligatorios (fecha, monto, cuota y resultado); no se importa y se
+  reporta como "requiere revisión". Nunca se pierde una fila con datos en silencio.
+- **Válida:** se importa.
+
+Bloquean la confirmación los **errores de validación**: columnas obligatorias ausentes, casa desconocida, resultado
+desconocido, monto o cuota no positivos o no numéricos, fecha inválida, plan de etapas incompleto, secuencia
+imposible según la validación histórica del §112.4 (incluidas las reservas de las apuestas pendientes), archivo ya
+importado y proyecto no apto. La identidad de una fila es la huella del archivo y su número; además se reportan, sin
+descartar nada, los posibles duplicados por contenido (fecha, descripción, monto y cuota) dentro del archivo y contra
+lo ya importado de esa casa.
+
+La **vista previa** muestra lo que se crearía con el mismo código que lo escribe, ejecutado y revertido. **Confirmar**
+exige el permiso `import.run`, reautenticación reciente, un motivo, un backup reciente (§113.9) y, si hay resultados
+rojos o filas parciales, un reconocimiento explícito. La escritura es una sola transacción bajo el bloqueo financiero
+del proyecto y usa un **escritor propio** (no las operaciones ordinarias de apuestas) que genera las filas del ledger
+con el motor del §112.1 y valida la línea de tiempo completa del lote antes de confirmar.
+
+#### 113.7 Diferencias con el archivo de origen: semáforo y reconocimiento
+
+El archivo de origen no redondea y LetFer sí; ambas cifras pueden diferir en fracciones de centavo. LetFer **nunca
+fuerza ni ajusta** el resultado para igualar el archivo: conserva la diferencia como información en el informe del
+lote, con un semáforo:
+
+- **Por fila** (residuo = valor del archivo − valor de LetFer): verde si `|residuo| <= 0.01`; rojo si es mayor o si
+  difiere un campo que no es de redondeo (monto, cuota, estado).
+- **Total del lote** (suma de residuos): verde si `|suma| <= 0.01`; amarillo si es mayor pero explicable (todas las
+  filas verdes y la suma no supera 0.01 por cada fila cuyo valor de origen tiene más de dos decimales); rojo si no
+  es explicable, incluido cuando un total de cabecera del archivo no coincide con la suma de sus propias filas.
+
+Verde y amarillo solo informan. El rojo y las filas parciales **no bloquean**, pero para confirmar exigen un
+reconocimiento explícito con motivo que queda en el informe y en la auditoría. Con independencia del archivo, tras
+escribir el lote el saldo del ledger debe ser exactamente la reconstrucción de los datos importados (capital inicial
+más la ganancia de cada apuesta con las cifras de LetFer) y la verificación de integridad (§109.2, §112.7) no debe
+tener hallazgos.
+
+#### 113.8 Idempotencia, anulación y reversibilidad
+
+Reimportar el mismo archivo no duplica: no puede haber dos lotes importados de la misma casa con la misma huella en
+un proyecto (sí tras anular uno). Un lote puede **anularse** con `import.run`, reautenticación y motivo:
+
+- se revierten con reversiones (§112.1) las filas **vigentes** de sus apuestas, aunque se hayan corregido después, y
+  el capital inicial que introdujo;
+- las apuestas del lote quedan **eliminadas lógicamente con el motivo fijo "Lote anulado"** y **no pueden
+  restaurarse individualmente** (409); no aparecen en la papelera del proyecto;
+- las etapas creadas por el lote que quedaron vacías se eliminan lógicamente;
+- la operación valida la línea de tiempo (revertir el capital no puede dejar negativa otra apuesta) y se rechaza con
+  409 si no es válida.
+
+El lote pasa a anulado y nada se borra: el archivo original, su informe y sus filas se conservan.
+
+#### 113.9 Permisos, archivo original, backup y auditoría
+
+- **Permisos de proyecto:** `import.run` (subir, validar, previsualizar, confirmar y anular) e `imports.view`
+  (consultar lotes, informes y archivos), ambos para el Administrador de Proyecto. Colaborador y Lector no los
+  reciben.
+- **Archivo original.** Se conserva dentro del sistema (con su `sha256` y un límite de 10 MB; un archivo mayor se rechaza antes de entrar al staging), de modo que forma
+  parte de los backups y de la restauración (§37).
+- **Backup previo (§82).** Confirmar una importación real exige un backup completado en las últimas 24 horas. Un
+  ensayo puede declararse como tal al confirmar, con motivo, y queda exento; queda registrado en el lote y en la
+  auditoría.
+- **Auditoría.** Subir, importar, anular y descartar un lote son eventos auditados con el lote, el archivo (huella
+  `sha256`, nunca una clave llamada `hash`, que la redacción ocultaría), el autor, el motivo, los reconocimientos y los
+  contadores; el detalle por fila vive en el registro del lote y no en un evento por fila.
+- **Retornos por confirmar.** Las ganadas importadas aparecen como provisionales y el listado y el aviso del
+  dashboard pueden filtrarse por lote.
