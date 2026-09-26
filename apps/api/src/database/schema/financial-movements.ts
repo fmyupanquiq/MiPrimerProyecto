@@ -1,6 +1,7 @@
 import { MOVEMENT_DIRECTIONS, MOVEMENT_TYPES } from '@letfer/shared';
 import { sql } from 'drizzle-orm';
 import {
+  boolean,
   check,
   index,
   pgEnum,
@@ -13,6 +14,7 @@ import {
 import { betCorrections } from './bet-corrections.js';
 import { money, newId, primaryId, timestamptz } from './columns.js';
 import { houses } from './houses.js';
+import { importBatches } from './import-batches.js';
 import { projects } from './projects.js';
 import { stages } from './stages.js';
 import { users } from './users.js';
@@ -75,6 +77,16 @@ export const financialMovements = pgTable(
     }),
     /** Cuándo ocurrió el efecto financiero (§16); por defecto, al registrarlo. */
     occurredAt: timestamptz('occurred_at').notNull().defaultNow(),
+    /**
+     * `false` solo en los movimientos históricos de un lote cuya fecha exacta se desconoce (por
+     * ejemplo el capital inicial de un Excel, D-X29): `occurred_at` es entonces un instante técnico
+     * y no debe presentarse como oficial.
+     */
+    occurredAtKnown: boolean('occurred_at_known').notNull().default(true),
+    /** Lote de importación que lo creó o lo revirtió (Fase 9, §113); `null` en el resto. */
+    batchId: uuid('batch_id').references(() => importBatches.id, {
+      onDelete: 'restrict',
+    }),
     createdAt: timestamptz('created_at').notNull().defaultNow(),
     createdBy: uuid('created_by')
       .notNull()
@@ -91,6 +103,13 @@ export const financialMovements = pgTable(
       .on(table.reversesMovementId)
       .where(sql`${table.reversesMovementId} IS NOT NULL`),
     index('financial_movements_correction_idx').on(table.correctionId),
+    index('financial_movements_batch_idx')
+      .on(table.batchId)
+      .where(sql`${table.batchId} IS NOT NULL`),
+    check(
+      'financial_movements_unknown_date_only_imported',
+      sql`${table.occurredAtKnown} OR ${table.batchId} IS NOT NULL`,
+    ),
     check('financial_movements_amount_positive', sql`${table.amount} > 0`),
     check(
       'financial_movements_house_shape',

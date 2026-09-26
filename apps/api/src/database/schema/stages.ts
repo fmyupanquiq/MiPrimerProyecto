@@ -9,6 +9,7 @@ import {
   timestamptz,
   versionColumn,
 } from './columns.js';
+import { importBatches } from './import-batches.js';
 import { projects } from './projects.js';
 import { users } from './users.js';
 
@@ -33,6 +34,15 @@ export const stages = pgTable(
     unitStake: money('unit_stake').notNull(),
     status: stageStatusEnum('status').notNull().default('ACTIVE'),
     purgeEligibleAt: timestamptz('purge_eligible_at'),
+    /**
+     * Cuándo empezó la etapa, si se conoce (etapas históricas de una importación, D-X28). Nulo en
+     * las ordinarias: los marcadores del gráfico de banca siguen usando `created_at`.
+     */
+    startsAt: timestamptz('starts_at'),
+    /** Lote de importación que la creó (Fase 9, §113); `null` en las etapas ordinarias. */
+    batchId: uuid('batch_id').references(() => importBatches.id, {
+      onDelete: 'restrict',
+    }),
     ...timestamps(),
     version: versionColumn(),
     ...softDeleteColumns(),
@@ -43,6 +53,9 @@ export const stages = pgTable(
     uniqueIndex('stages_project_active_unique')
       .on(table.projectId)
       .where(sql`${table.status} = 'ACTIVE'`),
+    index('stages_batch_idx')
+      .on(table.batchId)
+      .where(sql`${table.batchId} IS NOT NULL`),
     check('stages_name_not_blank', sql`length(btrim(${table.name})) > 0`),
     check('stages_unit_stake_positive', sql`${table.unitStake} > 0`),
     check(

@@ -12,6 +12,7 @@ import {
   versionColumn,
 } from './columns.js';
 import { houses } from './houses.js';
+import { importBatches } from './import-batches.js';
 import { projects } from './projects.js';
 import { stages } from './stages.js';
 import { users } from './users.js';
@@ -42,6 +43,10 @@ export const bets = pgTable(
     createdBy: uuid('created_by')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
+    /** Lote de importación que la creó (Fase 9, §113); `null` en las apuestas ordinarias. */
+    batchId: uuid('batch_id').references(() => importBatches.id, {
+      onDelete: 'restrict',
+    }),
     betType: betTypeEnum('bet_type').notNull(),
     stakeAmount: stake('stake').notNull(),
     /** Monto oficial confirmado (ticket/casa); `null` mientras solo hay un monto calculado. */
@@ -90,6 +95,9 @@ export const bets = pgTable(
     index('bets_stage_idx').on(table.stageId),
     index('bets_house_idx').on(table.houseId),
     index('bets_created_by_idx').on(table.createdBy),
+    index('bets_batch_idx')
+      .on(table.batchId)
+      .where(sql`${table.batchId} IS NOT NULL`),
     check('bets_stake_positive', sql`${table.stakeAmount} > 0`),
     check(
       'bets_official_amount_positive',
