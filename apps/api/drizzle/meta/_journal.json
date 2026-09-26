@@ -246,6 +246,20 @@
       "when": 1790429769143,
       "tag": "0034_wonderful_crusher_hogan",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1790464038582,
+      "tag": "0035_bumpy_energizer",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1790464040615,
+      "tag": "0036_bet_selection_null_odds_trigger",
+      "breakpoints": true
     }
   ]
 }

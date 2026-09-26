@@ -247,7 +247,8 @@ export interface BetSelectionSummary {
   event: string;
   market: string | null;
   selection: string;
-  visibleOdds: OddsString;
+  /** `null` solo en las apuestas de un lote de importación: el historial no conserva la cuota (§113.5). */
+  visibleOdds: OddsString | null;
 }
 
 /**

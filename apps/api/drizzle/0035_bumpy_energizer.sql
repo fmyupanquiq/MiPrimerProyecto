@@ -1,0 +1,1 @@
+ALTER TABLE "bet_selections" ALTER COLUMN "visible_odds" DROP NOT NULL;

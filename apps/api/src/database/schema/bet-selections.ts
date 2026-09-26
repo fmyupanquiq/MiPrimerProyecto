@@ -25,7 +25,13 @@ export const betSelections = pgTable(
     event: text('event').notNull(),
     market: text('market'),
     selection: text('selection').notNull(),
-    visibleOdds: odds('visible_odds').notNull(),
+    /**
+     * Cuota visible de la selección. Nula **solo** en las apuestas de un lote de importación
+     * (`bets.batch_id`, D-X15, §113.5): el historial importado no conserva la cuota individual y la
+     * de la apuesta (`visible_total_odds`) es la autoridad. Un disparador (migración 0036) impide una
+     * cuota nula en una apuesta ordinaria: un `CHECK` no puede consultar otra tabla.
+     */
+    visibleOdds: odds('visible_odds'),
   },
   (table) => [
     index('bet_selections_bet_idx').on(table.betId, table.eventGroup, table.position),
