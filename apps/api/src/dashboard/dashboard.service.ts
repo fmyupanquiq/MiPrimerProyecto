@@ -60,6 +60,15 @@ function toBreakdownItem(row: BreakdownRow): DashboardBreakdownItem {
   };
 }
 
+/**
+ * Fila vigente del ledger (§112.1, §113.8): ninguna `REVERSAL` la anula. Se usa con el alias `m`.
+ * Los movimientos que no son de apuesta (capital inicial, depósitos, retiros y extraordinarios)
+ * también pueden revertirse; el capital invertido solo cuenta las filas vigentes.
+ */
+const LIVE_MOVEMENT = sql`AND NOT EXISTS (
+  SELECT 1 FROM financial_movements r WHERE r.reverses_movement_id = m.id
+)`;
+
 const EMPTY_COUNTS: BetStatusCounts = {
   total: 0,
   pending: 0,
@@ -369,14 +378,15 @@ export class DashboardService {
 
     const [initialResult, periodResult] = await Promise.all([
       executor.execute<{ total: MoneyString }>(
-        sql`SELECT COALESCE(SUM(amount), 0)::text AS total FROM financial_movements
-            WHERE project_id = ${projectId}::uuid AND type = 'INITIAL_CAPITAL' ${houseCondition}`,
+        sql`SELECT COALESCE(SUM(amount), 0)::text AS total FROM financial_movements m
+            WHERE project_id = ${projectId}::uuid AND type = 'INITIAL_CAPITAL' ${houseCondition}
+              ${LIVE_MOVEMENT}`,
       ),
       executor.execute<{ type: string; direction: string; total: MoneyString }>(
-        sql`SELECT type, direction, COALESCE(SUM(amount), 0)::text AS total FROM financial_movements
+        sql`SELECT type, direction, COALESCE(SUM(amount), 0)::text AS total FROM financial_movements m
             WHERE project_id = ${projectId}::uuid
               AND type IN ('DEPOSIT', 'WITHDRAWAL', 'EXTRAORDINARY')
-              ${houseCondition} ${dateCondition}
+              ${houseCondition} ${dateCondition} ${LIVE_MOVEMENT}
             GROUP BY type, direction`,
       ),
     ]);

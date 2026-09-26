@@ -57,7 +57,9 @@ interface IntegrityBody {
  * y, además:
  *  - el saldo del ledger es exactamente lo que dicen las apuestas y los movimientos:
  *    ledger = capital inicial + depósitos − retiros + extraordinarios + ganancia/pérdida de las apuestas
- *    (las transferencias suman cero);
+ *    (las transferencias suman cero), contando solo las filas VIGENTES de cada movimiento: una fila
+ *    anulada por una `REVERSAL` (de una apuesta o no: capital inicial, depósito, retiro o
+ *    extraordinario) deja de contar y su reversión tampoco cuenta como movimiento propio;
  *  - el monto apostado, la ganancia/pérdida, el Yield y el ROI del dashboard coinciden con lo que
  *    dicen los datos de cada apuesta (que el dashboard calcula desde el ledger);
  *  - la curva de rendimiento termina en esa misma ganancia/pérdida;
@@ -82,12 +84,31 @@ export async function assertFinancialInvariant(
   // 1. Ledger: se suman las filas crudas, sin pasar por ninguna función de la aplicación.
   const rows = await ctx.t.db.select().from(financialMovements);
   const perHouse = new Map<string, MoneyString>();
+  // Fuente independiente del capital: las filas crudas, sin pasar por ninguna función de la aplicación.
   let initial: MoneyString = ZERO_MONEY;
+  let liveDeposits: MoneyString = ZERO_MONEY;
+  let liveWithdrawals: MoneyString = ZERO_MONEY;
+  let liveExtraordinary: MoneyString = ZERO_MONEY;
   const bump = (houseId: string | null, delta: (current: MoneyString) => MoneyString) => {
     if (houseId) perHouse.set(houseId, delta(perHouse.get(houseId) ?? ZERO_MONEY));
   };
-  for (const row of rows.filter((r) => r.projectId === options.projectId)) {
-    if (row.type === 'INITIAL_CAPITAL') initial = addMoney(initial, row.amount);
+  const projectRows = rows.filter((r) => r.projectId === options.projectId);
+  const reversedIds = new Set(
+    projectRows.flatMap((r) => (r.reversesMovementId ? [r.reversesMovementId] : [])),
+  );
+  for (const row of projectRows) {
+    // Una fila vigente no es una reversión ni está anulada por una.
+    if (row.type !== 'REVERSAL' && !reversedIds.has(row.id)) {
+      if (row.type === 'INITIAL_CAPITAL') initial = addMoney(initial, row.amount);
+      else if (row.type === 'DEPOSIT') liveDeposits = addMoney(liveDeposits, row.amount);
+      else if (row.type === 'WITHDRAWAL') liveWithdrawals = addMoney(liveWithdrawals, row.amount);
+      else if (row.type === 'EXTRAORDINARY') {
+        liveExtraordinary =
+          row.direction === 'CREDIT'
+            ? addMoney(liveExtraordinary, row.amount)
+            : subtractMoney(liveExtraordinary, row.amount);
+      }
+    }
     if (row.houseId) {
       bump(row.houseId, (current) =>
         row.direction === 'DEBIT'
@@ -159,11 +180,19 @@ export async function assertFinancialInvariant(
     expectedUnconfirmed,
   );
 
+  // El capital del dashboard sale de las filas vigentes (una fila revertida ya no cuenta).
+  expect(analysis.deposits, 'depósitos vigentes del dashboard').toBe(liveDeposits);
+  expect(analysis.withdrawals, 'retiros vigentes del dashboard').toBe(liveWithdrawals);
+  expect(analysis.extraordinary, 'extraordinarios vigentes del dashboard').toBe(liveExtraordinary);
+  expect(
+    analysis.capitalInvested,
+    'capital invertido (capital inicial + depósitos − retiros)',
+  ).toBe(addMoney(initial, subtractMoney(liveDeposits, liveWithdrawals)));
   const fromBets = addMoney(
     initial,
-    analysis.deposits,
-    subtractMoney(ZERO_MONEY, analysis.withdrawals),
-    analysis.extraordinary,
+    liveDeposits,
+    subtractMoney(ZERO_MONEY, liveWithdrawals),
+    liveExtraordinary,
     expectedProfit,
   );
   expect(fromBets, 'capital según apuestas y movimientos').toBe(ledgerTotal);
