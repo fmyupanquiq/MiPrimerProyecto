@@ -204,20 +204,33 @@ la aplicación.
   presentes o los tres ausentes (igual que ya exigen `annulled_at`/`annulled_by`/`annulment_reason`
   entre sí).
 
-## 8. Orden de commits propuesto (a revisar, no definitivo)
+## 8. Orden de commits (definitivo)
 
-1. **9.3.1** — Migración: columnas de reconocimiento en `import_batches`, con su regla de forma.
-2. **9.3.2** — Orquestador del pipeline (lectura del archivo guardado + los cinco pasos de la 9.2)
-   y persistencia de `import_rows`. Sin endpoint todavía; solo el servicio y sus pruebas.
-3. **9.3.3** — Resolutor de `stageKey`/`stake` a partir de un plan de etapas ya confirmado. Sin
-   endpoint todavía.
-4. **9.3.4** — Endpoints de subida, listado, detalle y vista previa (`POST /`, `GET /`, `GET /:id`,
-   `GET /:id/preview`).
-5. **9.3.5** — Endpoint de casa (`POST /:id/house`) y de plan de etapas (`POST /:id/stage-plan`).
-6. **9.3.6** — Endpoint de reconocimiento (`POST /:id/acknowledge`).
-7. **9.3.7** — Endpoint de confirmación (`POST /:id/confirm`, llama al escritor) y de anulación
-   (`POST /:id/annul`).
-8. **9.3.8** — Revisión final de la subfase (permisos, auditoría, concurrencia, invariante) antes
+Cada commit, salvo el 9.3.8, es una capa de **servicio**, probada con PostgreSQL real donde toca
+la base de datos y sin ella donde no; ningún endpoint se escribe antes de que el servicio que
+llama ya esté probado.
+
+1. **9.3.1** — Migración: columnas de reconocimiento en `import_batches`, con su regla de forma y
+   su inmutabilidad tras importar (extiende el disparador `import_batches_guard`, migración 0033).
+2. **9.3.2** — Orquestador puro del pipeline: `Buffer` + `ImportOriginAdapter` → `ImportPreview`.
+   Sin base de datos; se prueba con los mismos `.xlsx` sintéticos de la 9.2.
+3. **9.3.3** — Servicio de subida y persistencia de staging: crea el `import_batches` (`UPLOADED`),
+   corre el orquestador sobre el archivo guardado y persiste `import_rows` (resuelve la dependencia
+   real que ya tiene el escritor con `import_rows`, señalada en la 9.2.6).
+4. **9.3.4** — Resolución humana de casa y plan de etapas: `POST /:id/house` (con la regla de
+   estados de la sección 5) y guardar/revisar el plan de etapas — solo persistir la decisión,
+   todavía sin calcular `stageKey` ni `stake`.
+5. **9.3.5** — Resolución de `stageKey`/`stake` y del `NormalizedImportBet` final, a partir del
+   plan de etapas ya confirmado y las filas de staging. Única pieza de cálculo de negocio
+   genuinamente nueva de toda la fase.
+6. **9.3.6** — Servicio de reconocimientos (D-X17b): guarda el reconocimiento y expone el chequeo
+   que usará la confirmación ("¿falta reconocer algo?").
+7. **9.3.7** — Confirmación y anulación: ensambla el `ImportBatchWriteInput` completo, comprueba
+   backup/ensayo y reconocimientos, y llama a `ImportWriterService.importBatch`/`annulBatch` (sin
+   cambios en el escritor).
+8. **9.3.8** — Endpoints HTTP como capa fina sobre los servicios anteriores (los nueve de la
+   sección 5): permisos, `@RequireRecentAuth()`, esquemas zod.
+9. **9.3.9** — Revisión final de la subfase (permisos, auditoría, concurrencia, invariante) antes
    de la interfaz web.
 
 La interfaz web (frontend) y el ajuste de redacción del §113.6 quedan para después de que el
