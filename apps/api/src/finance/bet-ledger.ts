@@ -139,7 +139,7 @@ export function betHold(bet: BetRow, stage: Pick<StageRow, 'unitStake'>): BetHol
   };
 }
 
-const holdEntry = (id: string, hold: BetHold): TimelineEntry => ({
+export const holdEntry = (id: string, hold: BetHold): TimelineEntry => ({
   id,
   occurredAt: hold.occurredAt,
   effects: [{ houseId: hold.houseId, direction: 'DEBIT', amount: hold.amount }],
@@ -222,7 +222,7 @@ const lineKey = (line: {
 }): string =>
   [line.type, line.direction, line.houseId, line.amount, line.occurredAt.getTime()].join('|');
 
-const signedEntry = (
+export const signedEntry = (
   id: string,
   row: {
     houseId: string | null;
@@ -460,6 +460,8 @@ export async function applyBetLedgerPlan(
     reason?: string;
     /** Etapa vigente de la apuesta: la llevan las filas nuevas (D-A9). */
     stageId: string;
+    /** Lote de importación al que pertenecen las filas escritas (Fase 9, §113); `null` si no hay. */
+    batchId?: string | null;
   },
 ): Promise<AppliedBetLedgerChange> {
   if (plan.conflicts.length > 0) throw correctionConflict(plan.conflicts);
@@ -484,6 +486,7 @@ export async function applyBetLedgerPlan(
         reversesMovementId: row.id,
         correctionId: context.correctionId,
         reason: context.reason!,
+        batchId: context.batchId ?? null,
         createdBy: context.actorId,
       })
       .returning({ id: financialMovements.id });
@@ -504,6 +507,7 @@ export async function applyBetLedgerPlan(
         operationId: plan.betId,
         occurredAt: line.occurredAt,
         correctionId: context.correctionId,
+        batchId: context.batchId ?? null,
         createdBy: context.actorId,
       })
       .returning({ id: financialMovements.id });

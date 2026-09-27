@@ -115,3 +115,61 @@ export function newTimelineConflicts(
     (conflict) => !existing.has(`${conflict.houseId}|${conflict.occurredAt.getTime()}`),
   );
 }
+
+/**
+ * Peor orden posible dentro de un mismo instante (§113.4, D-X16): cuando la hora se desconoce, el
+ * orden entre filas del mismo instante no tiene autoridad; `findTimelineConflicts` las suma juntas.
+ * Aquí, en cambio, se aplican primero todos los débitos y después los créditos de cada instante, y se
+ * informa de cada casa cuyo saldo quedaría negativo en ese peor orden. Es solo un aviso: si el saldo
+ * agrupado es válido, la importación es válida.
+ */
+export function findWorstOrderConflicts(
+  entries: readonly TimelineEntry[],
+  houseFilter?: ReadonlySet<string>,
+): TimelineConflict[] {
+  const byHouse = new Map<
+    string,
+    Map<number, { debits: MoneyString; credits: MoneyString; ids: string[] }>
+  >();
+  for (const entry of entries) {
+    const instant = entry.occurredAt.getTime();
+    for (const effect of entry.effects) {
+      if (houseFilter && !houseFilter.has(effect.houseId)) continue;
+      let instants = byHouse.get(effect.houseId);
+      if (!instants)
+        byHouse.set(
+          effect.houseId,
+          (instants = new Map<
+            number,
+            { debits: MoneyString; credits: MoneyString; ids: string[] }
+          >()),
+        );
+      let slot = instants.get(instant);
+      if (!slot)
+        instants.set(instant, (slot = { debits: ZERO_MONEY, credits: ZERO_MONEY, ids: [] }));
+      if (effect.direction === 'DEBIT') slot.debits = addMoney(slot.debits, effect.amount);
+      else slot.credits = addMoney(slot.credits, effect.amount);
+      if (!slot.ids.includes(entry.id)) slot.ids.push(entry.id);
+    }
+  }
+  const conflicts: TimelineConflict[] = [];
+  for (const [houseId, instants] of byHouse) {
+    let balance: MoneyString = ZERO_MONEY;
+    for (const instant of [...instants.keys()].sort((a, b) => a - b)) {
+      const slot = instants.get(instant)!;
+      const afterDebits = subtractMoney(balance, slot.debits);
+      if (isNegativeMoney(afterDebits)) {
+        conflicts.push({
+          houseId,
+          occurredAt: new Date(instant),
+          balance: afterDebits,
+          entryIds: slot.ids,
+        });
+      }
+      balance = addMoney(afterDebits, slot.credits);
+    }
+  }
+  return conflicts.sort(
+    (a, b) => a.occurredAt.getTime() - b.occurredAt.getTime() || a.houseId.localeCompare(b.houseId),
+  );
+}

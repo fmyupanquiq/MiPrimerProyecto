@@ -1,12 +1,13 @@
 import { Module } from '@nestjs/common';
 import { ImportAuditService } from './import-audit.service.js';
+import { ImportWriterService } from './import-writer.service.js';
 
 /**
- * Importación del historial (Fase 9, §113). En la 9.1.3 solo aporta la auditoría por lote; el
- * escritor de importación llegará en la 9.1.5 y los endpoints, en fases posteriores.
+ * Importación del historial (Fase 9, §113). Aporta la auditoría por lote (9.1.3) y el escritor
+ * de importación con la anulación de lotes (9.1.5); los endpoints llegan en fases posteriores.
  */
 @Module({
-  providers: [ImportAuditService],
-  exports: [ImportAuditService],
+  providers: [ImportAuditService, ImportWriterService],
+  exports: [ImportAuditService, ImportWriterService],
 })
 export class ImportsModule {}

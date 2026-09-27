@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   findTimelineConflicts,
+  findWorstOrderConflicts,
   newTimelineConflicts,
   type TimelineEntry,
 } from './bet-ledger-timeline.js';
@@ -134,5 +135,36 @@ describe('newTimelineConflicts: solo lo que la corrección introduce', () => {
   it('sin cambios no hay conflictos nuevos', () => {
     const entries = [credit('d', '01T10:00', 'A', '10.00')];
     expect(newTimelineConflicts(entries, entries)).toEqual([]);
+  });
+});
+
+describe('findWorstOrderConflicts (§113.4, D-X16)', () => {
+  it('avisa cuando, en el peor orden de un mismo instante, el saldo quedaría negativo', () => {
+    const entries = [
+      credit('capital', '01T00:00', 'A', '10.00'),
+      // Mismo instante: se pierden 10 y se gana una apuesta de 5 (colocación −5, liquidación +15).
+      debit('lost', '02T12:00', 'A', '10.00'),
+      debit('placed', '02T12:00', 'A', '5.00'),
+      credit('won', '02T12:00', 'A', '15.00'),
+    ];
+    // El saldo agrupado por instante es válido...
+    expect(findTimelineConflicts(entries)).toEqual([]);
+    // ...pero con todos los débitos primero quedaría en −5.
+    const worst = findWorstOrderConflicts(entries);
+    expect(worst).toHaveLength(1);
+    expect(worst[0]).toMatchObject({ houseId: 'A', balance: '-5.00' });
+    expect(worst[0]!.occurredAt.toISOString()).toBe('2026-06-02T12:00:00.000Z');
+  });
+
+  it('no avisa si el saldo alcanza aun con todos los débitos primero, ni respeta otras casas', () => {
+    const entries = [
+      credit('capital', '01T00:00', 'A', '100.00'),
+      debit('lost', '02T12:00', 'A', '10.00'),
+      debit('placed', '02T12:00', 'A', '5.00'),
+      credit('won', '02T12:00', 'A', '15.00'),
+      debit('other', '02T12:00', 'B', '1.00'),
+    ];
+    expect(findWorstOrderConflicts(entries, new Set(['A']))).toEqual([]);
+    expect(findWorstOrderConflicts(entries, new Set(['B']))).toHaveLength(1);
   });
 });

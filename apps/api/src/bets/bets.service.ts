@@ -100,7 +100,7 @@ import { BetCorrectionsService } from './bet-corrections.service.js';
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 /** Deriva Simple/Creada/Múltiple de la estructura real de selecciones (§20, §90). */
-function deriveBetType(selections: readonly BetSelectionInput[]): BetType {
+export function deriveBetType(selections: readonly { eventGroup: number }[]): BetType {
   const groups = new Set(selections.map((s) => s.eventGroup));
   if (groups.size === 1) return selections.length === 1 ? 'SIMPLE' : 'CREATED';
   return 'MULTIPLE';
