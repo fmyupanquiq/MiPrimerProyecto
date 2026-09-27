@@ -260,6 +260,20 @@
       "when": 1790464040615,
       "tag": "0036_bet_selection_null_odds_trigger",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1790550623000,
+      "tag": "0037_peaceful_frightful_four",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1790550644847,
+      "tag": "0038_import_batches_acknowledgment_frozen",
+      "breakpoints": true
     }
   ]
 }

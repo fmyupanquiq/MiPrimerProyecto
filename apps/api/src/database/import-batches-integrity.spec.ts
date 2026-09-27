@@ -265,6 +265,79 @@ describe('lotes de importación y staging en PostgreSQL (§113)', () => {
     });
   });
 
+  describe('reconocimiento (D-X17b, Fase 9.3.1)', () => {
+    it('exige las tres columnas juntas o ninguna, separado de import_reason y annulment_reason', async () => {
+      const batch = await upload();
+      await expect(upload({ acknowledgmentReason: 'Fila roja aceptada' })).rejects.toSatisfy(
+        constraint('import_batches_acknowledgment_shape'),
+      );
+      await expect(upload({ acknowledgedBy: author.id, acknowledgedAt: now })).rejects.toSatisfy(
+        constraint('import_batches_acknowledgment_shape'),
+      );
+      await expect(
+        upload({ acknowledgmentReason: '   ', acknowledgedBy: author.id, acknowledgedAt: now }),
+      ).rejects.toSatisfy(constraint('import_batches_acknowledgment_shape'));
+
+      const [acknowledged] = await t.db
+        .update(importBatches)
+        .set({
+          acknowledgmentReason: 'Fila roja aceptada: diferencia explicada por redondeo',
+          acknowledgedBy: author.id,
+          acknowledgedAt: now,
+        })
+        .where(eq(importBatches.id, batch.id))
+        .returning();
+      expect(acknowledged).toMatchObject({
+        acknowledgmentReason: 'Fila roja aceptada: diferencia explicada por redondeo',
+        acknowledgedBy: author.id,
+        // El motivo del reconocimiento nunca es el de importar ni el de anular.
+        importReason: null,
+        annulmentReason: null,
+      });
+    });
+
+    it('un lote sin nada que reconocer se importa y se anula igual, con las tres columnas en null', async () => {
+      const batch = await importedBatch();
+      expect(batch).toMatchObject({
+        acknowledgedAt: null,
+        acknowledgedBy: null,
+        acknowledgmentReason: null,
+      });
+      const annulled = await annul(batch.id);
+      expect(annulled).toMatchObject({ acknowledgmentReason: null });
+    });
+
+    it('el reconocimiento queda congelado en cuanto el lote se importa, igual que el resto', async () => {
+      const batch = await upload();
+      await validate(batch.id);
+      await t.db
+        .update(importBatches)
+        .set({
+          acknowledgmentReason: 'Parcial reconocida antes de importar',
+          acknowledgedBy: author.id,
+          acknowledgedAt: now,
+        })
+        .where(eq(importBatches.id, batch.id));
+      const imported = await doImport(batch.id);
+      expect(imported.acknowledgmentReason).toBe('Parcial reconocida antes de importar');
+
+      await expect(
+        t.db
+          .update(importBatches)
+          .set({ acknowledgmentReason: 'Intento de cambiarlo después de importar' })
+          .where(eq(importBatches.id, batch.id)),
+      ).rejects.toSatisfy(code(PG_RESTRICT));
+      // Tampoco se puede reconocer algo nuevo por primera vez si nunca se reconoció nada.
+      const other = await importedBatch(file('otro archivo'));
+      await expect(
+        t.db
+          .update(importBatches)
+          .set({ acknowledgmentReason: 'x', acknowledgedBy: author.id, acknowledgedAt: now })
+          .where(eq(importBatches.id, other.id)),
+      ).rejects.toSatisfy(code(PG_RESTRICT));
+    });
+  });
+
   describe('idempotencia: un archivo importado no se importa dos veces', () => {
     it('no permite dos lotes IMPORTED con la misma casa y huella en un proyecto', async () => {
       await importedBatch();

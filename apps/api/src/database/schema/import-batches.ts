@@ -76,6 +76,16 @@ export const importBatches = pgTable(
     annulledAt: timestamptz('annulled_at'),
     annulledBy: uuid('annulled_by').references(() => users.id, { onDelete: 'restrict' }),
     annulmentReason: text('annulment_reason'),
+    /**
+     * Reconocimiento explícito de D-X17b (Fase 9.3, §113.6): motivo con el que una persona
+     * reconoce un semáforo rojo o una fila parcial antes de poder confirmar la importación. Nunca
+     * es el motivo de la confirmación (`import_reason`) ni el de la anulación
+     * (`annulment_reason`): son tres decisiones distintas, cada una con su propia columna, igual
+     * que ya lo están validar/importar/anular entre sí.
+     */
+    acknowledgedAt: timestamptz('acknowledged_at'),
+    acknowledgedBy: uuid('acknowledged_by').references(() => users.id, { onDelete: 'restrict' }),
+    acknowledgmentReason: text('acknowledgment_reason'),
     ...timestamps(),
     version: versionColumn(),
   },
@@ -134,6 +144,14 @@ export const importBatches = pgTable(
           OR (${table.status} <> 'ANNULLED'
             AND ${table.annulledAt} IS NULL AND ${table.annulledBy} IS NULL
             AND ${table.annulmentReason} IS NULL)`,
+    ),
+    check(
+      'import_batches_acknowledgment_shape',
+      sql`(${table.acknowledgedAt} IS NOT NULL AND ${table.acknowledgedBy} IS NOT NULL
+            AND ${table.acknowledgmentReason} IS NOT NULL
+            AND length(btrim(${table.acknowledgmentReason})) > 0)
+          OR (${table.acknowledgedAt} IS NULL AND ${table.acknowledgedBy} IS NULL
+            AND ${table.acknowledgmentReason} IS NULL)`,
     ),
   ],
 );
