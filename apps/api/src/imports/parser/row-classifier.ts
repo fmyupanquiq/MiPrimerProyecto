@@ -111,7 +111,8 @@ function toDate(value: RawCellValue): Date | null {
   return null;
 }
 
-function toText(value: RawCellValue): string | null {
+/** Cualquier valor crudo, como texto (recortado); `null` si está vacío. Útil fuera del clasificador. */
+export function toText(value: RawCellValue): string | null {
   if (typeof value === 'string' && value.trim() !== '') return value.trim();
   if (typeof value === 'number') return String(value);
   return null;

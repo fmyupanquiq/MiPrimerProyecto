@@ -39,3 +39,35 @@ export function startOfDayInTimeZone(instant: Date, timeZone: string): Date {
   const midnightReadAsUtc = Date.UTC(year, month - 1, day, 0, 0, 0);
   return new Date(midnightReadAsUtc - offsetMs);
 }
+
+/**
+ * Instante (en UTC) de las 12:00 del día calendario `year`-`month`-`day`, en `timeZone` (§113.4,
+ * D-X23): el instante técnico de una importación cuando solo se conoce la fecha, nunca la hora.
+ * No es el mismo cálculo que {@link startOfDayInTimeZone} al revés (esa parte de un instante ya
+ * conocido; esta construye uno desde un día calendario que todavía no tiene hora ninguna), pero usa
+ * la misma técnica: una conjetura en UTC y el desfase real de la zona en ese momento del año.
+ */
+export function noonInTimeZone(year: number, month: number, day: number, timeZone: string): Date {
+  const guess = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  });
+  const parts = Object.fromEntries(formatter.formatToParts(guess).map((p) => [p.type, p.value]));
+  const readAsUtc = Date.UTC(
+    Number(parts['year']),
+    Number(parts['month']) - 1,
+    Number(parts['day']),
+    Number(parts['hour']),
+    Number(parts['minute']),
+    Number(parts['second']),
+  );
+  const offsetMs = readAsUtc - guess.getTime();
+  return new Date(guess.getTime() - offsetMs);
+}
