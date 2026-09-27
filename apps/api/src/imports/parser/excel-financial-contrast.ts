@@ -81,6 +81,13 @@ export interface ExcelFinancialContrastReport {
   rowsWithMoreThanTwoDecimals: number;
   semaphore: BatchFinancialSemaphore;
   headerChecks: HeaderConsistencyCheck[];
+  /**
+   * El "Bank Inicial" que el propio archivo declara en su cabecera (D-X3/D-X18); `null` si no se
+   * configuró la celda o está vacía. Se lee aquí (y no en otro sitio) porque este módulo ya es el
+   * único que toca las celdas de cabecera del archivo; la vista previa (9.2.6) lo reutiliza para no
+   * tener que leer el Excel una segunda vez.
+   */
+  initialBankAmount: MoneyString | null;
 }
 
 const ROUNDING_TOLERANCE = '0.01';
@@ -211,12 +218,19 @@ export function buildExcelFinancialContrast(
           ? 'YELLOW'
           : 'RED';
 
+  const initialBankAmount = config.headerCells.initialBank
+    ? cellMoney(
+        rowCell(sheet, config.headerCells.initialBank.row, config.headerCells.initialBank.column),
+      )
+    : null;
+
   return {
     bets: comparisons,
     totalProfitResidual,
     rowsWithMoreThanTwoDecimals,
     semaphore,
     headerChecks,
+    initialBankAmount,
   };
 }
 
