@@ -54,6 +54,7 @@ import {
 } from '../finance/bet-ledger.js';
 import { invalidateCheckpoints } from '../finance/checkpoint-invalidation.js';
 import { fullName } from '../projects/project-mappers.js';
+import { assertBetNotInAnnulledBatch } from '../imports/import-batch-guards.js';
 import { betConflict, betNotFound, invalidBetStructure } from './bet-errors.js';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -412,6 +413,8 @@ export class BetCorrectionsService {
       if (!request.allowTrashed && bet.deletedAt !== null) {
         throw betConflict('Esta apuesta está en la papelera: restáurala antes de continuar.');
       }
+      // D-X25: ninguna corrección ni restauración sobre una apuesta de un lote anulado.
+      await assertBetNotInAnnulledBatch(tx, bet);
       const [stage] = await tx.select().from(stages).where(eq(stages.id, bet.stageId)).limit(1);
       const balancesBefore = await computeHouseBalances(tx, projectId);
       const now = this.clock.now();

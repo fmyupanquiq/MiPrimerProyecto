@@ -1,3 +1,5 @@
+import type { ImportBatchStatus } from './import-batch.js';
+
 /** Tipos de elemento que puede contener la papelera de un proyecto (§36, §111.2). */
 export const TRASH_ITEM_KINDS = ['BET', 'STAGE'] as const;
 export type TrashItemKind = (typeof TRASH_ITEM_KINDS)[number];
@@ -24,4 +26,11 @@ export interface TrashItem {
    * ledger y exige `bets.correct`, reautenticación y motivo (§112.3, D-A11). Siempre `false` en una etapa.
    */
   settled: boolean;
+  /** Lote de importación de una apuesta (§113); `null` en una etapa o una apuesta ordinaria. */
+  batchId: string | null;
+  /**
+   * Estado del lote de esa apuesta. Las de un lote `ANNULLED` no se listan: no pueden restaurarse
+   * individualmente (§113.8), así que aquí solo aparece `IMPORTED` o `null`.
+   */
+  batchStatus: ImportBatchStatus | null;
 }

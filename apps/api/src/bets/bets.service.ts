@@ -13,6 +13,8 @@ import {
   ZERO_MONEY,
   type AmountSource,
   type BetDetail,
+  type BetReturnsReportQuery,
+  type ImportBatchStatus,
   type BetLedgerHistory,
   type BetSelectionInput,
   type BetSelectionSummary,
@@ -39,6 +41,7 @@ import {
   type UpdateBetInput,
 } from '@letfer/shared';
 import { and, count, desc, eq, gte, inArray, isNotNull, isNull } from 'drizzle-orm';
+import { assertBetNotInAnnulledBatch, notInAnnulledBatch } from '../imports/import-batch-guards.js';
 import { diffFields } from '../audit/audit-values.js';
 import { AuditService } from '../audit/audit.service.js';
 import type { ProjectAccess } from '../authorization/authorization.service.js';
@@ -57,6 +60,7 @@ import {
   betSelections,
   bets,
   houses,
+  importBatches,
   reconciliationCheckpoints,
   stages,
   tickets,
@@ -136,6 +140,7 @@ function returnSourceOf(returns: {
 }
 
 interface SummaryContext {
+  batchStatus: ImportBatchStatus | null;
   stageName: string;
   stageUnitStake: MoneyString;
   houseName: string;
@@ -172,7 +177,8 @@ export class BetsService {
   ) {}
 
   async list(access: ProjectAccess, query: ListBetsQuery): Promise<BetSummary[]> {
-    const conditions = [eq(bets.projectId, access.project.id)];
+    // Las apuestas de un lote anulado quedan fuera de todo listado (§113.8, D-X25).
+    const conditions = [eq(bets.projectId, access.project.id), notInAnnulledBatch];
     if (query.stageId) conditions.push(eq(bets.stageId, query.stageId));
     if (query.houseId) conditions.push(eq(bets.houseId, query.houseId));
     if (query.status === 'TRASHED') {
@@ -637,7 +643,10 @@ export class BetsService {
   }
 
   /** Ganadas liquidadas cuyo retorno sigue siendo el calculado, las más recientes primero (§77). */
-  async unconfirmedReturns(access: ProjectAccess): Promise<UnconfirmedReturnItem[]> {
+  async unconfirmedReturns(
+    access: ProjectAccess,
+    query: BetReturnsReportQuery = {},
+  ): Promise<UnconfirmedReturnItem[]> {
     const rows = await this.db
       .select({ bet: bets, houseName: houses.name, stage: stages })
       .from(bets)
@@ -649,6 +658,8 @@ export class BetsService {
           eq(bets.status, 'WON'),
           isNull(bets.officialRealizedReturn),
           isNull(bets.deletedAt),
+          notInAnnulledBatch,
+          query.batchId ? eq(bets.batchId, query.batchId) : undefined,
         ),
       )
       .orderBy(desc(bets.settledAt), desc(bets.id));
@@ -657,6 +668,7 @@ export class BetsService {
       const calculated = bet.calculatedRealizedReturn ?? ZERO_MONEY;
       return {
         betId: bet.id,
+        batchId: bet.batchId,
         houseName,
         stageName: stage.name,
         settledAt: bet.settledAt!.toISOString(),
@@ -671,7 +683,10 @@ export class BetsService {
    * Compara los retornos calculado y oficial de las ganadas que tienen ambos (§77). Es la
    * evidencia para decidir el redondeo (D-B8): no decide nada ni modifica datos.
    */
-  async returnDifferences(access: ProjectAccess): Promise<ReturnDifferencesReport> {
+  async returnDifferences(
+    access: ProjectAccess,
+    query: BetReturnsReportQuery = {},
+  ): Promise<ReturnDifferencesReport> {
     const rows = await this.db
       .select({ bet: bets, houseName: houses.name, stage: stages })
       .from(bets)
@@ -684,12 +699,15 @@ export class BetsService {
           isNotNull(bets.officialRealizedReturn),
           isNotNull(bets.calculatedRealizedReturn),
           isNull(bets.deletedAt),
+          notInAnnulledBatch,
+          query.batchId ? eq(bets.batchId, query.batchId) : undefined,
         ),
       )
       .orderBy(desc(bets.settledAt), desc(bets.id));
 
     const items: ReturnDifferenceItem[] = rows.map(({ bet, houseName, stage }) => ({
       betId: bet.id,
+      batchId: bet.batchId,
       houseId: bet.houseId,
       houseName,
       betType: bet.betType,
@@ -919,6 +937,8 @@ export class BetsService {
       await lockByKey(tx, `finance:${access.project.id}`);
       const bet = await this.lockOwned(tx, access.project.id, betId);
       if (bet.deletedAt === null) throw betConflict('Esta apuesta no está en la papelera.');
+      // D-X25: una apuesta de un lote anulado no se restaura individualmente.
+      await assertBetNotInAnnulledBatch(tx, bet);
       await tx
         .update(bets)
         .set({
@@ -1153,6 +1173,8 @@ export class BetsService {
     return {
       id: bet.id,
       projectId: bet.projectId,
+      batchId: bet.batchId,
+      batchStatus: ctx.batchStatus,
       stageId: bet.stageId,
       stageName: ctx.stageName,
       houseId: bet.houseId,
@@ -1233,7 +1255,8 @@ export class BetsService {
     const stageIds = [...new Set(rows.map((r) => r.stageId))];
     const houseIds = [...new Set(rows.map((r) => r.houseId))];
     const userIds = [...new Set(rows.map((r) => r.createdBy))];
-    const [stageRows, houseRows, userRows] = await Promise.all([
+    const batchIds = [...new Set(rows.flatMap((r) => (r.batchId ? [r.batchId] : [])))];
+    const [stageRows, houseRows, userRows, batchRows] = await Promise.all([
       executor
         .select({ id: stages.id, name: stages.name, unitStake: stages.unitStake })
         .from(stages)
@@ -1246,7 +1269,14 @@ export class BetsService {
         .select({ id: users.id, firstName: users.firstName, lastName: users.lastName })
         .from(users)
         .where(inArray(users.id, userIds)),
+      batchIds.length === 0
+        ? Promise.resolve([] as { id: string; status: ImportBatchStatus }[])
+        : executor
+            .select({ id: importBatches.id, status: importBatches.status })
+            .from(importBatches)
+            .where(inArray(importBatches.id, batchIds)),
     ]);
+    const batchStatusById = new Map(batchRows.map((b) => [b.id, b.status]));
     const stageById = new Map(stageRows.map((s) => [s.id, s]));
     const houseNameById = new Map(houseRows.map((h) => [h.id, h.name]));
     const userNameById = new Map(userRows.map((u) => [u.id, fullName(u)]));
@@ -1254,6 +1284,7 @@ export class BetsService {
       rows.map((bet) => [
         bet.id,
         {
+          batchStatus: bet.batchId ? (batchStatusById.get(bet.batchId) ?? null) : null,
           stageName: stageById.get(bet.stageId)?.name ?? '',
           stageUnitStake: stageById.get(bet.stageId)?.unitStake ?? ZERO_MONEY,
           houseName: houseNameById.get(bet.houseId) ?? '',

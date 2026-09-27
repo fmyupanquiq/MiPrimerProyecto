@@ -69,6 +69,11 @@ const LIVE_MOVEMENT = sql`AND NOT EXISTS (
   SELECT 1 FROM financial_movements r WHERE r.reverses_movement_id = m.id
 )`;
 
+/** La apuesta no pertenece a un lote de importación anulado (§113.8, D-X25); consultas sin alias. */
+const NOT_IN_ANNULLED_BATCH = sql`NOT EXISTS (
+  SELECT 1 FROM import_batches ib WHERE ib.id = bets.batch_id AND ib.status = 'ANNULLED'
+)`;
+
 const EMPTY_COUNTS: BetStatusCounts = {
   total: 0,
   pending: 0,
@@ -109,7 +114,8 @@ export class DashboardService {
       executor.execute<{ total: string }>(
         sql`SELECT COUNT(*) AS total FROM bets
             WHERE project_id = ${access.project.id}::uuid AND deleted_at IS NULL
-              AND status = 'WON' AND official_realized_return IS NULL`,
+              AND status = 'WON' AND official_realized_return IS NULL
+              AND ${NOT_IN_ANNULLED_BATCH}`,
       ),
     ]);
 
@@ -433,6 +439,7 @@ export class DashboardService {
     const conditions: SQL[] = [
       sql`b.project_id = ${access.project.id}::uuid`,
       sql`b.deleted_at IS NULL`,
+      sql`NOT EXISTS (SELECT 1 FROM import_batches ib WHERE ib.id = b.batch_id AND ib.status = 'ANNULLED')`,
     ];
     if (options.settledOnly) conditions.push(sql`b.status <> 'PENDING'`);
     if (filters.stageId) conditions.push(sql`b.stage_id = ${filters.stageId}::uuid`);

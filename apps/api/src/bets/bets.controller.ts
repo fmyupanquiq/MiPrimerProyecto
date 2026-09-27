@@ -3,6 +3,7 @@ import {
   confirmBetReturnSchema,
   correctSettlementSchema,
   createBetSchema,
+  betReturnsReportQuerySchema,
   listBetsQuerySchema,
   moveBetStageSchema,
   reopenBetSchema,
@@ -18,6 +19,7 @@ import {
   type CorrectSettlementInput,
   type CorrectionPreview,
   type CreateBetInput,
+  type BetReturnsReportQuery,
   type ListBetsQuery,
   type MoveBetStageInput,
   type ReopenBetInput,
@@ -72,16 +74,22 @@ export class BetsController {
   @Get('unconfirmed-returns')
   @ProjectRoute('bets.view')
   @Header('Cache-Control', 'no-store')
-  unconfirmedReturns(@CurrentProject() access: ProjectAccess): Promise<UnconfirmedReturnItem[]> {
-    return this.bets.unconfirmedReturns(access);
+  unconfirmedReturns(
+    @CurrentProject() access: ProjectAccess,
+    @Query({ schema: betReturnsReportQuerySchema }) query: BetReturnsReportQuery,
+  ): Promise<UnconfirmedReturnItem[]> {
+    return this.bets.unconfirmedReturns(access, query);
   }
 
   /** Comparación de retornos calculados y oficiales (evidencia para el redondeo, D-B8). */
   @Get('return-differences')
   @ProjectRoute('bets.view')
   @Header('Cache-Control', 'no-store')
-  returnDifferences(@CurrentProject() access: ProjectAccess): Promise<ReturnDifferencesReport> {
-    return this.bets.returnDifferences(access);
+  returnDifferences(
+    @CurrentProject() access: ProjectAccess,
+    @Query({ schema: betReturnsReportQuerySchema }) query: BetReturnsReportQuery,
+  ): Promise<ReturnDifferencesReport> {
+    return this.bets.returnDifferences(access, query);
   }
 
   @Get(':betId')

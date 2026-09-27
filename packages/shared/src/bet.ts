@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { BetCorrectionKind } from './bet-correction.js';
 import type { MovementType } from './financial-movement.js';
 import { moneyInputSchema, type MoneyString } from './money.js';
+import type { ImportBatchStatus } from './import-batch.js';
 import { oddsInputSchema, type OddsString } from './odds.js';
 import type { TicketSummary } from './ticket.js';
 
@@ -268,6 +269,10 @@ export type ReturnSource = 'OFFICIAL' | 'CALCULATED';
 export interface BetSummary {
   id: string;
   projectId: string;
+  /** Lote de importación que la creó (§113); `null` en una apuesta ordinaria. */
+  batchId: string | null;
+  /** Estado de ese lote (`IMPORTED` o `ANNULLED`); `null` si no pertenece a un lote. */
+  batchStatus: ImportBatchStatus | null;
   stageId: string;
   stageName: string;
   houseId: string;
@@ -314,8 +319,17 @@ export interface BetDetail extends BetSummary {
 }
 
 /** Una ganada cuyo retorno oficial aún no se ha confirmado (§77, §112.2). */
+/**
+ * Filtro opcional por lote de los informes de retornos (§113.9): sin `batchId` incluyen las
+ * apuestas ordinarias y las de lotes importados vigentes; las de un lote anulado nunca aparecen.
+ */
+export const betReturnsReportQuerySchema = z.object({ batchId: z.uuid().optional() });
+export type BetReturnsReportQuery = z.infer<typeof betReturnsReportQuerySchema>;
+
 export interface UnconfirmedReturnItem {
   betId: string;
+  /** Lote de importación de la apuesta (§113); `null` si es ordinaria. */
+  batchId: string | null;
   houseName: string;
   stageName: string;
   settledAt: string;
@@ -328,6 +342,8 @@ export interface UnconfirmedReturnItem {
 /** Una ganada con retorno calculado y oficial, para comparar ambos (§77, evidencia de D-B8). */
 export interface ReturnDifferenceItem {
   betId: string;
+  /** Lote de importación de la apuesta (§113); `null` si es ordinaria. */
+  batchId: string | null;
   houseId: string;
   houseName: string;
   betType: BetType;

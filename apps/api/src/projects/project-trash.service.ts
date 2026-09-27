@@ -6,7 +6,15 @@ import { AppError } from '../common/app-error.js';
 import { Clock } from '../common/clock.js';
 import { DATABASE } from '../database/database.constants.js';
 import type { Database } from '../database/database.module.js';
-import { betSelections, bets, houses, stages, users } from '../database/schema/index.js';
+import {
+  betSelections,
+  bets,
+  houses,
+  importBatches,
+  stages,
+  users,
+} from '../database/schema/index.js';
+import { notInAnnulledBatch } from '../imports/import-batch-guards.js';
 
 const MAX_TRASH_ITEMS_PER_KIND = 500;
 
@@ -34,15 +42,17 @@ export class ProjectTrashService {
 
     if (canBets) {
       const rows = await this.db
-        .select({ bet: bets, houseName: houses.name })
+        .select({ bet: bets, houseName: houses.name, batchStatus: importBatches.status })
         .from(bets)
         .innerJoin(houses, eq(houses.id, bets.houseId))
-        .where(and(eq(bets.projectId, projectId), isNotNull(bets.deletedAt)))
+        .leftJoin(importBatches, eq(importBatches.id, bets.batchId))
+        // Las de un lote anulado no se listan ni se restauran individualmente (§113.8, D-X25).
+        .where(and(eq(bets.projectId, projectId), isNotNull(bets.deletedAt), notInAnnulledBatch))
         .orderBy(desc(bets.deletedAt))
         .limit(MAX_TRASH_ITEMS_PER_KIND);
       const firstSelection = await this.firstSelections(rows.map((row) => row.bet.id));
       const names = await this.namesOf(rows.map((row) => row.bet.deletedBy));
-      for (const { bet, houseName } of rows) {
+      for (const { bet, houseName, batchStatus } of rows) {
         const selection = firstSelection.get(bet.id);
         items.push({
           kind: 'BET',
@@ -57,6 +67,8 @@ export class ProjectTrashService {
           purgeEligibleAt: bet.purgeEligibleAt!.toISOString(),
           purgeEligible: bet.purgeEligibleAt!.getTime() <= now.getTime(),
           settled: bet.status !== 'PENDING',
+          batchId: bet.batchId,
+          batchStatus,
         });
       }
     }
@@ -83,6 +95,8 @@ export class ProjectTrashService {
           purgeEligibleAt: stage.purgeEligibleAt!.toISOString(),
           purgeEligible: stage.purgeEligibleAt!.getTime() <= now.getTime(),
           settled: false,
+          batchId: null,
+          batchStatus: null,
         });
       }
     }
