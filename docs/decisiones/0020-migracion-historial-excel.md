@@ -51,6 +51,52 @@ Archivo `Betsafe.xlsx`, hojas `Rondas` (datos), `Balances` (resúmenes derivados
 - 62.5 × 1.75 = 109.375 es un empate exacto de medio céntimo: con `ROUND_HALF_UP` el saldo de LetFer sería
   1271.76 y con truncado 1271.75, mientras el Excel dice 1271.755.
 
+## Hallazgos adicionales (subfase 9.2.0): fórmulas, listas y estilos de Betsafe
+
+Mismo archivo, analizado ahora a nivel de XML crudo (fórmulas, validaciones de datos y formatos de celda),
+sin escribir ningún lector todavía. `Betano.xlsx` sigue sin aparecer en la máquina (se buscó en todo el
+perfil del usuario): todo lo de aquí es solo de Betsafe.
+
+- **Las listas desplegables son la autoridad, no un texto libre parecido.** Las validaciones de datos
+  (`x14:dataValidation`, en el `extLst` del XML) fijan rangos exactos de `No Modificar`:
+  `RESULTADO` → `$E$4:$E$6` (GANADO, PERDIDO, PENDIENTE: **ninguna otra opción existe en el desplegable**,
+  ni ANULADA ni CASH OUT); `TIPO` → `$D$4:$D$6` (Simple, Multi, Creada); `DEPORTE` → `$F$4:$F$5` (FUTBOL,
+  TENIS); el año de la cabecera → `$B$4:$B$14` (2024–2034). Hay también una lista `Mes` (`C4:C15`,
+  Enero–Diciembre) que **no está enlazada a ninguna validación**: es un resto sin uso del formato.
+- **Gramática exacta de un múltiple en PARTIDO.** Cada selección es un bloque `*Evento:\r\nSelección`, y
+  los bloques se separan por una línea en blanco (`\r\n\r\n`); una Simple no lleva `*`. Ejemplo real (fila 14):
+  `"*Manchester City vs Southampton:\r\nGana Manchester City\r\n\r\n*Napoli vs Lecce:\r\nGana Napoli\r\n"`.
+  Ningún registro usa "Creada": su forma de texto sigue sin un ejemplo real que la calibre.
+- **La cantidad de decimales de CUOTA no distingue el tipo.** La fila 11 es un múltiple de 2 selecciones
+  con cuota `1.75` (2 decimales, no el producto exacto de sus cuotas): confirma que D-X24 debe derivar el
+  tipo del texto de PARTIDO, nunca de cuántos decimales tiene la cuota.
+- **Formatos de celda (solo de presentación; el valor crudo que se lee es siempre el mismo).** FECHA usa
+  el formato de fecha corta nativo de Excel (`numFmtId 14`, sin hora): confirma que ninguna hora se guardó
+  nunca ahí. APUESTA y A+G usan un formato moneda `"S/. #,##0.00"`. CUOTA no tiene formato fijo en la
+  mayoría de filas (columna "General"); en 3 filas del múltiple sí tiene un formato `"0.00"`, que solo
+  afecta a cómo Excel lo muestra, no al valor almacenado (`1.510016` sigue teniendo sus 6 decimales).
+- **Revisión importante de D-X7: la frontera entre rondas depende de la posición, no de un rótulo.** Cada
+  columna `RONDA n` de `Balances` está cableada por posición a un bloque fijo de 13 filas de `Rondas` (3 de
+  cabecera + 10 de apuestas): Ronda 1 → filas 11-20, Ronda 2 → 24-33, Ronda 3 → 37-46, … Ronda 10 → 128-137
+  (paso de 13). En este archivo solo la Ronda 1 tiene un rótulo `"RONDA 1"` (fila 8) y datos reales (filas
+  11-16); las filas 17-168 son plantilla continua — el N° sigue subiendo de 7 a 158 sin que nunca se
+  insertara un rótulo `"RONDA 2"` ni una cabecera de columnas nueva. `Balances` da cero en esas columnas
+  simplemente porque esas filas están vacías, no porque exista una ronda 2 real. **El parser no puede
+  confiar en encontrar el texto `"RONDA n"` para saber dónde empieza cada ronda**: en este archivo la única
+  frontera visible es la de la Ronda 1: sigue sin saberse si Betano marca sus rondas con rótulo o solo por
+  posición. D-X7 sigue pendiente por esto, además de la unidad.
+- **Precisión de D-X7 (9.2.1).** El parser **nunca convierte automáticamente un bloque visual del Excel en
+  una etapa definitiva**: solo genera **candidatos de etapa con evidencia** (el rótulo encontrado, la fila
+  donde está, el rango de filas que agrupa y por qué). Confirmar, ajustar o dividir esos candidatos en
+  etapas reales queda para la validación previa (con una persona, en la 9.3), nunca para una regla automática
+  del lector.
+- **Hipótesis de unidad (D-X7, sin cerrar).** Los 6 montos reales (62.5, 75, 87.5, 312.5, 250, 150) son
+  múltiplos exactos de **12.5**, con stakes enteros (5, 6, 7, 25, 20, 12). Es la misma hipótesis del primer
+  análisis, ahora reconfirmada; falta tu confirmación y contrastarla con Betano.
+- Sin comentarios, hipervínculos ni notas ocultas; dos imágenes decorativas (`image1.png`, `image2.jpeg`)
+  sin datos. Las fórmulas de la cabecera (Apostado, Ganancia, Ganados/Perdidos/Pendientes, % de acierto,
+  progreso hacia la meta) quedaron confirmadas exactamente; ninguna se importa (principio rector).
+
 ## Decisiones cerradas
 
 **Alcance y contexto**
@@ -144,8 +190,8 @@ Archivo `Betsafe.xlsx`, hojas `Rondas` (datos), `Balances` (resúmenes derivados
   lotes, informes y archivos). Ambos son de **alcance de proyecto** y se conceden al Administrador de Proyecto (el
   Administrador Global los recibe por la matriz); Colaborador y Lector no los reciben. Confirmar y anular exigen
   reautenticación y motivo.
-- **Auditoría.** Un evento por lote y acción (`import.batch_uploaded`, `import.batch_imported`,
-  `import.batch_annulled`, `import.batch_discarded`) con contadores, semáforo y reconocimientos; el detalle por fila
+- **Auditoría.** Un evento por lote y acción (`import.batch_uploaded`, `import.batch_validated`,
+  `import.batch_imported`, `import.batch_annulled`) con contadores, semáforo y reconocimientos; el detalle por fila
   vive en el registro del lote. **La huella se llama `sha256`, nunca `hash`**: la redacción de la auditoría oculta
   cualquier clave que contenga `password`, `secret`, `token`, `hash` o `pepper`, y una clave `fileHash` se guardaría
   como `[redactado]`. Una prueba lo comprueba.
@@ -203,8 +249,8 @@ liquidación, deporte, mercado, tipo, autor, etapa, selecciones desglosadas, tic
 
 ## Modelo de datos (Fase 9.1)
 
-- **`import_batches`**: proyecto, casa, autor, `status` (`UPLOADED`, `VALIDATED`, `IMPORTED`, `ANNULLED`,
-  `FAILED`), nombre del archivo, `source_sha256`, `source_file` (`bytea`, máximo 10 MB), plan de etapas
+- **`import_batches`**: proyecto, casa, autor, `status` (`UPLOADED`, `VALIDATED`, `IMPORTED`, `ANNULLED`),
+  nombre del archivo, `source_sha256`, `source_file` (`bytea`, máximo 10 MB), plan de etapas
   confirmado (ronda, unidad, fronteras), informe y contadores, `is_rehearsal`, motivos de importación y de anulación,
   fechas y autores de cada paso y `version`. Índice único parcial (proyecto, casa, `source_sha256`) donde el estado es
   `IMPORTED`, de modo que se puede reimportar tras anular. Inmutable tras importar, salvo los campos de anulación.
@@ -253,7 +299,11 @@ liquidación, deporte, mercado, tipo, autor, etapa, selecciones desglosadas, tic
 ## Pendientes
 
 - **D-X7:** unidad y fronteras exactas de cada etapa, hasta analizar los archivos reales (Betsafe y Betano). Afecta a
-  los datos del plan de etapas del lote, no al esquema.
+  los datos del plan de etapas del lote, no al esquema. El análisis de fórmulas de la subfase 9.2.0 encontró que
+  la frontera entre rondas en Betsafe depende de la **posición** (bloques fijos de 13 filas que `Balances`
+  referencia), no de un rótulo `"RONDA n"` visible en la hoja: solo la Ronda 1 tiene ese rótulo porque es la
+  única que se usó. La unidad (12.5) queda reconfirmada por los montos reales, pero falta tu aprobación y
+  contrastarla con Betano, que puede o no seguir la misma convención de rótulos.
 - **D-B8:** redondeo del retorno calculado, hasta disponer de retornos oficiales de Betsafe y Betano (tickets o
   historiales), sobre todo de ganadas cuyo `monto × cuota` tenga más de dos decimales y de múltiples con cuotas de
   seis decimales. El Excel no es evidencia del redondeo de la casa. No se decide si la política es global o por casa.
