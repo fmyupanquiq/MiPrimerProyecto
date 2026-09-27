@@ -493,6 +493,9 @@ export class ImportWriterService {
             amount: row.amount,
             operationId: row.operationId,
             occurredAt: row.occurredAt,
+            // La reversión copia la misma fecha que la fila original: si esa fecha era un instante
+            // técnico (D-X29), la reversión sigue siéndolo. No confundir con una fecha nueva y conocida.
+            occurredAtKnown: row.occurredAtKnown,
             reversesMovementId: row.id,
             reason: fixed,
             batchId: batch.id,

@@ -664,6 +664,13 @@ describe('escritor de importación histórica (e2e, PostgreSQL real, §113)', ()
       expect(reversals.every((r) => r.reason === 'Lote anulado' && r.batchId === batch.id)).toBe(
         true,
       );
+      // La reversión del capital histórico conserva que su fecha es un instante técnico, no una
+      // fecha nueva y conocida (D-X29): revertir no debe volver "conocida" una fecha que no lo era.
+      const capitalReversal = reversals.find(
+        (r) => r.type === 'REVERSAL' && r.amount === '1000.00',
+      );
+      expect(capitalReversal).toMatchObject({ occurredAtKnown: false });
+      expect(reversals.filter((r) => r.occurredAtKnown === false)).toHaveLength(1);
       expect(await houseBalance(houseId)).toMatchObject({
         balance: '0.00',
         committed: '0.00',
