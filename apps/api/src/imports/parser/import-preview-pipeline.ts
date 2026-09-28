@@ -4,7 +4,11 @@ import {
   buildExcelFinancialContrast,
   type ExcelFinancialContrastReport,
 } from './excel-financial-contrast.js';
-import { normalizeImportSheet, type ImportOriginAdapter } from './import-normalization.js';
+import {
+  normalizeImportSheet,
+  type ImportNormalizationResult,
+  type ImportOriginAdapter,
+} from './import-normalization.js';
 import {
   buildImportPreview,
   type ImportPreview,
@@ -73,14 +77,28 @@ function pickSheet(sheets: readonly RawSheet[], adapter: ImportOriginAdapter): R
 }
 
 /**
- * Ejecuta el pipeline completo sobre los bytes de un archivo ya leído en memoria (nunca los lee de
- * disco ni de ningún otro sitio) y devuelve la vista previa completa. Función pura además de
- * asíncrona (solo por `readWorkbook`, que descomprime el `.xlsx`): la misma entrada produce
- * siempre la misma salida, sin ningún efecto secundario.
+ * Todo lo que el pipeline calcula, no solo la vista previa final: la hoja ya leída y el resultado
+ * íntegro de la normalización (Fase 9.3.3). `runImportPreviewPipeline` (abajo) sigue siendo la
+ * función que basta para recalcular una vista previa (`GET /preview`, sin base de datos); esto es
+ * lo que además necesita quien tiene que **persistir** el staging (`import_rows`, 9.3.3): los
+ * valores crudos de cada fila (D-X12) y la apuesta preliminar completa (con los campos que
+ * `ImportPreview.bets` no expone, como `placedTimeKnown`), no solo su proyección para mostrar.
  */
-export async function runImportPreviewPipeline(
+export interface ImportPipelineAnalysis {
+  sheet: RawSheet;
+  normalization: ImportNormalizationResult;
+  preview: ImportPreview;
+}
+
+/**
+ * Ejecuta el pipeline completo sobre los bytes de un archivo ya leído en memoria (nunca los lee de
+ * disco ni de ningún otro sitio) y devuelve, además de la vista previa, sus artefactos intermedios.
+ * Función pura además de asíncrona (solo por `readWorkbook`, que descomprime el `.xlsx`): la misma
+ * entrada produce siempre la misma salida, sin ningún efecto secundario.
+ */
+export async function runImportAnalysisPipeline(
   input: ImportPreviewPipelineInput,
-): Promise<ImportPreview> {
+): Promise<ImportPipelineAnalysis> {
   const sheets = await readWorkbook(input.file);
   const sheet = pickSheet(sheets, input.adapter);
 
@@ -90,7 +108,7 @@ export async function runImportPreviewPipeline(
     ? buildExcelFinancialContrast(sheet, normalization.bets, input.adapter.financialContrast)
     : UNCONFIGURED_FINANCIAL_CONTRAST;
 
-  return buildImportPreview({
+  const preview = buildImportPreview({
     file: input.fileMeta,
     originName: input.adapter.name,
     normalization,
@@ -98,4 +116,12 @@ export async function runImportPreviewPipeline(
     financialContrast,
     timeZone: input.timeZone,
   });
+  return { sheet, normalization, preview };
+}
+
+/** Igual que {@link runImportAnalysisPipeline}, pero solo con la vista previa que casi todo el mundo necesita. */
+export async function runImportPreviewPipeline(
+  input: ImportPreviewPipelineInput,
+): Promise<ImportPreview> {
+  return (await runImportAnalysisPipeline(input)).preview;
 }

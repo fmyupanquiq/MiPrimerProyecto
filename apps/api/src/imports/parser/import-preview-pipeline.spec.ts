@@ -4,7 +4,7 @@ import { BETSAFE_ADAPTER, BETSAFE_FINANCIAL_CONTRAST_CONFIG } from './betsafe-ad
 import { buildExcelFinancialContrast } from './excel-financial-contrast.js';
 import { normalizeImportSheet, type ImportOriginAdapter } from './import-normalization.js';
 import { buildImportPreview, type ImportPreviewFile } from './import-preview.js';
-import { runImportPreviewPipeline } from './import-preview-pipeline.js';
+import { runImportAnalysisPipeline, runImportPreviewPipeline } from './import-preview-pipeline.js';
 import { buildImportValidationReport } from './import-validation-report.js';
 import { readWorkbook } from './xlsx-reader.js';
 
@@ -224,5 +224,26 @@ describe('runImportPreviewPipeline (Fase 9.3.2, §113, ADR 0020; sin base de dat
     expect(first).toEqual(second);
     // Los bytes originales no se tocan (D-X12): siguen siendo exactamente los mismos.
     expect(file.equals(bytesBefore)).toBe(true);
+  });
+});
+
+describe('runImportAnalysisPipeline (Fase 9.3.3, base para persistir el staging)', () => {
+  it('devuelve la misma vista previa que runImportPreviewPipeline, más la hoja y la normalización', async () => {
+    const file = await buildBetsafeWorkbook();
+    const input = { file, adapter: BETSAFE_ADAPTER, fileMeta: FILE_META, timeZone: TIME_ZONE };
+
+    const analysis = await runImportAnalysisPipeline(input);
+    const preview = await runImportPreviewPipeline(input);
+
+    expect(analysis.preview).toEqual(preview);
+    expect(analysis.sheet.name).toBe('Rondas');
+    expect(analysis.normalization.bets).toHaveLength(2);
+    // Campos que la vista previa no expone (no hacen falta para mostrarla) pero sí para persistir
+    // la fila de staging completa (9.3.3): p. ej. `placedTimeKnown`.
+    expect(analysis.normalization.bets[0]).toMatchObject({
+      rowNumber: 11,
+      placedTimeKnown: false,
+      settledTimeKnown: false,
+    });
   });
 });
