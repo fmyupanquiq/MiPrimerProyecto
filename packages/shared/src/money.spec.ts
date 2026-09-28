@@ -11,6 +11,7 @@ import {
   multiplyMoney,
   percentageOf,
   roundMoney,
+  stakeFromAmount,
   subtractMoney,
   sumMoney,
   ZERO_MONEY,
@@ -137,6 +138,24 @@ describe('percentageOf (Yield, ROI, drawdown %, §108.1, §108.4)', () => {
   it('null cuando el denominador es cero (razón indefinida, no 0%)', () => {
     expect(percentageOf('50.00', '0.00')).toBeNull();
     expect(percentageOf('0.00', '0.00')).toBeNull();
+  });
+});
+
+describe('stakeFromAmount (monto ÷ unidad de la etapa, D-X19)', () => {
+  it('múltiplo exacto: exact=true y el stake sin resto', () => {
+    expect(stakeFromAmount('25.00', '12.50')).toEqual({ stake: '2.0000', exact: true });
+    expect(stakeFromAmount('50.00', '12.50')).toEqual({ stake: '4.0000', exact: true });
+  });
+
+  it('no es múltiplo exacto: exact=false, con el stake redondeado a 4 decimales', () => {
+    expect(stakeFromAmount('10.00', '3.00')).toEqual({ stake: '3.3333', exact: false });
+  });
+
+  it('exact se calcula sobre el resto sin redondear, no sobre el stake ya redondeado', () => {
+    // 100 / 7 = 14.2857142857...: el stake a 4 decimales no deja ver el resto real por sí solo.
+    const result = stakeFromAmount('100.00', '7.00');
+    expect(result.stake).toBe('14.2857');
+    expect(result.exact).toBe(false);
   });
 });
 

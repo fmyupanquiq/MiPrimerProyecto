@@ -135,6 +135,32 @@ export function percentageOf(
   return roundMoney(toDecimal(numerator).dividedBy(denominatorDecimal).times(100));
 }
 
+/** Decimales de un stake (`NUMERIC(10,4)`, igual que `bets.stake_amount`; §12, D-X19). */
+const STAKE_SCALE = 4;
+
+/**
+ * Stake informativo de una apuesta importada (D-X19, §113.3): `monto ÷ unidad de la etapa`, con
+ * hasta 4 decimales, igual que `stakeAmount` de una apuesta ordinaria (`NUMERIC(10,4)`) — nunca es
+ * dinero (columns.ts: "un multiplicador numérico, nunca un porcentaje"), pero sus dos entradas sí
+ * lo son, así que la división vive aquí, junto al resto de la aritmética decimal centralizada.
+ *
+ * `exact` es `true` solo si el monto es múltiplo exacto de la unidad, comprobado con el resto de
+ * la división sin redondear (`mod`), nunca con el stake ya redondeado a 4 decimales: igual que el
+ * contraste financiero del Excel (§113.7), redondear antes de comparar podría ocultar un resto
+ * real. Si no es exacto, quien llama solo debe avisar (D-X19): nunca bloquea la importación.
+ */
+export function stakeFromAmount(
+  amount: MoneyString,
+  unitStake: MoneyString,
+): { stake: string; exact: boolean } {
+  const amountDecimal = toDecimal(amount);
+  const unitDecimal = toDecimal(unitStake);
+  return {
+    stake: amountDecimal.dividedBy(unitDecimal).toDecimalPlaces(STAKE_SCALE).toFixed(STAKE_SCALE),
+    exact: amountDecimal.mod(unitDecimal).isZero(),
+  };
+}
+
 /** Formato de presentación en soles, p. ej. `"S/ 1,234.50"`. Solo para mostrar; nunca para calcular. */
 export function formatPEN(value: MoneyString): string {
   const decimal = toDecimal(value);

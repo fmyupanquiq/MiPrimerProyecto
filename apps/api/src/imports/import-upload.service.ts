@@ -7,7 +7,7 @@ import type { Database } from '../database/database.module.js';
 import type { DbExecutor } from '../database/database.types.js';
 import { importBatches, importRows, type NewImportRow } from '../database/schema/index.js';
 import { ImportAuditService } from './import-audit.service.js';
-import type { ImportBatchSummaryRow } from './import-types.js';
+import type { ImportBatchSummaryRow, ImportRowNormalizedBet } from './import-types.js';
 import type { ImportOriginAdapter } from './parser/import-normalization.js';
 import type { ImportPreview } from './parser/import-preview.js';
 import {
@@ -130,25 +130,28 @@ export class ImportUploadService {
     const values: NewImportRow[] = analysis.normalization.rows.map((row) => {
       const sheetRow = sheetRowByNumber.get(row.rowNumber);
       const bet = row.status === 'VALID' ? betByRowNumber.get(row.rowNumber) : undefined;
+      const normalized: ImportRowNormalizedBet | null = bet
+        ? {
+            declaredType: row.declaredType,
+            derivedType: row.derivedType,
+            typeMismatch: row.typeMismatch,
+            amount: bet.amount,
+            visibleTotalOdds: bet.visibleTotalOdds,
+            status: bet.status,
+            placedAt: bet.placedAt.toISOString(),
+            placedTimeKnown: bet.placedTimeKnown,
+            settledAt: bet.settledAt ? bet.settledAt.toISOString() : null,
+            settledTimeKnown: bet.settledTimeKnown,
+            selections: bet.selections,
+          }
+        : null;
       return {
         importBatchId: batchId,
         rowNumber: row.rowNumber,
         rawValues: sheetRow ? rawValuesOf(sheetRow) : {},
-        normalized: bet
-          ? {
-              declaredType: row.declaredType,
-              derivedType: row.derivedType,
-              typeMismatch: row.typeMismatch,
-              amount: bet.amount,
-              visibleTotalOdds: bet.visibleTotalOdds,
-              status: bet.status,
-              placedAt: bet.placedAt.toISOString(),
-              placedTimeKnown: bet.placedTimeKnown,
-              settledAt: bet.settledAt ? bet.settledAt.toISOString() : null,
-              settledTimeKnown: bet.settledTimeKnown,
-              selections: bet.selections,
-            }
-          : null,
+        // `ImportRowNormalizedBet` es una interfaz cerrada; la columna es JSON genérico (§9.3.5 la
+        // vuelve a tipar al leerla, con la misma forma exacta que se escribe aquí).
+        normalized: normalized as unknown as Record<string, unknown> | null,
         status: row.status,
         trafficLight:
           row.status === 'VALID' ? (trafficLightByRowNumber.get(row.rowNumber) ?? null) : null,

@@ -1,4 +1,4 @@
-import type { BetStatus, MoneyString, OddsString } from '@letfer/shared';
+import type { BetStatus, BetType, MoneyString, OddsString } from '@letfer/shared';
 import type { ImportBatchRow } from '../database/schema/index.js';
 
 /** Un lote sin su archivo original (hasta 10 MB), que el escritor no necesita leer. */
@@ -34,6 +34,26 @@ export interface NormalizedInitialCapital {
   occurredAtKnown: boolean;
   /** Etapa a la que pertenece el movimiento (la de la primera ronda). */
   stageKey: string;
+}
+
+/**
+ * La apuesta preliminar de una fila `VALID`, tal como `ImportUploadService` la guarda en
+ * `import_rows.normalized` (Fase 9.3.3): todo lo que ya se sabe de la fila salvo `stageKey` y
+ * `stake` (D-X7, D-X19), que solo se pueden calcular con el plan de etapas ya confirmado por una
+ * persona (9.3.5). Las fechas viajan como ISO 8601 porque así es como vuelven de `jsonb`.
+ */
+export interface ImportRowNormalizedBet {
+  declaredType: string | null;
+  derivedType: BetType | null;
+  typeMismatch: boolean;
+  amount: MoneyString;
+  visibleTotalOdds: OddsString;
+  status: Extract<BetStatus, 'WON' | 'LOST' | 'PENDING'>;
+  placedAt: string;
+  placedTimeKnown: boolean;
+  settledAt: string | null;
+  settledTimeKnown: boolean;
+  selections: NormalizedImportSelection[];
 }
 
 export interface NormalizedImportSelection {
