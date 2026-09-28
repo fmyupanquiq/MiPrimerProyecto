@@ -2,6 +2,7 @@ import type { BetType } from '@letfer/shared';
 import { deriveBetType } from '../../bets/bets.service.js';
 import { noonInTimeZone } from '../../common/timezone.js';
 import type { NormalizedImportBet, NormalizedImportSelection } from '../import-types.js';
+import type { ExcelFinancialContrastConfig } from './excel-financial-contrast.js';
 import {
   classifyRow,
   extractSemanticRow,
@@ -59,10 +60,18 @@ export interface ImportNormalizationResult {
  */
 export interface ImportOriginAdapter {
   name: string;
+  /** Hoja del libro donde vive la tabla de este origen; sin ella, se usa la primera hoja del libro. */
+  sheetName?: string;
   template: SpreadsheetTemplateConfig;
   parseSelections: (description: string, sport: string | null) => NormalizedImportSelection[];
   /** Texto de la columna de tipo (tal como aparece en el archivo) → tipo de LetFer, para D-X24. */
   declaredTypeVocabulary: Readonly<Record<string, BetType>>;
+  /**
+   * Columnas y celdas donde este origen guarda sus propios cálculos (§113.7, Fase 9.2.5); sin ella,
+   * el contraste financiero de la vista previa queda vacío (todo verde, sin nada que contrastar).
+   * Deliberadamente opcional: sigue siendo una validación distinta de la estructural de D-X17b.
+   */
+  financialContrast?: ExcelFinancialContrastConfig;
 }
 
 /**

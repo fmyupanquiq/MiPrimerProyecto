@@ -19,19 +19,15 @@ export const BETSAFE_DECLARED_TYPE_VOCABULARY: Readonly<Record<string, BetType>>
   Creada: 'CREATED',
 };
 
-export const BETSAFE_ADAPTER: ImportOriginAdapter = {
-  name: 'Betsafe',
-  template: BETSAFE_TEMPLATE,
-  parseSelections: parseBetsafeSelections,
-  declaredTypeVocabulary: BETSAFE_DECLARED_TYPE_VOCABULARY,
-};
-
 /**
  * Columnas y celdas de cabecera donde Betsafe guarda sus propios cálculos (confirmadas en la
  * 9.2.0 con las fórmulas reales del archivo): A+G y GANANCIA por fila (K, L); Bank Inicial (E3),
  * Bank Actual (E4, `=E3+I4`) y el total de Ganancia de la cabecera (I4, `=SUM(L11:L10003)`).
- * Deliberadamente separado de `BETSAFE_ADAPTER` (D-X17b es una validación distinta de esta, §113.7,
- * Fase 9.2.5): nunca se usa para construir la apuesta, solo para contrastarla.
+ * Sigue siendo una validación distinta de la estructural de D-X17b (§113.7, Fase 9.2.5): nunca se
+ * usa para construir la apuesta, solo para contrastarla. Se expone aparte (para quien solo quiera
+ * llamar a `buildExcelFinancialContrast` directamente, como ya hacían las pruebas de la 9.2.5 y la
+ * 9.2.6) y también dentro de `BETSAFE_ADAPTER`, para que el orquestador de la 9.3.2 no necesite un
+ * cuarto parámetro solo para esto.
  */
 export const BETSAFE_FINANCIAL_CONTRAST_CONFIG: ExcelFinancialContrastConfig = {
   firstDataRow: BETSAFE_TEMPLATE.firstDataRow,
@@ -41,4 +37,13 @@ export const BETSAFE_FINANCIAL_CONTRAST_CONFIG: ExcelFinancialContrastConfig = {
     currentBank: { row: 4, column: 'E' },
     profitTotal: { row: 4, column: 'I' },
   },
+};
+
+export const BETSAFE_ADAPTER: ImportOriginAdapter = {
+  name: 'Betsafe',
+  sheetName: 'Rondas',
+  template: BETSAFE_TEMPLATE,
+  parseSelections: parseBetsafeSelections,
+  declaredTypeVocabulary: BETSAFE_DECLARED_TYPE_VOCABULARY,
+  financialContrast: BETSAFE_FINANCIAL_CONTRAST_CONFIG,
 };

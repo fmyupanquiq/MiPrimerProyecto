@@ -74,6 +74,15 @@ export interface HeaderConsistencyCheck {
 }
 
 export interface ExcelFinancialContrastReport {
+  /**
+   * `true` cuando este informe viene de contrastar realmente contra un archivo (siempre lo es al
+   * llamar a {@link buildExcelFinancialContrast}, sea cual sea su resultado). `false` solo lo pone
+   * quien orquesta el pipeline (Fase 9.3.2) cuando un origen no tiene `financialContrast`
+   * configurado: en ese caso el semáforo `GREEN` no significa "todo coincide", significa "no hay
+   * nada configurado que contrastar" — y este campo lo dice explícitamente, para no confundir un
+   * origen sin configurar con uno que de verdad no tuvo ninguna diferencia.
+   */
+  configured: boolean;
   bets: BetFinancialComparison[];
   /** `T`: suma de los residuos de GANANCIA de las filas con valor del Excel (D-X17, "total del lote"). */
   totalProfitResidual: MoneyString;
@@ -225,6 +234,7 @@ export function buildExcelFinancialContrast(
     : null;
 
   return {
+    configured: true,
     bets: comparisons,
     totalProfitResidual,
     rowsWithMoreThanTwoDecimals,
