@@ -159,7 +159,9 @@ describe('permisos y auditoría de importación (e2e, PostgreSQL real, §113.9)'
         rowsValid: 6,
         rowsTemplate: 152,
       });
-      await ctx.t.db.transaction((tx) => audit().validated(tx, validated, people.admin.id));
+      await ctx.t.db.transaction((tx) =>
+        audit().validated(tx, validated, people.admin.id, { previousStatus: 'UPLOADED' }),
+      );
 
       const imported = await setBatch(uploaded.id, {
         status: 'IMPORTED',
@@ -296,7 +298,7 @@ describe('permisos y auditoría de importación (e2e, PostgreSQL real, §113.9)'
             .where(eq(importBatches.id, batch.id))
             .returning()
             .then((rows) => rows[0]!);
-          await audit().validated(tx, validated, people.admin.id);
+          await audit().validated(tx, validated, people.admin.id, { previousStatus: 'UPLOADED' });
         }),
       ).rejects.toThrow('fallo simulado de auditoría');
       spy.mockRestore();
@@ -316,7 +318,7 @@ describe('permisos y auditoría de importación (e2e, PostgreSQL real, §113.9)'
           .where(eq(importBatches.id, batch.id))
           .returning()
           .then((rows) => rows[0]!);
-        await audit().validated(tx, validated, people.admin.id);
+        await audit().validated(tx, validated, people.admin.id, { previousStatus: 'UPLOADED' });
       });
       expect(await importEvents()).toHaveLength(1);
     });

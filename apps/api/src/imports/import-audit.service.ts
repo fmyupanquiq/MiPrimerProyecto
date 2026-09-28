@@ -1,4 +1,8 @@
-import { IMPORT_AUDIT_ACTIONS, type ImportAuditAction } from '@letfer/shared';
+import {
+  IMPORT_AUDIT_ACTIONS,
+  type ImportAuditAction,
+  type ImportBatchStatus,
+} from '@letfer/shared';
 import { Injectable } from '@nestjs/common';
 import { AuditService } from '../audit/audit.service.js';
 import type { DbExecutor } from '../database/database.types.js';
@@ -45,9 +49,23 @@ export class ImportAuditService {
     });
   }
 
-  validated(executor: DbExecutor, batch: ImportBatchAuditSubject, actorUserId: string) {
+  /**
+   * Se confirma la casa del lote (Fase 9.3.4, §113.2, D-X8): la primera vez mueve `UPLOADED` a
+   * `VALIDATED` (`previousStatus: 'UPLOADED'`); mientras el lote sigue `VALIDATED`, la misma acción
+   * también audita una **corrección** posterior de la casa, sin que el estado cambie
+   * (`previousStatus: 'VALIDATED'`) — en ambos casos es la misma decisión humana ("esta es la
+   * casa"), solo que una vez ya movió el estado y la otra no.
+   */
+  validated(
+    executor: DbExecutor,
+    batch: ImportBatchAuditSubject,
+    actorUserId: string,
+    details: { previousStatus: ImportBatchStatus },
+  ) {
     return this.record(executor, IMPORT_AUDIT_ACTIONS.validated, batch, actorUserId, {
-      oldValues: { status: 'UPLOADED' },
+      oldValues: { status: details.previousStatus },
+      // `metadata.houseId` ya sale de `batch.houseId` (abajo): es la casa ya guardada, la misma que
+      // se está confirmando o corrigiendo.
       newValues: { status: batch.status },
     });
   }

@@ -132,3 +132,27 @@ export interface ImportBatchAnnulResult {
 
 /** Motivo fijo con el que la anulación elimina las apuestas y etapas del lote y revierte el ledger (D-X25). */
 export const IMPORT_ANNULMENT_FIXED_REASON = 'Lote anulado';
+
+/**
+ * Una etapa del plan que propone una persona (Fase 9.3.4, §113.3, D-X7, D-X28): todavía no es una
+ * etapa real (`stages`, la crea el escritor al confirmar, 9.1.5), solo la decisión de qué rango de
+ * filas del staging le corresponde. El resolutor de la 9.3.5 usa este rango para calcular, por cada
+ * fila `VALID`, a qué etapa pertenece (`stageKey`) y su `stake` (`monto / unitStake`, D-X19); esta
+ * fase no calcula ninguno de los dos.
+ */
+export interface ImportStagePlanEntry {
+  /** Identificador dentro del plan; único (lo referirá el resolutor de la 9.3.5). */
+  key: string;
+  name: string;
+  unitStake: MoneyString;
+  startsAt: Date | null;
+  /** Como máximo la última etapa (por orden de filas) puede quedar `ACTIVE` (§113.3). */
+  status: 'CLOSED' | 'ACTIVE';
+  /** Primera y última fila del staging (`import_rows.row_number`) que le corresponden, inclusive. */
+  firstRow: number;
+  lastRow: number;
+}
+
+export interface ImportStagePlan {
+  stages: ImportStagePlanEntry[];
+}
