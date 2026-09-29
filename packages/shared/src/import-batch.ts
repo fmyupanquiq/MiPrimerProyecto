@@ -1,3 +1,6 @@
+import { z } from 'zod';
+import { moneyInputSchema } from './money.js';
+
 /**
  * Lotes de importación del historial (Fase 9, §113, ADR 0020). Un lote corresponde a un archivo de
  * origen de una casa; sus filas de staging no tocan el ledger hasta confirmarlo.
@@ -30,3 +33,63 @@ export const IMPORT_AUDIT_ACTIONS = {
   annulled: 'import.batch_annulled',
 } as const;
 export type ImportAuditAction = (typeof IMPORT_AUDIT_ACTIONS)[keyof typeof IMPORT_AUDIT_ACTIONS];
+
+const IMPORT_REASON_MAX_LENGTH = 500;
+
+/**
+ * Esquemas de los endpoints de importación (Fase 9.3.8, §113.6, §113.9). Solo validan la forma
+ * (tipos, longitudes): las reglas de negocio (claves únicas del plan, rangos sin solaparse, estado
+ * del lote, disposición a confirmar) las comprueban los servicios, nunca aquí.
+ */
+
+/** `origin` identifica el adaptador de origen (hoy solo `"Betsafe"`); el backend decide cuál es. */
+export const uploadImportBatchSchema = z.object({
+  origin: z.string().trim().min(1),
+});
+export type UploadImportBatchInput = z.infer<typeof uploadImportBatchSchema>;
+
+export const importOriginQuerySchema = z.object({
+  origin: z.string().trim().min(1),
+});
+export type ImportOriginQuery = z.infer<typeof importOriginQuerySchema>;
+
+/** D-X8: confirma o corrige la casa candidata. */
+export const confirmImportHouseSchema = z.object({
+  houseId: z.uuid(),
+});
+export type ConfirmImportHouseInput = z.infer<typeof confirmImportHouseSchema>;
+
+/** D-X7: una etapa del plan propuesto, con el rango de filas del staging que le corresponde. */
+const importStagePlanEntrySchema = z.object({
+  key: z.string().trim().min(1),
+  name: z.string().trim().min(1),
+  unitStake: moneyInputSchema({ positive: true }),
+  startsAt: z.iso.datetime({ offset: true }).nullable(),
+  status: z.enum(['CLOSED', 'ACTIVE']),
+  firstRow: z.number().int().positive(),
+  lastRow: z.number().int().positive(),
+});
+export const saveImportStagePlanSchema = z.object({
+  stages: z.array(importStagePlanEntrySchema).min(1),
+});
+export type SaveImportStagePlanInput = z.infer<typeof saveImportStagePlanSchema>;
+
+/** D-X17b: reconocimiento explícito con motivo. */
+export const acknowledgeImportBatchSchema = z.object({
+  reason: z.string().trim().min(1).max(IMPORT_REASON_MAX_LENGTH),
+});
+export type AcknowledgeImportBatchInput = z.infer<typeof acknowledgeImportBatchSchema>;
+
+/** §113.6, §113.9: motivo obligatorio; `isRehearsal` exime del backup reciente (D-X26). */
+export const confirmImportBatchSchema = z.object({
+  reason: z.string().trim().min(1).max(IMPORT_REASON_MAX_LENGTH),
+  isRehearsal: z.boolean().optional(),
+  origin: z.string().trim().min(1),
+});
+export type ConfirmImportBatchInput = z.infer<typeof confirmImportBatchSchema>;
+
+/** §113.8: motivo obligatorio. */
+export const annulImportBatchSchema = z.object({
+  reason: z.string().trim().min(1).max(IMPORT_REASON_MAX_LENGTH),
+});
+export type AnnulImportBatchInput = z.infer<typeof annulImportBatchSchema>;
