@@ -73,6 +73,19 @@ export class BackupsService implements OnApplicationBootstrap, OnApplicationShut
   }
 
   /**
+   * ¿Hay algún backup `COMPLETED` tomado dentro de las últimas `windowHours` horas? (D-X26,
+   * §113.9): lo que exige confirmar una importación histórica real (§113, Fase 9); un ensayo
+   * declarado como tal queda exento y no llama a esto.
+   */
+  async hasRecentCompletedBackup(now: Date, windowHours: number): Promise<boolean> {
+    const generations = await this.list();
+    const windowMs = windowHours * 60 * 60 * 1000;
+    return generations.some(
+      (g) => g.status === 'COMPLETED' && now.getTime() - new Date(g.takenAt).getTime() <= windowMs,
+    );
+  }
+
+  /**
    * Se llama periódicamente (D-B1); dispara un backup como mucho una vez por día calendario
    * (UTC) y no antes de la hora configurada (`BACKUP_SCHEDULE_HOUR_UTC`). Decisión pura y
    * probable directamente, sin depender de que el temporizador real llegue a dispararse.
