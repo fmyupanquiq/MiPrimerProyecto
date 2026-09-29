@@ -40,6 +40,17 @@ export function startOfDayInTimeZone(instant: Date, timeZone: string): Date {
   return new Date(midnightReadAsUtc - offsetMs);
 }
 
+/** Fecha calendario (`YYYY-MM-DD`) de `instant`, leída en `timeZone` (D-X10: "misma fecha"). */
+export function calendarDateInTimeZone(instant: Date, timeZone: string): string {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  return formatter.format(instant); // en-CA formatea como YYYY-MM-DD.
+}
+
 /**
  * Instante (en UTC) de las 12:00 del día calendario `year`-`month`-`day`, en `timeZone` (§113.4,
  * D-X23): el instante técnico de una importación cuando solo se conoce la fecha, nunca la hora.

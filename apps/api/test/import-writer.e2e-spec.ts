@@ -153,6 +153,7 @@ describe('escritor de importación histórica (e2e, PostgreSQL real, §113)', ()
       .insert(importBatches)
       .values({
         projectId,
+        origin: 'Betsafe',
         originalName: 'Betsafe.xlsx',
         sourceFile: bytes,
         sourceSha256: createHash('sha256').update(bytes).digest('hex'),
@@ -536,6 +537,7 @@ describe('escritor de importación histórica (e2e, PostgreSQL real, §113)', ()
         .insert(importBatches)
         .values({
           projectId,
+          origin: 'Betsafe',
           originalName: 'Betsafe.xlsx',
           sourceFile: Buffer.from('x'),
           sourceSha256: createHash('sha256').update('x').digest('hex'),

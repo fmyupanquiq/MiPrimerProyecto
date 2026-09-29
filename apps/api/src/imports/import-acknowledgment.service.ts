@@ -7,10 +7,11 @@ import { nextVersion } from '../database/concurrency.js';
 import { DATABASE } from '../database/database.constants.js';
 import type { Database } from '../database/database.module.js';
 import { importBatches } from '../database/schema/index.js';
+import { findDuplicatesAgainstHistory } from './import-duplicate-history.js';
 import type { ImportBatchSummaryRow } from './import-types.js';
 import type { BatchFinancialSemaphore } from './parser/excel-financial-contrast.js';
-import type { ImportOriginAdapter } from './parser/import-normalization.js';
 import { runImportAnalysisPipeline } from './parser/import-preview-pipeline.js';
+import { resolveImportOriginAdapter } from './parser/import-origin-registry.js';
 
 /**
  * Reconocimientos de D-X17b (Fase 9.3.6, §113.6, §113.7, ADR 0020): centraliza si un lote puede
@@ -30,8 +31,6 @@ export interface ImportAcknowledgeInput {
 export interface ImportCanConfirmInput {
   projectId: string;
   batchId: string;
-  /** Con qué origen leer el archivo para recalcular el semáforo financiero (§113.7). */
-  adapter: ImportOriginAdapter;
   timeZone: string;
 }
 
@@ -109,9 +108,11 @@ export class ImportAcknowledgmentService {
   }
 
   /**
-   * Si el lote puede confirmarse ahora mismo: recalcula el semáforo financiero contra el archivo
-   * original (§113.7, no se persiste — mismo criterio que `GET /preview`, docs/PLAN_FASE_9_3.md
-   * §2) y lo combina con los contadores de fila ya guardados (D-X17b) y el reconocimiento.
+   * Si el lote puede confirmarse ahora mismo: recalcula el semáforo financiero y los duplicados
+   * por contenido (D-X10) contra el archivo original (§113.7, no se persiste — mismo criterio que
+   * `GET /preview`, docs/PLAN_FASE_9_3.md §2) y lo combina con los contadores de fila ya guardados
+   * (D-X17b) y el reconocimiento. El origen (Fase 9.3.9) se lee del propio lote, nunca del
+   * cliente.
    */
   async canConfirmImport(input: ImportCanConfirmInput): Promise<ImportConfirmationReadiness> {
     const [batch] = await this.db
@@ -136,24 +137,47 @@ export class ImportAcknowledgmentService {
       );
     }
 
-    let financialSemaphore: BatchFinancialSemaphore = 'GREEN';
-    if (input.adapter.financialContrast) {
-      const analysis = await runImportAnalysisPipeline({
-        file: batch.sourceFile,
-        adapter: input.adapter,
-        fileMeta: {
-          originalName: batch.originalName,
-          sizeBytes: batch.sourceSizeBytes,
-          sha256: batch.sourceSha256,
-        },
-        timeZone: input.timeZone,
-      });
-      financialSemaphore = analysis.preview.financialContrast.semaphore;
-    }
+    const adapter = resolveImportOriginAdapter(batch.origin);
+    const analysis = await runImportAnalysisPipeline({
+      file: batch.sourceFile,
+      adapter,
+      fileMeta: {
+        originalName: batch.originalName,
+        sizeBytes: batch.sourceSizeBytes,
+        sha256: batch.sourceSha256,
+      },
+      timeZone: input.timeZone,
+    });
+    const financialSemaphore: BatchFinancialSemaphore =
+      analysis.preview.financialContrast.semaphore;
     if (financialSemaphore === 'RED') {
       acknowledgmentReasons.push(
         'El contraste financiero contra el archivo de origen está en rojo (§113.7).',
       );
+    }
+
+    // D-X10: duplicados por contenido, dentro del archivo y contra el histórico ya importado de
+    // la casa (si ya está confirmada). Nunca bloquea; exige el mismo reconocimiento que lo demás.
+    const withinFileDuplicates = analysis.preview.duplicates.withinFile.length;
+    if (withinFileDuplicates > 0) {
+      acknowledgmentReasons.push(
+        `${withinFileDuplicates} grupo(s) de filas con la misma fecha, monto, cuota y ` +
+          'descripción dentro del propio archivo (D-X10).',
+      );
+    }
+    if (batch.houseId !== null) {
+      const againstHistory = await findDuplicatesAgainstHistory(this.db, {
+        projectId: input.projectId,
+        houseId: batch.houseId,
+        timeZone: input.timeZone,
+        candidates: analysis.normalization.bets,
+      });
+      if (againstHistory.length > 0) {
+        acknowledgmentReasons.push(
+          `${againstHistory.length} fila(s) coinciden en fecha, monto, cuota y descripción con ` +
+            'apuestas ya importadas de esta casa (D-X10).',
+        );
+      }
     }
 
     const blocked = blockingReasons.length > 0;

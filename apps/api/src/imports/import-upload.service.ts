@@ -85,6 +85,9 @@ export class ImportUploadService {
         .values({
           projectId: input.projectId,
           status: 'UPLOADED',
+          // Fijado una sola vez (Fase 9.3.9): preview/acknowledge/confirm lo vuelven a leer de
+          // aquí, nunca del cliente, para no depender de que repita el mismo origen siempre bien.
+          origin: input.adapter.name,
           originalName: input.originalName,
           sourceSha256: sha256,
           sourceSizeBytes: input.file.length,

@@ -73,6 +73,7 @@ describe('lotes de importación y staging en PostgreSQL (§113)', () => {
       .insert(importBatches)
       .values({
         projectId,
+        origin: 'Betsafe',
         originalName: 'Betsafe.xlsx',
         sourceFile: bytes,
         sourceSha256: sha256(bytes),
@@ -370,6 +371,7 @@ describe('lotes de importación y staging en PostgreSQL (§113)', () => {
         .insert(importBatches)
         .values({
           projectId: otherProject,
+          origin: 'Betsafe',
           houseId: foreignHouse.id,
           status: 'IMPORTED',
           originalName: 'Betsafe.xlsx',

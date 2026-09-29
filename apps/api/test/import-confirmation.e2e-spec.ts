@@ -176,7 +176,6 @@ describe('confirmación y anulación reales de una importación (e2e, PostgreSQL
     batchId,
     actorUserId: owner.id,
     reason: 'Historial de Betsafe',
-    adapter: BETSAFE_ADAPTER,
     timeZone: TIME_ZONE,
     ...overrides,
   });
@@ -405,6 +404,123 @@ describe('confirmación y anulación reales de una importación (e2e, PostgreSQL
           reason: '  ',
         }),
       ).rejects.toMatchObject({ status: 400 });
+    });
+
+    it('invalida un checkpoint de conciliación fechado en o después de lo revertido (§112.5)', async () => {
+      await writeManifest(backupDir, [completedGeneration(ctx.clock.now().toISOString())]);
+      const batch = await prepareBatch();
+      await confirmation().confirmBatch(confirmInput(batch.id));
+
+      const houses = (
+        await request(ctx.server)
+          .get(`/api/projects/${projectId}/houses`)
+          .set('Cookie', cookie)
+          .expect(200)
+      ).body as { id: string; available: string }[];
+      const available = houses.find((h) => h.id === houseId)!.available;
+
+      // Se concilia justo después de importar: coincide exactamente (MATCHED).
+      const checkpoint = (
+        await request(ctx.server)
+          .post(`/api/projects/${projectId}/houses/${houseId}/reconciliations`)
+          .set('Cookie', cookie)
+          .send({ officialAvailable: available })
+          .expect(201)
+      ).body as { id: string; status: string };
+      expect(checkpoint.status).toBe('MATCHED');
+
+      await confirmation().annulBatch({
+        projectId,
+        batchId: batch.id,
+        actorUserId: owner.id,
+        reason: 'Archivo equivocado',
+      });
+
+      const afterAnnul = (
+        await request(ctx.server)
+          .get(`/api/projects/${projectId}/houses/${houseId}/reconciliations`)
+          .set('Cookie', cookie)
+          .expect(200)
+      ).body as {
+        id: string;
+        status: string;
+        invalidatedAt: string | null;
+        invalidatedReason: string | null;
+      }[];
+      const invalidated = afterAnnul.find((c) => c.id === checkpoint.id)!;
+      expect(invalidated.status).toBe('INVALIDATED');
+      expect(invalidated.invalidatedAt).not.toBeNull();
+      expect(invalidated.invalidatedReason).not.toBeNull();
+
+      // La invariante financiera completa sigue cumpliéndose tras la anulación.
+      await assertFinancialInvariant(ctx, { projectId, cookie });
+    });
+
+    it('corregir una apuesta importada y luego anular el lote revierte lo vigente, no lo original', async () => {
+      await writeManifest(backupDir, [completedGeneration(ctx.clock.now().toISOString())]);
+      const batch = await prepareBatch();
+      await confirmation().confirmBatch(confirmInput(batch.id));
+
+      const importedBets = await ctx.t.db.select().from(bets).where(eq(bets.batchId, batch.id));
+      const won = importedBets.find((b) => b.status === 'WON')!;
+
+      // Corrección ordinaria (Fase 8.5): cambia el monto oficial de la apuesta ya importada.
+      await request(ctx.server)
+        .post(`/api/projects/${projectId}/bets/${won.id}/correct-settlement`)
+        .set('Cookie', cookie)
+        .send({
+          version: won.version,
+          reason: 'Monto mal leído del archivo',
+          officialAmount: '30.00',
+        })
+        .expect(200);
+
+      const result = await confirmation().annulBatch({
+        projectId,
+        batchId: batch.id,
+        actorUserId: owner.id,
+        reason: 'Archivo equivocado',
+      });
+      expect(result.annulledBetIds).toContain(won.id);
+
+      // El ledger queda exactamente en el estado previo a la importación, con la corrección
+      // revertida junto con todo lo demás (§113.8: "aunque se hayan corregido después").
+      await assertFinancialInvariant(ctx, { projectId, cookie });
+      const remainingMovements = await ctx.t.db
+        .select()
+        .from(financialMovements)
+        .where(eq(financialMovements.projectId, projectId));
+      // Cada movimiento del lote (capital + ambas apuestas, incluida la corrección) tiene su
+      // reversión: el saldo neto de la casa vuelve a cero.
+      expect(remainingMovements.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('concurrencia', () => {
+    it('dos confirmaciones simultáneas del mismo lote: solo una completa, sin duplicar ledger ni auditoría', async () => {
+      await writeManifest(backupDir, [completedGeneration(ctx.clock.now().toISOString())]);
+      const batch = await prepareBatch();
+
+      const [first, second] = await Promise.allSettled([
+        confirmation().confirmBatch(confirmInput(batch.id)),
+        confirmation().confirmBatch(confirmInput(batch.id)),
+      ]);
+      const outcomes = [first, second];
+      const fulfilled = outcomes.filter((o) => o.status === 'fulfilled');
+      const rejected = outcomes.filter((o) => o.status === 'rejected');
+      expect(fulfilled).toHaveLength(1);
+      expect(rejected).toHaveLength(1);
+
+      const createdBets = await ctx.t.db.select().from(bets).where(eq(bets.projectId, projectId));
+      expect(createdBets).toHaveLength(2); // nunca 4: la segunda confirmación no duplicó nada.
+
+      const importedEvents = await ctx.t.db
+        .select()
+        .from(auditLogs)
+        .where(eq(auditLogs.action, 'import.batch_imported'));
+      expect(importedEvents).toHaveLength(1);
+
+      await assertFinancialInvariant(ctx, { projectId, cookie });
     });
   });
 });

@@ -5,10 +5,11 @@ import { AppError } from '../common/app-error.js';
 import { DATABASE } from '../database/database.constants.js';
 import type { Database } from '../database/database.module.js';
 import { importBatches } from '../database/schema/index.js';
+import { findDuplicatesAgainstHistory } from './import-duplicate-history.js';
 import type { ImportBatchSummaryRow } from './import-types.js';
-import type { ImportOriginAdapter } from './parser/import-normalization.js';
 import type { ImportPreview } from './parser/import-preview.js';
-import { runImportPreviewPipeline } from './parser/import-preview-pipeline.js';
+import { runImportAnalysisPipeline } from './parser/import-preview-pipeline.js';
+import { resolveImportOriginAdapter } from './parser/import-origin-registry.js';
 
 /**
  * Lecturas del lote (Fase 9.3.8, §113): listar, consultar el detalle, recalcular la vista previa
@@ -42,15 +43,16 @@ export class ImportBatchQueryService {
     return batch;
   }
 
-  /** Recalcula la vista previa completa desde el archivo conservado; nunca persiste nada. */
-  async preview(
-    projectId: string,
-    batchId: string,
-    adapter: ImportOriginAdapter,
-    timeZone: string,
-  ): Promise<ImportPreview> {
+  /**
+   * Recalcula la vista previa completa desde el archivo conservado; nunca persiste nada. El
+   * origen (Fase 9.3.9) se lee del propio lote, nunca del cliente: así `preview` siempre usa
+   * exactamente el mismo adaptador con el que se subió, sin depender de que quien llama lo repita
+   * bien en cada petición.
+   */
+  async preview(projectId: string, batchId: string, timeZone: string): Promise<ImportPreview> {
     const batch = await this.loadWithFile(projectId, batchId);
-    return runImportPreviewPipeline({
+    const adapter = resolveImportOriginAdapter(batch.origin);
+    const analysis = await runImportAnalysisPipeline({
       file: batch.sourceFile,
       adapter,
       fileMeta: {
@@ -60,6 +62,17 @@ export class ImportBatchQueryService {
       },
       timeZone,
     });
+
+    // D-X10: contra el histórico solo se puede comparar con la casa ya confirmada (9.3.4); sin
+    // ella, `withinFile` (ya calculado, puro) es toda la señal de duplicados que hay todavía.
+    if (batch.houseId === null) return analysis.preview;
+    const againstHistory = await findDuplicatesAgainstHistory(this.db, {
+      projectId,
+      houseId: batch.houseId,
+      timeZone,
+      candidates: analysis.normalization.bets,
+    });
+    return { ...analysis.preview, duplicates: { ...analysis.preview.duplicates, againstHistory } };
   }
 
   async getFile(

@@ -203,6 +203,13 @@ la aplicación.
   `import_batches_guard`, migración 0033): los tres campos de reconocimiento deben estar los tres
   presentes o los tres ausentes (igual que ya exigen `annulled_at`/`annulled_by`/`annulment_reason`
   entre sí).
+- **`import_batches.origin`** (añadido en la auditoría de cierre, 9.3.9, migraciones 0039/0040):
+  texto, `NOT NULL`, sin default; lo fija `ImportUploadService` una sola vez al subir y queda
+  congelado desde la creación (mismo disparador que protege `original_name`/`source_sha256`). No
+  estaba previsto en este documento: surgió al construir los endpoints (9.3.8) — sin él, `preview`,
+  `acknowledge` y `confirm` tenían que confiar en que el cliente repitiera siempre el mismo origen
+  que usó al subir. `POST /` sigue pidiendo `origin` (es la única vez que hace falta); el resto de
+  rutas lo leen del lote.
 
 ## 8. Orden de commits (definitivo)
 
@@ -231,7 +238,10 @@ llama ya esté probado.
 8. **9.3.8** — Endpoints HTTP como capa fina sobre los servicios anteriores (los nueve de la
    sección 5): permisos, `@RequireRecentAuth()`, esquemas zod.
 9. **9.3.9** — Revisión final de la subfase (permisos, auditoría, concurrencia, invariante) antes
-   de la interfaz web.
+   de la interfaz web. La auditoría encontró dos huecos reales frente al ADR 0020/§113 y ambos se
+   cerraron en la misma subfase: D-X10 (duplicados por contenido, nunca implementados desde la
+   9.2) y el origen del lote sin persistir (`import_batches.origin`, arriba). Detalle completo en
+   `docs/RESUMEN_FASE_9_3_CIERRE.md`.
 
 La interfaz web (frontend) y el ajuste de redacción del §113.6 quedan para después de que el
 backend de la 9.3 esté aprobado.

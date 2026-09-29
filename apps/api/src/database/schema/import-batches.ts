@@ -45,6 +45,15 @@ export const importBatches = pgTable(
       .references(() => projects.id, { onDelete: 'restrict' }),
     houseId: uuid('house_id').references(() => houses.id, { onDelete: 'restrict' }),
     status: importBatchStatusEnum('status').notNull().default('UPLOADED'),
+    /**
+     * Nombre del adaptador de origen (p. ej. `"Betsafe"`) que leyó este archivo (Fase 9.3.9). Lo
+     * fija `ImportUploadService` una sola vez, al subir; nunca cambia después (mismo grupo que
+     * `original_name`/`source_sha256`, disparador `import_batches_guard`): pertenece al archivo,
+     * no es una interpretación humana corregible como `house_id`. Sin esto, `preview`,
+     * `acknowledge` y `confirm` tendrían que confiar en que el cliente repita el origen correcto
+     * en cada llamada — en vez de eso, siempre se lee de aquí.
+     */
+    origin: text('origin').notNull(),
     /** Nombre del archivo tal como se subió; de él sale la casa (D-X8). */
     originalName: text('original_name').notNull(),
     /** Huella SHA-256 (64 hex en minúsculas) de `source_file`. */
@@ -95,6 +104,7 @@ export const importBatches = pgTable(
       .on(table.projectId, table.houseId, table.sourceSha256)
       .where(sql`${table.status} = 'IMPORTED'`),
     check('import_batches_name_not_blank', sql`length(btrim(${table.originalName})) > 0`),
+    check('import_batches_origin_not_blank', sql`length(btrim(${table.origin})) > 0`),
     check('import_batches_sha256_format', sql`${table.sourceSha256} ~ '^[0-9a-f]{64}$'`),
     check(
       'import_batches_sha256_matches_file',

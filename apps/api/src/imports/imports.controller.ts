@@ -5,14 +5,12 @@ import {
   confirmImportHouseSchema,
   ErrorCode,
   IMPORT_MAX_FILE_BYTES,
-  importOriginQuerySchema,
   saveImportStagePlanSchema,
   uploadImportBatchSchema,
   type AcknowledgeImportBatchInput,
   type AnnulImportBatchInput,
   type ConfirmImportBatchInput,
   type ConfirmImportHouseInput,
-  type ImportOriginQuery,
   type SaveImportStagePlanInput,
   type UploadImportBatchInput,
 } from '@letfer/shared';
@@ -24,7 +22,6 @@ import {
   HttpCode,
   Param,
   Post,
-  Query,
   StreamableFile,
   UploadedFile,
   UseInterceptors,
@@ -121,13 +118,10 @@ export class ImportBatchesController {
   preview(
     @CurrentProject() access: ProjectAccess,
     @Param('batchId') batchId: string,
-    @Query({ schema: importOriginQuerySchema }) query: ImportOriginQuery,
   ): Promise<ImportPreview> {
-    const adapter = resolveImportOriginAdapter(query.origin);
     return this.query.preview(
       access.project.id,
       batchIdOrNotFound(batchId),
-      adapter,
       access.project.timezone,
     );
   }
@@ -203,14 +197,12 @@ export class ImportBatchesController {
     @Param('batchId') batchId: string,
     @Body({ schema: confirmImportBatchSchema }) body: ConfirmImportBatchInput,
   ): Promise<ImportBatchWriteResult> {
-    const adapter = resolveImportOriginAdapter(body.origin);
     return this.confirmation.confirmBatch({
       projectId: access.project.id,
       batchId: batchIdOrNotFound(batchId),
       actorUserId: auth.user.id,
       reason: body.reason,
       isRehearsal: body.isRehearsal,
-      adapter,
       timeZone: access.project.timezone,
     });
   }

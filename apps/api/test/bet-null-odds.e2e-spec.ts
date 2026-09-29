@@ -91,6 +91,7 @@ describe('cuota nula en apuestas importadas (e2e, PostgreSQL real, §113.5)', ()
       .insert(importBatches)
       .values({
         projectId,
+        origin: 'Betsafe',
         originalName: 'Betano.xlsx',
         sourceFile: bytes,
         sourceSha256: createHash('sha256').update(bytes).digest('hex'),

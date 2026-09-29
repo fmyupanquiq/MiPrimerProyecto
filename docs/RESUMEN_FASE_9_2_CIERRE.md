@@ -93,6 +93,12 @@ encadenarlos.
   Betsafe (solo se analizó su estructura en la 9.2.0; todas las pruebas de código usan archivos
   sintéticos con la misma forma, nunca el archivo de la persona).
 
+> **Nota añadida en la auditoría de cierre de la 9.3.9:** esta lista no incluyó en su momento los
+> **duplicados por contenido** de D-X10 (solo la huella del archivo completo estaba prevista aquí y
+> en el escritor de la 9.1.5). Nadie los diferió a propósito: se perdieron entre este documento y
+> `docs/PLAN_FASE_9_3.md`, y solo se detectaron y completaron en la 9.3.9. Ver
+> `docs/RESUMEN_FASE_9_3_CIERRE.md`.
+
 ## 5. Decisiones pendientes
 
 - **D-X7** — unidad y fronteras exactas de cada etapa. La unidad (12.5) está reconfirmada por los

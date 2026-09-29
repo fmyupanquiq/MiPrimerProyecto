@@ -3098,9 +3098,11 @@ El lote pasa a anulado y nada se borra: el archivo original, su informe y sus fi
 
 #### 113.9 Permisos, archivo original, backup y auditoría
 
-- **Permisos de proyecto:** `import.run` (subir, validar, previsualizar, confirmar y anular) e `imports.view`
-  (consultar lotes, informes y archivos), ambos para el Administrador de Proyecto. Colaborador y Lector no los
-  reciben.
+- **Permisos de proyecto:** `import.run` (subir, confirmar la casa o el plan de etapas, reconocer, confirmar y
+  anular) e `imports.view` (listar, consultar el detalle, la vista previa y el archivo original), ambos para el
+  Administrador de Proyecto. Colaborador y Lector no los reciben. (Corrección documental, Fase 9.3.9: la vista
+  previa se lee con `imports.view`, no con `import.run` — es una consulta sin efectos, igual que el resto de lo
+  que ese permiso ya cubre; el código de la 9.3.8 ya lo implementó así.)
 - **Archivo original.** Se conserva dentro del sistema (con su `sha256` y un límite de 10 MB; un archivo mayor se rechaza antes de entrar al staging), de modo que forma
   parte de los backups y de la restauración (§37).
 - **Backup previo (§82).** Confirmar una importación real exige un backup completado en las últimas 24 horas. Un

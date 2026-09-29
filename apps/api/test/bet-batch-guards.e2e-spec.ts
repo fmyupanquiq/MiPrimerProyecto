@@ -134,6 +134,7 @@ describe('guardas de las apuestas de un lote (e2e, PostgreSQL real, §113.8)', (
       .insert(importBatches)
       .values({
         projectId,
+        origin: 'Betsafe',
         originalName: 'Betano.xlsx',
         sourceFile: bytes,
         sourceSha256: createHash('sha256').update(bytes).digest('hex'),

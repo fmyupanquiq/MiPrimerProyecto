@@ -76,6 +76,7 @@ describe('resolución humana de casa y plan de etapas (e2e, PostgreSQL real, §1
       .insert(importBatches)
       .values({
         projectId,
+        origin: 'Betsafe',
         originalName: 'Betsafe.xlsx',
         sourceFile: FILE,
         sourceSha256: SHA256,

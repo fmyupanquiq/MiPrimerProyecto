@@ -17,8 +17,8 @@ import type {
   ImportBatchWriteResult,
   NormalizedInitialCapital,
 } from './import-types.js';
-import type { ImportOriginAdapter } from './parser/import-normalization.js';
 import { runImportAnalysisPipeline } from './parser/import-preview-pipeline.js';
+import { resolveImportOriginAdapter } from './parser/import-origin-registry.js';
 
 /**
  * Cierre de la Fase 9.3.7 (§113.6, §113.8, §113.9, ADR 0020, docs/PLAN_FASE_9_3.md §3): conecta
@@ -42,7 +42,6 @@ export interface ImportAssembleWriteInputInput {
   /** Motivo de la confirmación (§113.6); lo pedirá el endpoint futuro, aquí ya es obligatorio. */
   reason: string;
   isRehearsal?: boolean;
-  adapter: ImportOriginAdapter;
   timeZone: string;
 }
 
@@ -93,7 +92,6 @@ export class ImportConfirmationService {
     const readiness = await this.acknowledgment.canConfirmImport({
       projectId: input.projectId,
       batchId: input.batchId,
-      adapter: input.adapter,
       timeZone: input.timeZone,
     });
     if (readiness.blocked) {
@@ -120,10 +118,12 @@ export class ImportConfirmationService {
     });
 
     // Capital inicial declarado por el propio archivo (§113.3), vigente ahora mismo (no se
-    // persiste, docs/PLAN_FASE_9_3.md §2): mismo criterio que `GET /preview`.
+    // persiste, docs/PLAN_FASE_9_3.md §2): mismo criterio que `GET /preview`. El origen (Fase
+    // 9.3.9) se lee del propio lote, nunca del cliente.
+    const adapter = resolveImportOriginAdapter(batch.origin);
     const analysis = await runImportAnalysisPipeline({
       file: batch.sourceFile,
-      adapter: input.adapter,
+      adapter,
       fileMeta: {
         originalName: batch.originalName,
         sizeBytes: batch.sourceSizeBytes,

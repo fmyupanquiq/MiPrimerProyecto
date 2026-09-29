@@ -62,6 +62,7 @@ describe('enlaces de los lotes con bets, movimientos y etapas (PostgreSQL real, 
       .insert(importBatches)
       .values({
         projectId,
+        origin: 'Betsafe',
         originalName: 'Betsafe.xlsx',
         sourceFile: bytes,
         sourceSha256: createHash('sha256').update(bytes).digest('hex'),

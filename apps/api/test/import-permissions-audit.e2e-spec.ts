@@ -68,6 +68,7 @@ describe('permisos y auditoría de importación (e2e, PostgreSQL real, §113.9)'
       .insert(importBatches)
       .values({
         projectId,
+        origin: 'Betsafe',
         originalName: 'Betsafe.xlsx',
         sourceFile: FILE,
         sourceSha256: SHA256,

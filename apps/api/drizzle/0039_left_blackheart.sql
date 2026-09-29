@@ -1,0 +1,2 @@
+ALTER TABLE "import_batches" ADD COLUMN "origin" text NOT NULL;--> statement-breakpoint
+ALTER TABLE "import_batches" ADD CONSTRAINT "import_batches_origin_not_blank" CHECK (length(btrim("import_batches"."origin")) > 0);

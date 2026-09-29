@@ -274,6 +274,20 @@
       "when": 1790550644847,
       "tag": "0038_import_batches_acknowledgment_frozen",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1790624242350,
+      "tag": "0039_left_blackheart",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1790624253379,
+      "tag": "0040_import_batches_origin_frozen",
+      "breakpoints": true
     }
   ]
 }

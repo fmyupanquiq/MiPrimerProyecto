@@ -196,7 +196,6 @@ describe('resolución de apuestas, reconocimientos y preparación de la confirma
     const readiness = await acknowledgment().canConfirmImport({
       projectId,
       batchId: batch.id,
-      adapter: BETSAFE_ADAPTER,
       timeZone: TIME_ZONE,
     });
     expect(readiness).toMatchObject({
@@ -212,7 +211,6 @@ describe('resolución de apuestas, reconocimientos y preparación de la confirma
         batchId: batch.id,
         actorUserId: owner.id,
         reason: 'Historial de Betsafe',
-        adapter: BETSAFE_ADAPTER,
         timeZone: TIME_ZONE,
       }),
     ).rejects.toMatchObject({ status: 409 });
@@ -231,7 +229,6 @@ describe('resolución de apuestas, reconocimientos y preparación de la confirma
     const readiness = await acknowledgment().canConfirmImport({
       projectId,
       batchId: batch.id,
-      adapter: BETSAFE_ADAPTER,
       timeZone: TIME_ZONE,
     });
     expect(readiness).toMatchObject({
@@ -245,7 +242,6 @@ describe('resolución de apuestas, reconocimientos y preparación de la confirma
       batchId: batch.id,
       actorUserId: owner.id,
       reason: 'Historial de Betsafe',
-      adapter: BETSAFE_ADAPTER,
       timeZone: TIME_ZONE,
     });
 
@@ -302,7 +298,6 @@ describe('resolución de apuestas, reconocimientos y preparación de la confirma
     const readiness = await acknowledgment().canConfirmImport({
       projectId,
       batchId: batch.id,
-      adapter: BETSAFE_ADAPTER,
       timeZone: TIME_ZONE,
     });
     expect(readiness).toMatchObject({ blocked: true, canConfirm: false });
@@ -313,7 +308,6 @@ describe('resolución de apuestas, reconocimientos y preparación de la confirma
         batchId: batch.id,
         actorUserId: owner.id,
         reason: 'Historial de Betsafe',
-        adapter: BETSAFE_ADAPTER,
         timeZone: TIME_ZONE,
       }),
     ).rejects.toMatchObject({ status: 409 });
@@ -332,7 +326,6 @@ describe('resolución de apuestas, reconocimientos y preparación de la confirma
       batchId: batch.id,
       actorUserId: owner.id,
       reason: 'Historial de Betsafe',
-      adapter: BETSAFE_ADAPTER,
       timeZone: TIME_ZONE,
     });
 

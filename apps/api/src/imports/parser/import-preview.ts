@@ -7,6 +7,10 @@ import {
 import { startOfDayInTimeZone } from '../../common/timezone.js';
 import type { NormalizedImportSelection } from '../import-types.js';
 import type { ExcelFinancialContrastReport } from './excel-financial-contrast.js';
+import {
+  detectWithinFileDuplicates,
+  type ImportDuplicateMatch,
+} from './import-duplicate-detection.js';
 import type {
   ImportNormalizationResult,
   PreliminaryNormalizedBet,
@@ -78,6 +82,17 @@ export interface ImportPreviewBet {
   provisionalReturn: MoneyString | null;
 }
 
+/**
+ * Duplicados por contenido (D-X10, §113.6): nunca descarta nada, solo informa. `withinFile` es
+ * puro (se calcula siempre, aquí mismo); `againstHistory` necesita la casa confirmada y la base de
+ * datos, así que esta función pura lo deja vacío — quien tiene esos dos datos (9.3.9,
+ * `ImportBatchQueryService`) lo rellena después, sin volver a calcular `withinFile`.
+ */
+export interface ImportDuplicateReport {
+  withinFile: ImportDuplicateMatch[];
+  againstHistory: ImportDuplicateMatch[];
+}
+
 export interface ImportPreview {
   file: ImportPreviewFile;
   /** Nombre del adaptador de origen usado (p. ej. `"Betsafe"`); nunca un tipo, solo un texto. */
@@ -92,6 +107,7 @@ export interface ImportPreview {
   bets: ImportPreviewBet[];
   /** Resultado íntegro de la 9.2.5 (§113.7): contraste contra las cifras propias del archivo. */
   financialContrast: ExcelFinancialContrastReport;
+  duplicates: ImportDuplicateReport;
 }
 
 /** D-X8: la casa candidata sale del nombre del archivo (sin la extensión); se confirma en la vista previa. */
@@ -177,6 +193,10 @@ export function buildImportPreview(input: BuildImportPreviewInput): ImportPrevie
     stages: { candidates: normalization.stageCandidates },
     bets,
     financialContrast,
+    duplicates: {
+      withinFile: detectWithinFileDuplicates(normalization.bets, input.timeZone),
+      againstHistory: [],
+    },
   };
 }
 

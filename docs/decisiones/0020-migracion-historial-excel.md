@@ -144,7 +144,9 @@ perfil del usuario): todo lo de aquí es solo de Betsafe.
   silencio.
 - **D-X10.** Identidad de una fila: huella `sha256` del archivo más su N°. Además se buscan duplicados por
   contenido (fecha, descripción, monto, cuota), tanto dentro del archivo como contra las apuestas ya importadas de
-  esa casa, y **se reportan sin descartar nada solos**.
+  esa casa, y **se reportan sin descartar nada solos**. La huella del archivo se implementó en la 9.1.5; los
+  duplicados por contenido quedaron sin construir hasta la auditoría de cierre de la 9.3.9, que los completó
+  (`ImportPreview.duplicates`, D-X17b: exige reconocimiento, nunca bloquea).
 - **D-X12.** Solo `.xlsx`, con un lector que exponga los valores exactos como texto (el archivo trae ruido de coma
   flotante); la librería se elige y se fija sin `^` al empezar la 9.2. Se conserva el archivo original (D-X26).
 - **D-X14.** Escala pequeña (decenas o cientos de apuestas por casa): sin optimización previa; la validación se
@@ -307,6 +309,21 @@ liquidación, deporte, mercado, tipo, autor, etapa, selecciones desglosadas, tic
 - **D-B8:** redondeo del retorno calculado, hasta disponer de retornos oficiales de Betsafe y Betano (tickets o
   historiales), sobre todo de ganadas cuyo `monto × cuota` tenga más de dos decimales y de múltiples con cuotas de
   seis decimales. El Excel no es evidencia del redondeo de la casa. No se decide si la política es global o por casa.
+
+## Adenda (auditoría de cierre, Fase 9.3.9)
+
+- **Origen del archivo persistido.** `import_batches` gana una columna `origin` (texto, `NOT NULL`, congelada desde
+  la creación por el mismo disparador que protege `original_name`/`source_sha256`): el nombre del adaptador
+  (`ImportOriginAdapter.name`, hoy solo `"Betsafe"`) que `ImportUploadService` fija una sola vez al subir el
+  archivo. Antes, `preview`/`acknowledge`/`confirm` volvían a pedirlo al cliente en cada llamada, sin que nada
+  garantizara que fuera siempre el mismo que al subir — una grieta de consistencia real (no solo de cara a Betano),
+  porque el reconocimiento de D-X17b depende de que lo que la persona vio sea exactamente lo que se confirma.
+  Migraciones 0039/0040.
+- **D-X10 completado**, ver arriba: los duplicados por contenido nunca se habían construido (la 9.2/9.3 solo
+  implementaron la huella del archivo completo); la auditoría de cierre de la 9.3.9 lo encontró y lo cerró.
+- **§113.9 corregido**: el texto decía que `import.run` cubre la vista previa; el código (9.3.8, ya aprobado) la
+  puso bajo `imports.view`, sin impacto de seguridad (ningún rol tiene uno sin el otro). Se corrigió el texto de la
+  especificación para que coincida con lo aprobado, no al revés.
 
 ## Pruebas de aceptación previstas
 

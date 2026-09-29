@@ -57,6 +57,7 @@ describe('cuota nula solo en apuestas de un lote (PostgreSQL real, §113.5)', ()
       .insert(importBatches)
       .values({
         projectId,
+        origin: 'Betsafe',
         originalName: 'Betsafe.xlsx',
         sourceFile: bytes,
         sourceSha256: createHash('sha256').update(bytes).digest('hex'),
