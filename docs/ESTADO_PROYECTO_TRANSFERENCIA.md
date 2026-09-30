@@ -6,11 +6,15 @@
   la 9.3). Resumen: `docs/RESUMEN_FASE_9_4_CIERRE.md`.
 - **Rama actual:** `fase-9.1/modelo-importacion` (toda la Fase 9 vive aquí; no está integrada a
   `main`).
-- **Último commit:** `5d96865` — `docs: add project handoff document for Phase 9.3 close`. **Todo el
-  trabajo de la 9.4 está sin commit** en el árbol de trabajo (pendiente de confirmación del usuario).
+- **Último commit de la Fase 9:** `9e85bf2` — `docs(imports): close phase 9 documentation`. Solo
+  le sigue el commit que actualiza este documento. La Fase 9.4 está commiteada en seis commits
+  (`e7a4246` a `9e85bf2`): contratos compartidos, capa API y hooks de la web, páginas y vista
+  previa, flujo de resolución, cobertura del flujo y documentación de cierre. Árbol de trabajo
+  limpio.
 - **Qué está funcionando:** backend y frontend de importación completos, con PostgreSQL real y
   `npm run check` en verde (133 pruebas de `shared`, 1186 de `api` con 2 *skips* conocidos, 315 de
-  `web`, build incluido). Sin integrar a `main`. Sin `push`.
+  `web`, build incluido). Rama lista para revisar su integración; todavía sin integrar a `main` y
+  sin `push`.
 
 ## Arquitectura actual de importación
 
@@ -87,7 +91,9 @@ acción y pruebas en `docs/RESUMEN_FASE_9_4_CIERRE.md`.
 
 ### Antes de integrar a `main`
 
-- Confirmar y commitear el trabajo de la 9.4 (hoy sin commit) y decidir la integración de la rama.
+- Decidir la integración de la rama a `main` (recomendado antes: una prueba manual en el navegador
+  del recorrido completo con un archivo de Betsafe, y decidir si el ensayo con los dos archivos
+  reales va antes o después de integrar).
 - **Ajuste de redacción del §113.6** ("vista previa ejecutada y revertida" ya no describe la
   arquitectura real desde la 9.2.6): sigue pendiente; tocar la especificación requiere aprobación.
 
