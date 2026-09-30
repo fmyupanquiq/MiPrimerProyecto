@@ -1,4 +1,9 @@
-import { ErrorCode, IMPORT_MAX_FILE_BYTES } from '@letfer/shared';
+import {
+  ErrorCode,
+  IMPORT_MAX_FILE_BYTES,
+  type ImportBatchSummaryRow,
+  type ImportPreview,
+} from '@letfer/shared';
 import { createHash } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import { AppError } from '../common/app-error.js';
@@ -7,9 +12,8 @@ import type { Database } from '../database/database.module.js';
 import type { DbExecutor } from '../database/database.types.js';
 import { importBatches, importRows, type NewImportRow } from '../database/schema/index.js';
 import { ImportAuditService } from './import-audit.service.js';
-import type { ImportBatchSummaryRow, ImportRowNormalizedBet } from './import-types.js';
+import type { ImportRowNormalizedBet } from './import-types.js';
 import type { ImportOriginAdapter } from './parser/import-normalization.js';
-import type { ImportPreview } from './parser/import-preview.js';
 import {
   runImportAnalysisPipeline,
   type ImportPipelineAnalysis,

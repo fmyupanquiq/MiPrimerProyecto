@@ -5,7 +5,12 @@ import {
   roundMoney,
   subtractMoney,
   ZERO_MONEY,
+  type BatchFinancialSemaphore,
+  type BetFinancialComparison,
+  type ExcelFinancialContrastReport,
+  type HeaderConsistencyCheck,
   type MoneyString,
+  type RowFinancialSemaphore,
 } from '@letfer/shared';
 import type { PreliminaryNormalizedBet } from './import-normalization.js';
 import type { RawCellValue, RawSheet } from './sheet-model.js';
@@ -46,58 +51,12 @@ export interface ExcelFinancialContrastConfig {
   headerCells: ExcelHeaderCells;
 }
 
-export type RowFinancialSemaphore = 'GREEN' | 'RED';
-export type BatchFinancialSemaphore = 'GREEN' | 'YELLOW' | 'RED';
-
-export interface BetFinancialComparison {
-  rowNumber: number;
-  /** `null` si la celda del Excel está vacía (p. ej. una plantilla que igualmente se compara). */
-  excelTotalReturn: MoneyString | null;
-  excelProfit: MoneyString | null;
-  letferTotalReturn: MoneyString;
-  letferProfit: MoneyString;
-  /** `excel − LetFer` (D-X17); `null` cuando no hay valor del Excel con el que restar. */
-  totalReturnResidual: MoneyString | null;
-  profitResidual: MoneyString | null;
-  /** Verde si ambos residuos son `<= 0.01` en valor absoluto (o no hay valor del Excel); si no, rojo. */
-  semaphore: RowFinancialSemaphore;
-}
-
-export interface HeaderConsistencyCheck {
-  label: string;
-  /** Valor que el propio archivo guarda en la celda de cabecera; `null` si no se configuró o está vacía. */
-  excelValue: MoneyString | null;
-  /** Reconstruido sumando las propias filas del archivo (nunca las de LetFer). */
-  expectedFromRows: MoneyString;
-  residual: MoneyString | null;
-  consistent: boolean;
-}
-
-export interface ExcelFinancialContrastReport {
-  /**
-   * `true` cuando este informe viene de contrastar realmente contra un archivo (siempre lo es al
-   * llamar a {@link buildExcelFinancialContrast}, sea cual sea su resultado). `false` solo lo pone
-   * quien orquesta el pipeline (Fase 9.3.2) cuando un origen no tiene `financialContrast`
-   * configurado: en ese caso el semáforo `GREEN` no significa "todo coincide", significa "no hay
-   * nada configurado que contrastar" — y este campo lo dice explícitamente, para no confundir un
-   * origen sin configurar con uno que de verdad no tuvo ninguna diferencia.
-   */
-  configured: boolean;
-  bets: BetFinancialComparison[];
-  /** `T`: suma de los residuos de GANANCIA de las filas con valor del Excel (D-X17, "total del lote"). */
-  totalProfitResidual: MoneyString;
-  /** Cuántas de esas filas tienen, en el Excel, un valor con más de dos decimales (margen explicable). */
-  rowsWithMoreThanTwoDecimals: number;
-  semaphore: BatchFinancialSemaphore;
-  headerChecks: HeaderConsistencyCheck[];
-  /**
-   * El "Bank Inicial" que el propio archivo declara en su cabecera (D-X3/D-X18); `null` si no se
-   * configuró la celda o está vacía. Se lee aquí (y no en otro sitio) porque este módulo ya es el
-   * único que toca las celdas de cabecera del archivo; la vista previa (9.2.6) lo reutiliza para no
-   * tener que leer el Excel una segunda vez.
-   */
-  initialBankAmount: MoneyString | null;
-}
+/**
+ * `RowFinancialSemaphore`, `BatchFinancialSemaphore`, `BetFinancialComparison`,
+ * `HeaderConsistencyCheck` y `ExcelFinancialContrastReport` viven en `@letfer/shared` (Fase 9.4,
+ * preparación previa): son parte de `ImportPreview.financialContrast`, que tanto la API como la
+ * futura web necesitan con el mismo tipo.
+ */
 
 const ROUNDING_TOLERANCE = '0.01';
 const isWithinTolerance = (residual: MoneyString): boolean =>

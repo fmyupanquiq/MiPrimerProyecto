@@ -1,4 +1,8 @@
-import { ErrorCode } from '@letfer/shared';
+import {
+  ErrorCode,
+  type ImportBatchAnnulResult,
+  type ImportBatchWriteResult,
+} from '@letfer/shared';
 import { Inject, Injectable } from '@nestjs/common';
 import { and, eq, getTableColumns } from 'drizzle-orm';
 import { BackupsService } from '../backups/backups.service.js';
@@ -12,9 +16,7 @@ import { ImportBetResolutionService } from './import-bet-resolution.service.js';
 import { ImportWriterService } from './import-writer.service.js';
 import type {
   ImportBatchAnnulInput,
-  ImportBatchAnnulResult,
   ImportBatchWriteInput,
-  ImportBatchWriteResult,
   NormalizedInitialCapital,
 } from './import-types.js';
 import { runImportAnalysisPipeline } from './parser/import-preview-pipeline.js';

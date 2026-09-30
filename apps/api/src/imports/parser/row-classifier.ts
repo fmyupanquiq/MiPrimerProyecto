@@ -1,4 +1,9 @@
-import { moneyInputSchema, oddsInputSchema, type BetStatus } from '@letfer/shared';
+import {
+  moneyInputSchema,
+  oddsInputSchema,
+  type BetStatus,
+  type RowClassificationFinding,
+} from '@letfer/shared';
 import { isBlankCell, type RawCellValue, type RawRow } from './sheet-model.js';
 
 /**
@@ -50,20 +55,6 @@ export function extractSemanticRow(row: RawRow, map: SpreadsheetColumnMap): Sema
     odds: at(map.odds),
     result: at(map.result),
   };
-}
-
-export interface RowClassificationFinding {
-  code:
-    | 'MISSING_AMOUNT'
-    | 'MISSING_ODDS'
-    | 'MISSING_RESULT'
-    | 'MISSING_DESCRIPTION'
-    | 'MISSING_DATE'
-    | 'INVALID_AMOUNT'
-    | 'INVALID_ODDS'
-    | 'INVALID_RESULT'
-    | 'INVALID_DATE';
-  message: string;
 }
 
 export type RowClassification = 'VALID' | 'TEMPLATE' | 'EMPTY' | 'PARTIAL' | 'INVALID';

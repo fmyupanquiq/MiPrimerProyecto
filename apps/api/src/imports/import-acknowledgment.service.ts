@@ -1,4 +1,9 @@
-import { ErrorCode } from '@letfer/shared';
+import {
+  ErrorCode,
+  type BatchFinancialSemaphore,
+  type ImportBatchSummaryRow,
+  type ImportConfirmationReadiness,
+} from '@letfer/shared';
 import { Inject, Injectable } from '@nestjs/common';
 import { and, eq, getTableColumns } from 'drizzle-orm';
 import { AppError } from '../common/app-error.js';
@@ -8,8 +13,6 @@ import { DATABASE } from '../database/database.constants.js';
 import type { Database } from '../database/database.module.js';
 import { importBatches } from '../database/schema/index.js';
 import { findDuplicatesAgainstHistory } from './import-duplicate-history.js';
-import type { ImportBatchSummaryRow } from './import-types.js';
-import type { BatchFinancialSemaphore } from './parser/excel-financial-contrast.js';
 import { runImportAnalysisPipeline } from './parser/import-preview-pipeline.js';
 import { resolveImportOriginAdapter } from './parser/import-origin-registry.js';
 
@@ -32,24 +35,6 @@ export interface ImportCanConfirmInput {
   projectId: string;
   batchId: string;
   timeZone: string;
-}
-
-export interface ImportConfirmationReadiness {
-  /** D-X17b: filas `INVALID`. Bloquea sin excepción — ningún reconocimiento lo levanta (§113.6). */
-  blocked: boolean;
-  blockingReasons: string[];
-  /**
-   * Exige un reconocimiento explícito antes de confirmar (§113.7): filas `PARTIAL` (D-X17b) o
-   * semáforo financiero `RED`. El amarillo **no** lo exige — "amarillo solo informa" (§113.7); se
-   * expone igualmente en `financialSemaphore` para que quien confirme lo vea, pero no bloquea.
-   */
-  needsAcknowledgment: boolean;
-  acknowledgmentReasons: string[];
-  /** El lote ya tiene un reconocimiento guardado (`acknowledged_at` no nulo). */
-  acknowledged: boolean;
-  financialSemaphore: BatchFinancialSemaphore;
-  /** `true` solo si no está bloqueado y, si hacía falta reconocimiento, ya se dio. */
-  canConfirm: boolean;
 }
 
 const { sourceFile: omittedSourceFile, ...BATCH_COLUMNS } = getTableColumns(importBatches);

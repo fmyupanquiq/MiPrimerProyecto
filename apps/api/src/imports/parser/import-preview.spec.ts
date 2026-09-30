@@ -1,3 +1,4 @@
+import type { ImportPreviewFile } from '@letfer/shared';
 import { createHash } from 'node:crypto';
 import ExcelJS from 'exceljs';
 import { describe, expect, it } from 'vitest';
@@ -5,11 +6,7 @@ import { BETSAFE_ADAPTER, BETSAFE_FINANCIAL_CONTRAST_CONFIG } from './betsafe-ad
 import { buildExcelFinancialContrast } from './excel-financial-contrast.js';
 import { normalizeImportSheet, type ImportOriginAdapter } from './import-normalization.js';
 import { buildImportValidationReport } from './import-validation-report.js';
-import {
-  buildImportPreview,
-  deriveCandidateHouseName,
-  type ImportPreviewFile,
-} from './import-preview.js';
+import { buildImportPreview, deriveCandidateHouseName } from './import-preview.js';
 import type { RawSheet } from './sheet-model.js';
 import { readWorkbook } from './xlsx-reader.js';
 

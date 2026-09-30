@@ -1,8 +1,10 @@
-import type { BetStatus, BetType, MoneyString, OddsString } from '@letfer/shared';
-import type { ImportBatchRow } from '../database/schema/index.js';
-
-/** Un lote sin su archivo original (hasta 10 MB), que el escritor no necesita leer. */
-export type ImportBatchSummaryRow = Omit<ImportBatchRow, 'sourceFile'>;
+import type {
+  BetStatus,
+  BetType,
+  MoneyString,
+  NormalizedImportSelection,
+  OddsString,
+} from '@letfer/shared';
 
 /**
  * Datos ya normalizados que recibe el escritor de importación (Fase 9.1.5, §113, ADR 0020). Ningún
@@ -56,17 +58,6 @@ export interface ImportRowNormalizedBet {
   selections: NormalizedImportSelection[];
 }
 
-export interface NormalizedImportSelection {
-  eventGroup: number;
-  position: number;
-  sport?: string | null;
-  event: string;
-  market?: string | null;
-  selection: string;
-  /** `null` en el historial importado: la cuota total de la apuesta es la autoridad (D-X15). */
-  visibleOdds: OddsString | null;
-}
-
 /** Apuesta histórica. Los estados admitidos son los del Excel: ganada, perdida y pendiente. */
 export interface NormalizedImportBet {
   /** Fila del archivo (`import_rows.row_number`); si existe, la fila enlaza la apuesta creada. */
@@ -101,53 +92,12 @@ export interface ImportBatchWriteInput {
   bets: NormalizedImportBet[];
 }
 
-/** Aviso del informe final (no bloquea). */
-export interface ImportWarning {
-  code: 'WORST_ORDER_NEGATIVE_BALANCE';
-  houseId: string;
-  occurredAt: string;
-  balance: MoneyString;
-  message: string;
-}
-
-/** Informe final del lote (`import_batches.report`). */
-export interface ImportBatchReport extends Record<string, unknown> {
-  houseId: string;
-  stages: number;
-  initialCapital: MoneyString | null;
-  bets: { total: number; won: number; lost: number; pending: number };
-  ledgerRows: number;
-  /** Ganancia/pérdida de las apuestas liquidadas, con las cifras de LetFer. */
-  profitLoss: MoneyString;
-  /** Saldo bruto de la casa antes y después de escribir el lote. */
-  balanceBefore: MoneyString;
-  balanceAfter: MoneyString;
-  warnings: ImportWarning[];
-}
-
-export interface ImportBatchWriteResult {
-  batch: ImportBatchSummaryRow;
-  stageIds: string[];
-  initialCapitalMovementId: string | null;
-  betIds: string[];
-  report: ImportBatchReport;
-}
-
 export interface ImportBatchAnnulInput {
   projectId: string;
   batchId: string;
   actorUserId: string;
   /** Motivo que da quien anula el lote (queda en el lote y en la auditoría). */
   reason: string;
-}
-
-export interface ImportBatchAnnulResult {
-  batch: ImportBatchSummaryRow;
-  annulledBetIds: string[];
-  reversedMovementIds: string[];
-  annulledStageIds: string[];
-  /** Etapas del lote que se conservaron porque ya tienen actividad ajena al lote. */
-  keptStageIds: string[];
 }
 
 /** Motivo fijo con el que la anulación elimina las apuestas y etapas del lote y revierte el ledger (D-X25). */

@@ -1,19 +1,18 @@
-import { ErrorCode, ZERO_MONEY } from '@letfer/shared';
-import { AppError } from '../../common/app-error.js';
 import {
-  buildExcelFinancialContrast,
+  ErrorCode,
+  ZERO_MONEY,
   type ExcelFinancialContrastReport,
-} from './excel-financial-contrast.js';
+  type ImportPreview,
+  type ImportPreviewFile,
+} from '@letfer/shared';
+import { AppError } from '../../common/app-error.js';
+import { buildExcelFinancialContrast } from './excel-financial-contrast.js';
 import {
   normalizeImportSheet,
   type ImportNormalizationResult,
   type ImportOriginAdapter,
 } from './import-normalization.js';
-import {
-  buildImportPreview,
-  type ImportPreview,
-  type ImportPreviewFile,
-} from './import-preview.js';
+import { buildImportPreview } from './import-preview.js';
 import { buildImportValidationReport } from './import-validation-report.js';
 import type { RawSheet } from './sheet-model.js';
 import { readWorkbook } from './xlsx-reader.js';

@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { moneyInputSchema } from './money.js';
+import { moneyInputSchema, type MoneyString } from './money.js';
+import type { OddsString } from './odds.js';
 
 /**
  * Lotes de importación del historial (Fase 9, §113, ADR 0020). Un lote corresponde a un archivo de
@@ -48,11 +49,6 @@ export const uploadImportBatchSchema = z.object({
 });
 export type UploadImportBatchInput = z.infer<typeof uploadImportBatchSchema>;
 
-export const importOriginQuerySchema = z.object({
-  origin: z.string().trim().min(1),
-});
-export type ImportOriginQuery = z.infer<typeof importOriginQuerySchema>;
-
 /** D-X8: confirma o corrige la casa candidata. */
 export const confirmImportHouseSchema = z.object({
   houseId: z.uuid(),
@@ -80,11 +76,14 @@ export const acknowledgeImportBatchSchema = z.object({
 });
 export type AcknowledgeImportBatchInput = z.infer<typeof acknowledgeImportBatchSchema>;
 
-/** §113.6, §113.9: motivo obligatorio; `isRehearsal` exime del backup reciente (D-X26). */
+/**
+ * §113.6, §113.9: motivo obligatorio; `isRehearsal` exime del backup reciente (D-X26). Sin `origin`:
+ * desde la 9.3.9 la API lo lee del propio lote (fijado al subir); si un cliente lo envía, se
+ * descarta como cualquier otra clave desconocida.
+ */
 export const confirmImportBatchSchema = z.object({
   reason: z.string().trim().min(1).max(IMPORT_REASON_MAX_LENGTH),
   isRehearsal: z.boolean().optional(),
-  origin: z.string().trim().min(1),
 });
 export type ConfirmImportBatchInput = z.infer<typeof confirmImportBatchSchema>;
 
@@ -93,3 +92,106 @@ export const annulImportBatchSchema = z.object({
   reason: z.string().trim().min(1).max(IMPORT_REASON_MAX_LENGTH),
 });
 export type AnnulImportBatchInput = z.infer<typeof annulImportBatchSchema>;
+
+/**
+ * Contratos de respuesta de un lote (Fase 9.4, preparación previa): lo que devuelven los
+ * endpoints de `/import-batches`. Viven aquí (y no solo en `apps/api`) porque tanto la API como
+ * la web (Fase 9.4) necesitan el mismo tipo, igual que `BetSummary`/`BetDetail`.
+ */
+
+/** Una selección ya interpretada de una apuesta importada (D-X15); sin cuota individual (D-X15). */
+export interface NormalizedImportSelection {
+  eventGroup: number;
+  position: number;
+  sport?: string | null;
+  event: string;
+  market?: string | null;
+  selection: string;
+  /** `null` en el historial importado: la cuota total de la apuesta es la autoridad (D-X15). */
+  visibleOdds: OddsString | null;
+}
+
+/**
+ * Un lote sin su archivo original (hasta 10 MB, §113.9): lo que devuelven todos los endpoints que
+ * no sirven el archivo (`POST /`, `GET /`, `GET /:id`, `POST /:id/house`, `POST /:id/stage-plan`,
+ * `POST /:id/acknowledge`). Refleja exactamente las columnas de `import_batches` en `apps/api`
+ * (Drizzle, ADR 0003): no se redefine su forma aquí, solo se declara sin acoplarse a la base de
+ * datos, que es lo que ya viaja hoy en el JSON de la API.
+ */
+export interface ImportBatchSummaryRow {
+  id: string;
+  projectId: string;
+  houseId: string | null;
+  status: ImportBatchStatus;
+  origin: string;
+  originalName: string;
+  sourceSha256: string;
+  sourceSizeBytes: number;
+  isRehearsal: boolean;
+  stagePlan: Record<string, unknown> | null;
+  report: Record<string, unknown> | null;
+  rowsTotal: number;
+  rowsValid: number;
+  rowsTemplate: number;
+  rowsEmpty: number;
+  rowsPartial: number;
+  rowsInvalid: number;
+  createdBy: string;
+  validatedAt: Date | null;
+  validatedBy: string | null;
+  importedAt: Date | null;
+  importedBy: string | null;
+  importReason: string | null;
+  annulledAt: Date | null;
+  annulledBy: string | null;
+  annulmentReason: string | null;
+  acknowledgedAt: Date | null;
+  acknowledgedBy: string | null;
+  acknowledgmentReason: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  version: number;
+}
+
+/** Aviso del informe final (no bloquea). */
+export interface ImportWarning {
+  code: 'WORST_ORDER_NEGATIVE_BALANCE';
+  houseId: string;
+  occurredAt: string;
+  balance: MoneyString;
+  message: string;
+}
+
+/** Informe final del lote (`import_batches.report`), fijado al importar. */
+export interface ImportBatchReport extends Record<string, unknown> {
+  houseId: string;
+  stages: number;
+  initialCapital: MoneyString | null;
+  bets: { total: number; won: number; lost: number; pending: number };
+  ledgerRows: number;
+  /** Ganancia/pérdida de las apuestas liquidadas, con las cifras de LetFer. */
+  profitLoss: MoneyString;
+  /** Saldo bruto de la casa antes y después de escribir el lote. */
+  balanceBefore: MoneyString;
+  balanceAfter: MoneyString;
+  warnings: ImportWarning[];
+}
+
+/** Respuesta de `POST /:id/confirm`. */
+export interface ImportBatchWriteResult {
+  batch: ImportBatchSummaryRow;
+  stageIds: string[];
+  initialCapitalMovementId: string | null;
+  betIds: string[];
+  report: ImportBatchReport;
+}
+
+/** Respuesta de `POST /:id/annul`. */
+export interface ImportBatchAnnulResult {
+  batch: ImportBatchSummaryRow;
+  annulledBetIds: string[];
+  reversedMovementIds: string[];
+  annulledStageIds: string[];
+  /** Etapas del lote que se conservaron porque ya tienen actividad ajena al lote. */
+  keptStageIds: string[];
+}

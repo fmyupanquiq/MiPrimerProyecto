@@ -1,8 +1,9 @@
+import type { ImportDuplicateMatch } from '@letfer/shared';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { calendarDateInTimeZone } from '../common/timezone.js';
 import type { DbExecutor } from '../database/database.types.js';
 import { betSelections, bets, importBatches } from '../database/schema/index.js';
-import { duplicateKey, type ImportDuplicateMatch } from './parser/import-duplicate-detection.js';
+import { duplicateKey } from './parser/import-duplicate-detection.js';
 import type { PreliminaryNormalizedBet } from './parser/import-normalization.js';
 
 /**

@@ -1,9 +1,10 @@
+import type { ImportPreviewFile } from '@letfer/shared';
 import ExcelJS from 'exceljs';
 import { describe, expect, it } from 'vitest';
 import { BETSAFE_ADAPTER, BETSAFE_FINANCIAL_CONTRAST_CONFIG } from './betsafe-adapter.js';
 import { buildExcelFinancialContrast } from './excel-financial-contrast.js';
 import { normalizeImportSheet, type ImportOriginAdapter } from './import-normalization.js';
-import { buildImportPreview, type ImportPreviewFile } from './import-preview.js';
+import { buildImportPreview } from './import-preview.js';
 import { runImportAnalysisPipeline, runImportPreviewPipeline } from './import-preview-pipeline.js';
 import { buildImportValidationReport } from './import-validation-report.js';
 import { readWorkbook } from './xlsx-reader.js';

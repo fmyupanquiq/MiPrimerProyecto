@@ -1,4 +1,4 @@
-import { ErrorCode } from '@letfer/shared';
+import { ErrorCode, type ImportBatchSummaryRow, type ImportPreview } from '@letfer/shared';
 import { Inject, Injectable } from '@nestjs/common';
 import { and, desc, eq, getTableColumns } from 'drizzle-orm';
 import { AppError } from '../common/app-error.js';
@@ -6,8 +6,6 @@ import { DATABASE } from '../database/database.constants.js';
 import type { Database } from '../database/database.module.js';
 import { importBatches } from '../database/schema/index.js';
 import { findDuplicatesAgainstHistory } from './import-duplicate-history.js';
-import type { ImportBatchSummaryRow } from './import-types.js';
-import type { ImportPreview } from './parser/import-preview.js';
 import { runImportAnalysisPipeline } from './parser/import-preview-pipeline.js';
 import { resolveImportOriginAdapter } from './parser/import-origin-registry.js';
 

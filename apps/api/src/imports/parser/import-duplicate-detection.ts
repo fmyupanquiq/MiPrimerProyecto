@@ -1,6 +1,10 @@
-import type { MoneyString, OddsString } from '@letfer/shared';
+import type {
+  ImportDuplicateMatch,
+  MoneyString,
+  NormalizedImportSelection,
+  OddsString,
+} from '@letfer/shared';
 import { calendarDateInTimeZone } from '../../common/timezone.js';
-import type { NormalizedImportSelection } from '../import-types.js';
 import type { PreliminaryNormalizedBet } from './import-normalization.js';
 
 /**
@@ -15,16 +19,6 @@ import type { PreliminaryNormalizedBet } from './import-normalization.js';
  * espacios, mayúsculas) que comparar la cadena original, y ya es el dato que el resto del pipeline
  * usa como la interpretación canónica de "qué partido y qué se jugó" — no hace falta releer nada.
  */
-
-export interface ImportDuplicateMatch {
-  /** Filas del archivo actual involucradas en este grupo (2 o más). */
-  rowNumbers: number[];
-  /** Apuestas ya importadas con las que coincide, si el solapamiento es contra el histórico. */
-  existingBetIds: string[];
-  date: string;
-  amount: MoneyString;
-  odds: OddsString;
-}
 
 function normalizeText(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, ' ');

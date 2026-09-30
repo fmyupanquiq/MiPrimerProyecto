@@ -1,3 +1,4 @@
+import type { NormalizedImportSelection } from '@letfer/shared';
 import ExcelJS from 'exceljs';
 import { describe, expect, it } from 'vitest';
 import { BETSAFE_ADAPTER } from './betsafe-adapter.js';
@@ -5,7 +6,6 @@ import { normalizeBetsafeSheet } from './betsafe-normalizer.js';
 import type { ImportOriginAdapter } from './import-normalization.js';
 import { normalizeImportSheet } from './import-normalization.js';
 import { buildImportValidationReport } from './import-validation-report.js';
-import type { NormalizedImportSelection } from '../import-types.js';
 import { readWorkbook } from './xlsx-reader.js';
 
 /**

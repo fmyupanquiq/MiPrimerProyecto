@@ -1,8 +1,7 @@
+import type { ImportRowValidationEntry, ImportSemaphore } from '@letfer/shared';
 import {
   buildImportValidationReport,
   type ImportBatchSummary,
-  type ImportRowValidationEntry,
-  type ImportSemaphore,
   type ImportValidationReport,
 } from './import-validation-report.js';
 

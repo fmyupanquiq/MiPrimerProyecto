@@ -3,14 +3,17 @@ import {
   calculateBetReturn,
   subtractMoney,
   ZERO_MONEY,
+  type ImportRowReportCategory,
+  type ImportRowValidationEntry,
+  type ImportSemaphore,
   type MoneyString,
+  type StageCandidate,
 } from '@letfer/shared';
 import type {
   ImportNormalizationResult,
   PreliminaryNormalizedBet,
 } from './import-normalization.js';
-import type { RowClassification, RowClassificationFinding } from './row-classifier.js';
-import type { StageCandidate } from './stage-candidates.js';
+import type { RowClassification } from './row-classifier.js';
 
 /**
  * Informe de validación y vista previa del lote (Fase 9.2.3, generalizado en la 9.2.4; §113.6,
@@ -30,18 +33,6 @@ import type { StageCandidate } from './stage-candidates.js';
  *   aviso nunca exige reconocimiento por sí solo.
  */
 
-export type ImportRowReportCategory = 'BLOCKING' | 'NEEDS_ACKNOWLEDGMENT' | 'INFORMATIONAL';
-
-export interface ImportRowValidationEntry {
-  rowNumber: number;
-  status: RowClassification;
-  category: ImportRowReportCategory;
-  findings: RowClassificationFinding[];
-  declaredType: string | null;
-  derivedType: string | null;
-  typeMismatch: boolean;
-}
-
 export interface ImportBatchSummary {
   /** Filas de la tabla recorridas (D-X21: ninguna se pierde en silencio). */
   totalRows: number;
@@ -60,8 +51,6 @@ export interface ImportBatchSummary {
   /** Ganadas provisionales que este lote añadiría (retorno calculado, todavía sin oficial, D-X4). */
   provisionalReturns: { count: number; profitLoss: MoneyString };
 }
-
-export type ImportSemaphore = 'BLOCKED' | 'NEEDS_ACKNOWLEDGMENT' | 'OK';
 
 export interface ImportValidationReport {
   /**

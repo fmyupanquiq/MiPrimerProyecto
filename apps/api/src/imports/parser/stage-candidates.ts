@@ -1,3 +1,4 @@
+import type { StageCandidate } from '@letfer/shared';
 import type { RawRow } from './sheet-model.js';
 
 /**
@@ -12,16 +13,11 @@ import type { RawRow } from './sheet-model.js';
  * rótulo) ni se sabe todavía si Betano la sigue.
  */
 
-export interface StageCandidate {
-  /** Texto exacto del rótulo encontrado (p. ej. `"RONDA 1"`); `null` cuando no hay ningún rótulo. */
-  label: string | null;
-  /** Fila donde está el rótulo; `null` cuando no hay ninguno (todo el rango es un solo candidato). */
-  labelRow: number | null;
-  firstRow: number;
-  lastRow: number;
-  /** Por qué el detector agrupó así estas filas: para el informe, nunca para decidir nada solo. */
-  evidence: string;
-}
+/**
+ * `StageCandidate` vive en `@letfer/shared` (Fase 9.4, preparación previa): es parte de
+ * `ImportPreview.stages.candidates`, que tanto la API como la futura web necesitan con el mismo
+ * tipo.
+ */
 
 /**
  * Busca, en la columna indicada, todas las filas cuyo valor coincide con `labelPattern` y agrupa el

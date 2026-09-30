@@ -1,27 +1,20 @@
 import {
   calculateBetReturn,
-  type BetType,
-  type MoneyString,
-  type OddsString,
+  type ExcelFinancialContrastReport,
+  type ImportPreview,
+  type ImportPreviewBet,
+  type ImportPreviewCapital,
+  type ImportPreviewFile,
+  type ImportPreviewSummary,
 } from '@letfer/shared';
 import { startOfDayInTimeZone } from '../../common/timezone.js';
-import type { NormalizedImportSelection } from '../import-types.js';
-import type { ExcelFinancialContrastReport } from './excel-financial-contrast.js';
-import {
-  detectWithinFileDuplicates,
-  type ImportDuplicateMatch,
-} from './import-duplicate-detection.js';
+import { detectWithinFileDuplicates } from './import-duplicate-detection.js';
 import type {
   ImportNormalizationResult,
   PreliminaryNormalizedBet,
 } from './import-normalization.js';
-import type {
-  ImportRowValidationEntry,
-  ImportSemaphore,
-  ImportValidationReport,
-} from './import-validation-report.js';
+import type { ImportValidationReport } from './import-validation-report.js';
 import type { RowClassification } from './row-classifier.js';
-import type { StageCandidate } from './stage-candidates.js';
 
 /**
  * Vista previa completa de una importación (Fase 9.2.6, §113, ADR 0020): une lo que ya calcularon
@@ -36,79 +29,12 @@ import type { StageCandidate } from './stage-candidates.js';
  * adaptador correspondiente y pasar aquí sus tres resultados; esta función solo los combina.
  */
 
-export interface ImportPreviewFile {
-  originalName: string;
-  sizeBytes: number;
-  sha256: string;
-}
-
-export interface ImportPreviewSummary {
-  totalRows: number;
-  valid: number;
-  template: number;
-  empty: number;
-  partial: number;
-  invalid: number;
-  /** Igual a `valid` en este pipeline (una apuesta preliminar por fila válida); se expone aparte
-   *  porque conceptualmente responde una pregunta distinta ("¿cuántas apuestas se crearían?"). */
-  preliminaryBets: number;
-}
-
-export interface ImportPreviewCapital {
-  /** `false` si no hay ninguna apuesta que fechar o no se detectó un monto de capital en el archivo. */
-  detected: boolean;
-  amount: MoneyString | null;
-  /** D-X8: candidato sin confirmar, derivado del nombre del archivo; se confirma en la vista previa. */
-  houseCandidate: string;
-  /** ISO 8601. D-X3/D-X18/D-X23: medianoche (zona del proyecto) del día de la primera apuesta. */
-  occurredAt: string | null;
-  /** Siempre `false` (D-X29): la fecha del capital histórico importado nunca se presenta como conocida. */
-  occurredAtKnown: false;
-}
-
-export interface ImportPreviewBet {
-  rowNumber: number;
-  amount: MoneyString;
-  visibleTotalOdds: OddsString;
-  status: PreliminaryNormalizedBet['status'];
-  /** ISO 8601 (D-X23: instante técnico, no una hora real). */
-  placedAt: string;
-  declaredType: string | null;
-  derivedType: BetType | null;
-  /** D-X24: aviso, nunca bloquea. */
-  typeMismatch: boolean;
-  selections: NormalizedImportSelection[];
-  /** Retorno calculado no confirmado (D-X4); `null` salvo en una ganada. */
-  provisionalReturn: MoneyString | null;
-}
-
 /**
- * Duplicados por contenido (D-X10, §113.6): nunca descarta nada, solo informa. `withinFile` es
- * puro (se calcula siempre, aquí mismo); `againstHistory` necesita la casa confirmada y la base de
- * datos, así que esta función pura lo deja vacío — quien tiene esos dos datos (9.3.9,
- * `ImportBatchQueryService`) lo rellena después, sin volver a calcular `withinFile`.
+ * `ImportPreviewFile`, `ImportPreviewSummary`, `ImportPreviewCapital`, `ImportPreviewBet`,
+ * `ImportDuplicateReport` e `ImportPreview` viven en `@letfer/shared` (Fase 9.4, preparación
+ * previa): son exactamente lo que devuelve `GET /:batchId/preview`, y tanto la API como la futura
+ * web los necesitan con el mismo tipo.
  */
-export interface ImportDuplicateReport {
-  withinFile: ImportDuplicateMatch[];
-  againstHistory: ImportDuplicateMatch[];
-}
-
-export interface ImportPreview {
-  file: ImportPreviewFile;
-  /** Nombre del adaptador de origen usado (p. ej. `"Betsafe"`); nunca un tipo, solo un texto. */
-  origin: string;
-  summary: ImportPreviewSummary;
-  /** Semáforo estructural de D-X17b (bloqueante/requiere reconocimiento/informativo). */
-  semaphore: ImportSemaphore;
-  rows: ImportRowValidationEntry[];
-  capital: ImportPreviewCapital;
-  /** D-X7: solo candidatos, con su evidencia; ninguna etapa real se crea ni se resuelve aquí. */
-  stages: { candidates: StageCandidate[] };
-  bets: ImportPreviewBet[];
-  /** Resultado íntegro de la 9.2.5 (§113.7): contraste contra las cifras propias del archivo. */
-  financialContrast: ExcelFinancialContrastReport;
-  duplicates: ImportDuplicateReport;
-}
 
 /** D-X8: la casa candidata sale del nombre del archivo (sin la extensión); se confirma en la vista previa. */
 export function deriveCandidateHouseName(originalName: string): string {

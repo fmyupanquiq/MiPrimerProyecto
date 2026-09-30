@@ -1,4 +1,4 @@
-import type { NormalizedImportSelection } from '../import-types.js';
+import type { NormalizedImportSelection } from '@letfer/shared';
 
 /**
  * Separador de selecciones del texto de PARTIDO de Betsafe (Fase 9.2.2, §113.5, D-X15, D-X24;

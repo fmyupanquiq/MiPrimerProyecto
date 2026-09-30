@@ -1,4 +1,4 @@
-import { ErrorCode } from '@letfer/shared';
+import { ErrorCode, type ImportBatchSummaryRow } from '@letfer/shared';
 import { Inject, Injectable } from '@nestjs/common';
 import { and, eq, getTableColumns } from 'drizzle-orm';
 import { AppError } from '../common/app-error.js';
@@ -10,7 +10,7 @@ import type { DbExecutor } from '../database/database.types.js';
 import { houses, importBatches } from '../database/schema/index.js';
 import { ImportAuditService } from './import-audit.service.js';
 import { validateImportStagePlan } from './import-stage-plan-validation.js';
-import type { ImportBatchSummaryRow, ImportStagePlan } from './import-types.js';
+import type { ImportStagePlan } from './import-types.js';
 
 /**
  * Resolución humana de casa y plan de etapas (Fase 9.3.4, §113.2, §113.3, docs/PLAN_FASE_9_3.md

@@ -1,18 +1,22 @@
-import type { BetType } from '@letfer/shared';
+import type {
+  BetType,
+  NormalizedImportSelection,
+  RowClassificationFinding,
+  StageCandidate,
+} from '@letfer/shared';
 import { deriveBetType } from '../../bets/bets.service.js';
 import { noonInTimeZone } from '../../common/timezone.js';
-import type { NormalizedImportBet, NormalizedImportSelection } from '../import-types.js';
+import type { NormalizedImportBet } from '../import-types.js';
 import type { ExcelFinancialContrastConfig } from './excel-financial-contrast.js';
 import {
   classifyRow,
   extractSemanticRow,
   toText,
   type RowClassification,
-  type RowClassificationFinding,
 } from './row-classifier.js';
 import type { RawSheet } from './sheet-model.js';
 import type { SpreadsheetTemplateConfig } from './spreadsheet-template.js';
-import { detectStageCandidates, type StageCandidate } from './stage-candidates.js';
+import { detectStageCandidates } from './stage-candidates.js';
 
 /**
  * Capa agnóstica de normalización (Fase 9.2.4, §113, ADR 0020). Betsafe fue, hasta la 9.2.2, la

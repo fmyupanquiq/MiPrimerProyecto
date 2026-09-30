@@ -1,3 +1,4 @@
+import type { StageCandidate } from '@letfer/shared';
 import type { RawSheet } from './sheet-model.js';
 import {
   classifyRow,
@@ -6,7 +7,7 @@ import {
   type ResultVocabulary,
   type SpreadsheetColumnMap,
 } from './row-classifier.js';
-import { detectStageCandidates, type StageCandidate } from './stage-candidates.js';
+import { detectStageCandidates } from './stage-candidates.js';
 
 /**
  * Configuración de una plantilla de archivo (Fase 9.2.1, ADR 0020). Reúne lo que la 9.2.0 confirmó
