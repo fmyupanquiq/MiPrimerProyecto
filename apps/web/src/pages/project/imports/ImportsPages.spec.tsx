@@ -10,6 +10,7 @@ import {
   renderApp,
   stubApi,
   type Handler,
+  type RecordedCall,
   type StubResponse,
 } from '../../../test-utils.js';
 
@@ -1193,6 +1194,332 @@ describe('Reconocimiento, confirmación y anulación', () => {
     await section('Resumen de la vista previa');
     expect(screen.queryByRole('heading', { name: 'Anulación' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Anular lote' })).toBeNull();
+  });
+});
+
+describe('Flujo completo de importación (integración de página)', () => {
+  const BATCH_URL = `${BATCHES_URL}/${BATCH_ID}`;
+  const REAUTH: StubResponse = {
+    status: 200,
+    body: { reauthenticatedAt: '2026-06-01T12:00:00.000Z' },
+  };
+  const DUPLICATE_REASON = '1 grupo(s) de filas duplicadas dentro del propio archivo (D-X10).';
+
+  /**
+   * Una API simulada con estado: cada acción cambia el lote igual que lo haría la real (estado,
+   * casa, plan, reconocimiento), y la disponibilidad responde según ese estado. Así se comprueba
+   * que la página vuelve a pedir lo que cambió después de cada paso, y solo eso.
+   */
+  function fakeImportApi(
+    initial: Record<string, unknown> | null = null,
+    path = `${URL}/imports/new`,
+  ) {
+    let batch: Record<string, unknown> | null = initial && importBatch(initial);
+    let reauthed = false;
+    const current = () => {
+      if (!batch) throw new Error('Todavía no se subió el lote');
+      return batch;
+    };
+    const update = (patch: Record<string, unknown>) => {
+      batch = { ...current(), ...patch, version: (current().version as number) + 1 };
+      return { status: 200, body: batch };
+    };
+    const needsReauth = (respond: (call: RecordedCall) => StubResponse) => (call: RecordedCall) =>
+      reauthed ? respond(call) : apiError(403, 'REAUTH_REQUIRED');
+
+    const stub = open(
+      path,
+      {},
+      {
+        [`POST ${BATCHES_URL}`]: () => {
+          batch = importBatch();
+          return { status: 201, body: batch };
+        },
+        [`GET ${BATCH_URL}`]: () => ({ status: 200, body: current() }),
+        [`GET ${BATCH_URL}/preview`]: {
+          status: 200,
+          body: importPreview({
+            stages: {
+              candidates: [
+                { label: 'Ronda 1', labelRow: 1, firstRow: 2, lastRow: 3, evidence: 'Título' },
+              ],
+            },
+          }),
+        },
+        [`GET ${BATCH_URL}/readiness`]: () => {
+          const acknowledged = current().acknowledgedAt !== null;
+          return readiness({
+            needsAcknowledgment: true,
+            acknowledgmentReasons: [DUPLICATE_REASON],
+            acknowledged,
+            canConfirm: acknowledged,
+          });
+        },
+        [`GET ${HOUSES_URL}`]: HOUSES,
+        [`POST ${BATCH_URL}/house`]: (call) =>
+          update({ status: 'VALIDATED', houseId: (call.body as { houseId: string }).houseId }),
+        [`POST ${BATCH_URL}/stage-plan`]: (call) => update({ stagePlan: call.body }),
+        [`POST ${BATCH_URL}/acknowledge`]: needsReauth((call) =>
+          update({
+            acknowledgedAt: '2026-06-01T13:00:00.000Z',
+            acknowledgmentReason: (call.body as { reason: string }).reason,
+          }),
+        ),
+        [`POST ${BATCH_URL}/confirm`]: needsReauth(() => {
+          update({
+            status: 'IMPORTED',
+            importedAt: '2026-06-01T14:00:00.000Z',
+            importReason: 'Historial de Betsafe',
+          });
+          return {
+            status: 200,
+            body: {
+              batch: current(),
+              stageIds: ['s1'],
+              initialCapitalMovementId: 'm0',
+              betIds: ['b1', 'b2'],
+              report: {
+                houseId: BETSAFE_ID,
+                stages: 1,
+                initialCapital: '100.00',
+                bets: { total: 2, won: 1, lost: 1, pending: 0 },
+                ledgerRows: 5,
+                profitLoss: '-0.50',
+                balanceBefore: '0.00',
+                balanceAfter: '99.50',
+                warnings: [],
+              },
+            },
+          };
+        }),
+        [`POST ${BATCH_URL}/annul`]: needsReauth(() => {
+          update({
+            status: 'ANNULLED',
+            annulledAt: '2026-06-01T15:00:00.000Z',
+            annulmentReason: 'Archivo equivocado',
+          });
+          return {
+            status: 200,
+            body: {
+              batch: current(),
+              annulledBetIds: ['b1', 'b2'],
+              reversedMovementIds: ['m0', 'm1', 'm2'],
+              annulledStageIds: ['s1'],
+              keptStageIds: [],
+            },
+          };
+        }),
+        'POST /auth/reauth': () => {
+          reauthed = true;
+          return REAUTH;
+        },
+      },
+    );
+    const count = (method: string, suffix: string) =>
+      stub.calls.filter((c) => c.method === method && c.path === `${BATCH_URL}${suffix}`).length;
+    return { ...stub, count };
+  }
+
+  async function passReauth() {
+    const dialog = await screen.findByRole('dialog', { name: 'Confirma tu contraseña' });
+    fireEvent.change(within(dialog).getByLabelText('Contraseña actual'), {
+      target: { value: 'mi-clave-secreta' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Confirmar' }));
+  }
+
+  const summaryStatus = async (label: string) =>
+    within(await section('Betsafe.xlsx')).findByText(label, { selector: 'span' });
+
+  it('recorre subida → casa → plan → reconocimiento → confirmación → anulación, refrescando cada vez', async () => {
+    const api = fakeImportApi();
+
+    // 1. Subida: abre el detalle del lote creado.
+    const uploadForm = await screen.findByRole('form', { name: 'Subir archivo' });
+    fireEvent.change(within(uploadForm).getByLabelText('Archivo (.xlsx)'), {
+      target: { files: [new File(['x'], 'Betsafe.xlsx', { type: XLSX_TYPE })] },
+    });
+    fireEvent.click(within(uploadForm).getByRole('button', { name: 'Subir archivo' }));
+    expect(await summaryStatus('Subido')).toBeTruthy();
+    expect(
+      screen.getByText('Se subió el archivo. Todavía no se ha registrado nada en el ledger.'),
+    ).toBeTruthy();
+    await waitFor(() => expect(api.count('GET', '/readiness')).toBe(1));
+    expect(api.count('GET', '/preview')).toBe(1);
+    const confirmation = await section('Confirmación');
+    expect(within(confirmation).getByText('Confirma la casa del lote.')).toBeTruthy();
+    expect(within(confirmation).getByText('Guarda el plan de etapas.')).toBeTruthy();
+    expect(within(confirmation).getByText('Falta el reconocimiento del lote.')).toBeTruthy();
+    const start = within(confirmation).getByRole('button', { name: 'Confirmar importación' });
+    expect(start).toHaveProperty('disabled', true);
+
+    // 2. Casa: el lote pasa a Validado; se vuelven a pedir vista previa y disponibilidad.
+    const houseForm = await screen.findByRole('form', { name: 'Casa del lote' });
+    await waitFor(() =>
+      expect(within(houseForm).getByRole<HTMLSelectElement>('combobox').value).toBe(BETSAFE_ID),
+    );
+    fireEvent.click(within(houseForm).getByRole('button', { name: 'Confirmar casa' }));
+    expect(await screen.findByText('Se confirmó la casa del lote.')).toBeTruthy();
+    // El aviso de la subida ya no aplica: lo sustituye el de la última acción.
+    expect(screen.queryByText(/Se subió el archivo/)).toBeNull();
+    expect(await summaryStatus('Validado')).toBeTruthy();
+    await waitFor(() => expect(api.count('GET', '/readiness')).toBe(2));
+    expect(api.count('GET', '/preview')).toBe(2);
+    expect(within(confirmation).queryByText('Confirma la casa del lote.')).toBeNull();
+
+    // 3. Plan: solo cambia el lote (la vista previa y la disponibilidad no dependen de él).
+    const planForm = screen.getByRole('form', { name: 'Plan de etapas' });
+    fireEvent.change(within(planForm).getByLabelText('Clave de la etapa 1'), {
+      target: { value: 'R1' },
+    });
+    fireEvent.change(within(planForm).getByLabelText('Unidad de la etapa 1'), {
+      target: { value: '10.00' },
+    });
+    fireEvent.click(within(planForm).getByRole('button', { name: 'Guardar plan' }));
+    expect(await screen.findByText('Se guardó el plan de etapas.')).toBeTruthy();
+    expect(within(confirmation).getByText('1 etapa(s) guardada(s)')).toBeTruthy();
+    expect(within(confirmation).queryByText('Guarda el plan de etapas.')).toBeNull();
+    expect(api.count('GET', '/readiness')).toBe(2);
+    expect(api.count('GET', '/preview')).toBe(2);
+
+    // 4. Reconocimiento (con reautenticación): la API ya permite confirmar.
+    const ackForm = within(await section('Reconocimiento')).getByRole('form', {
+      name: 'Reconocer el lote',
+    });
+    fireEvent.change(within(ackForm).getByLabelText('Motivo del reconocimiento'), {
+      target: { value: 'Son dos apuestas distintas.' },
+    });
+    fireEvent.click(within(ackForm).getByRole('button', { name: 'Reconocer' }));
+    await passReauth();
+    expect(await screen.findByText('Se registró el reconocimiento del lote.')).toBeTruthy();
+    await waitFor(() => expect(api.count('GET', '/readiness')).toBe(3));
+    expect(await within(confirmation).findByText('Sí, ya reconocido')).toBeTruthy();
+    await waitFor(() => expect(start).toHaveProperty('disabled', false));
+
+    // 5. Confirmación: explica qué se registrará antes de hacerlo.
+    fireEvent.click(start);
+    const confirmForm = within(confirmation).getByRole('form', { name: 'Confirmar importación' });
+    expect(
+      within(confirmForm).getByText(/Se registrarán en el ledger 2 apuestas en Betsafe/),
+    ).toBeTruthy();
+    expect(
+      within(confirmForm).getByText(/capital inicial declarado en el archivo: S\/ 100\.00/),
+    ).toBeTruthy();
+    fireEvent.change(within(confirmForm).getByLabelText('Motivo de la confirmación'), {
+      target: { value: 'Historial de Betsafe' },
+    });
+    fireEvent.click(within(confirmForm).getByRole('button', { name: 'Confirmar' }));
+    expect(
+      await screen.findByText('Se importó el lote: 2 apuestas y 1 etapas registradas.'),
+    ).toBeTruthy();
+    expect(await summaryStatus('Importado')).toBeTruthy();
+    expect(screen.getByText(/Este lote ya está registrado en el ledger/)).toBeTruthy();
+    // Terminal para casa, plan, reconocimiento y confirmación: sin controles.
+    expect(screen.queryByRole('form', { name: 'Casa del lote' })).toBeNull();
+    expect(screen.queryByRole('form', { name: 'Plan de etapas' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Confirmación' })).toBeNull();
+    await waitFor(() => expect(api.count('GET', '/preview')).toBe(3));
+
+    // 6. Anulación.
+    const annulPanel = await section('Anulación');
+    fireEvent.click(within(annulPanel).getByRole('button', { name: 'Anular lote' }));
+    const annulForm = within(annulPanel).getByRole('form', { name: 'Anular lote' });
+    fireEvent.change(within(annulForm).getByLabelText('Motivo de la anulación'), {
+      target: { value: 'Archivo equivocado' },
+    });
+    fireEvent.click(within(annulForm).getByRole('button', { name: 'Confirmar anulación' }));
+    // La reautenticación ya se hizo: la API no la vuelve a pedir en esta sesión simulada.
+    expect(
+      await screen.findByText('Se anuló el lote: 2 apuestas anuladas y 3 movimientos revertidos.'),
+    ).toBeTruthy();
+    expect(await summaryStatus('Anulado')).toBeTruthy();
+    expect(screen.getByText(/Este lote está anulado/)).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'Anulación' })).toBeNull();
+    expect(within(screen.getByRole('main')).queryByRole('button')).toBeNull();
+
+    // Cada acción se envió una sola vez con éxito (más el intento rechazado por reautenticación).
+    expect(api.count('POST', '/house')).toBe(1);
+    expect(api.count('POST', '/stage-plan')).toBe(1);
+    expect(api.count('POST', '/acknowledge')).toBe(2);
+    expect(api.count('POST', '/confirm')).toBe(1);
+    expect(api.count('POST', '/annul')).toBe(1);
+  });
+
+  it('un lote anulado es terminal: se consulta, pero no ofrece ninguna acción', async () => {
+    const api = fakeImportApi(
+      {
+        status: 'ANNULLED',
+        houseId: BETSAFE_ID,
+        importedAt: '2026-06-01T14:00:00.000Z',
+        annulledAt: '2026-06-01T15:00:00.000Z',
+        annulmentReason: 'Archivo equivocado',
+      },
+      `${URL}/imports/${BATCH_ID}`,
+    );
+    expect(await summaryStatus('Anulado')).toBeTruthy();
+    expect(screen.getByText(/Este lote está anulado/)).toBeTruthy();
+    await section('Resumen de la vista previa');
+    expect(screen.queryByRole('heading', { name: 'Anulación' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Confirmación' })).toBeNull();
+    expect(screen.queryByRole('form')).toBeNull();
+    expect(within(screen.getByRole('main')).queryByRole('button')).toBeNull();
+    expect(api.calls.some((c) => c.method === 'POST')).toBe(false);
+  });
+});
+
+describe('Permisos en las pantallas de importación', () => {
+  const BATCH_URL = `${BATCHES_URL}/${BATCH_ID}`;
+  const needsAck = readiness({
+    needsAcknowledgment: true,
+    acknowledgmentReasons: ['2 fila(s) parcial(es) requieren revisión (D-X21b).'],
+    canConfirm: false,
+  });
+
+  function openDetail(project: Record<string, unknown>, batch: Record<string, unknown>) {
+    return open(`${URL}/imports/${BATCH_ID}`, project, {
+      [`GET ${BATCHES_URL}`]: { status: 200, body: [importBatch(batch)] },
+      [`GET ${BATCH_URL}`]: { status: 200, body: importBatch(batch) },
+      [`GET ${BATCH_URL}/preview`]: { status: 200, body: importPreview() },
+      [`GET ${BATCH_URL}/readiness`]: needsAck,
+      [`GET ${HOUSES_URL}`]: HOUSES,
+    });
+  }
+
+  it('imports.view sin import.run: consulta todo, sin ninguna acción', async () => {
+    const { calls } = openDetail({ myPermissions: VIEW_ONLY }, { status: 'UPLOADED' });
+    expect(await within(await section('Reconocimiento')).findByText(/parcial/)).toBeTruthy();
+    await section('Resumen de la vista previa');
+    expect(screen.queryByRole('form')).toBeNull();
+    expect(within(screen.getByRole('main')).queryByRole('button')).toBeNull();
+    expect(calls.some((c) => c.method === 'POST')).toBe(false);
+
+    // En la lista tampoco se ofrece subir.
+    fireEvent.click(screen.getByRole('link', { name: '← Volver a importaciones' }));
+    await screen.findByRole('table', { name: 'Lotes de importación' });
+    expect(screen.queryByRole('link', { name: 'Subir archivo' })).toBeNull();
+  });
+
+  it('import.run con imports.view: ofrece cada acción del estado actual', async () => {
+    openDetail({}, { status: 'UPLOADED' });
+    expect(await screen.findByRole('form', { name: 'Casa del lote' })).toBeTruthy();
+    expect(screen.getByRole('form', { name: 'Plan de etapas' })).toBeTruthy();
+    expect(await screen.findByRole('form', { name: 'Reconocer el lote' })).toBeTruthy();
+    // Confirmar existe, pero la API todavía no lo permitiría: se ofrece desactivado y con el motivo.
+    const start = screen.getByRole('button', { name: 'Confirmar importación' });
+    expect(start).toHaveProperty('disabled', true);
+    expect(screen.queryByRole('button', { name: 'Anular lote' })).toBeNull();
+  });
+
+  it('sin acceso al proyecto no se ve nada ni se pide ningún lote', async () => {
+    const { calls } = stubApi({
+      'GET /auth/me': AUTH_STATE,
+      [`GET ${URL}`]: apiError(404, 'NOT_FOUND'),
+    });
+    renderApp(`${URL}/imports/${BATCH_ID}`);
+    expect(
+      await screen.findByText('No se encontró el proyecto, o no tienes acceso a él.'),
+    ).toBeTruthy();
+    expect(calls.some((c) => c.path.startsWith(BATCHES_URL))).toBe(false);
   });
 });
 

@@ -126,7 +126,6 @@ describe('endpoints de importación (e2e, PostgreSQL real, §113, Fase 9.3.8)', 
   const preview = (actor: Actor, batchId: string, projId = projectId) =>
     request(ctx.server)
       .get(`${base(projId)}/${batchId}/preview`)
-      .query({ origin: 'Betsafe' })
       .set('Cookie', cookies[actor]);
   const confirmHouse = (actor: Actor, batchId: string, body: object, projId = projectId) =>
     request(ctx.server)
@@ -318,10 +317,10 @@ describe('endpoints de importación (e2e, PostgreSQL real, §113, Fase 9.3.8)', 
       // que el endpoint funciona igual (D-X17b no exige que exista un motivo real que reconocer).
       await acknowledge('owner', batchId, { reason: 'Revisado, todo en orden.' }).expect(200);
 
-      const confirmed = await confirm('owner', batchId, {
-        reason: 'Historial de Betsafe',
-        origin: 'Betsafe',
-      }).expect(200);
+      // Sin `origin`: la API lo lee del propio lote (9.3.9).
+      const confirmed = await confirm('owner', batchId, { reason: 'Historial de Betsafe' }).expect(
+        200,
+      );
       expect(confirmed.body).toMatchObject({ batch: { status: 'IMPORTED' } });
 
       const detail = await get('owner', batchId).expect(200);
@@ -352,9 +351,7 @@ describe('endpoints de importación (e2e, PostgreSQL real, §113, Fase 9.3.8)', 
       const batchId = uploaded.id;
       await confirmHouse('owner', batchId, { houseId }).expect(200);
       await saveStagePlan('owner', batchId, stagePlanBody()).expect(200);
-      await confirm('owner', batchId, { reason: 'Historial de Betsafe', origin: 'Betsafe' }).expect(
-        200,
-      );
+      await confirm('owner', batchId, { reason: 'Historial de Betsafe' }).expect(200);
 
       const annulled = await annul('owner', batchId, { reason: 'Archivo equivocado' }).expect(200);
       expect(annulled.body).toMatchObject({ batch: { status: 'ANNULLED' } });
@@ -394,16 +391,12 @@ describe('endpoints de importación (e2e, PostgreSQL real, §113, Fase 9.3.8)', 
     it('confirm sin reautenticación reciente falla (403)', async () => {
       const batchId = await readyBatch();
       ctx.clock.advanceSeconds(6 * 60); // fuera del margen de reautenticación (5 min)
-      await confirm('owner', batchId, { reason: 'Historial de Betsafe', origin: 'Betsafe' }).expect(
-        403,
-      );
+      await confirm('owner', batchId, { reason: 'Historial de Betsafe' }).expect(403);
     });
 
     it('annul sin reautenticación reciente falla (403)', async () => {
       const batchId = await readyBatch();
-      await confirm('owner', batchId, { reason: 'Historial de Betsafe', origin: 'Betsafe' }).expect(
-        200,
-      );
+      await confirm('owner', batchId, { reason: 'Historial de Betsafe' }).expect(200);
       ctx.clock.advanceSeconds(6 * 60);
       await annul('owner', batchId, { reason: 'Archivo equivocado' }).expect(403);
     });
@@ -435,9 +428,10 @@ describe('endpoints de importación (e2e, PostgreSQL real, §113, Fase 9.3.8)', 
       const uploaded = (await uploadReq('owner', workbook).expect(201)).body as { id: string };
       await confirmHouse('owner', uploaded.id, { houseId }).expect(200);
       await saveStagePlan('owner', uploaded.id, stagePlanBody()).expect(200);
+      // Un cliente antiguo que todavía envía `origin` sigue funcionando: la clave se descarta.
       await confirm('owner', uploaded.id, {
         reason: 'Historial de Betsafe',
-        origin: 'Betsafe',
+        origin: 'Otro origen',
       }).expect(200);
 
       await confirmHouse('owner', uploaded.id, { houseId }).expect(409);
