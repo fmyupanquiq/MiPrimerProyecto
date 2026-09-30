@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, apiFetch } from './client.js';
+import { ApiError, apiFetch, apiUpload } from './client.js';
 import { describeApiError } from './errors.js';
 
 afterEach(() => vi.unstubAllGlobals());
@@ -46,6 +46,42 @@ describe('apiFetch', () => {
     const error = (await apiFetch('/x').catch((caught: unknown) => caught)) as ApiError;
     expect(error.code).toBe('INTERNAL_ERROR');
     expect(error.status).toBe(502);
+  });
+});
+
+describe('apiUpload', () => {
+  const file = new File(['contenido'], 'archivo.xlsx');
+
+  it('sube solo el archivo cuando no se pasan campos adicionales (uso de tickets)', async () => {
+    respond(200, JSON.stringify({ id: '1' }));
+    await apiUpload('/x', file);
+
+    const [url, init] = vi.mocked(fetch).mock.calls[0]!;
+    expect(url).toBe('/api/x');
+    expect(init).toMatchObject({ method: 'POST', credentials: 'same-origin' });
+    // El navegador debe fijar el `Content-Type` (con el `boundary`) a partir del `FormData`.
+    expect(init?.headers).toBeUndefined();
+
+    const form = init?.body as FormData;
+    expect(form.get('file')).toBe(file);
+    expect([...form.keys()]).toEqual(['file']);
+  });
+
+  it('añade los campos adicionales al mismo formulario, junto al archivo (uso de importaciones)', async () => {
+    respond(200, JSON.stringify({ id: '1' }));
+    await apiUpload('/import-batches', file, { origin: 'Betsafe' });
+
+    const [, init] = vi.mocked(fetch).mock.calls[0]!;
+    const form = init?.body as FormData;
+    expect(form.get('file')).toBe(file);
+    expect(form.get('origin')).toBe('Betsafe');
+  });
+
+  it('convierte un error de la API en ApiError, igual que apiFetch', async () => {
+    respond(400, JSON.stringify({ statusCode: 400, code: 'VALIDATION_FAILED', message: 'x' }));
+    const error = await apiUpload('/x', file).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).code).toBe('VALIDATION_FAILED');
   });
 });
 

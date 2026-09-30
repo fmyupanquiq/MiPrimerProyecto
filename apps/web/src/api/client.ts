@@ -68,11 +68,20 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
 
 /**
  * Sube un archivo (`multipart/form-data`, §28): nunca se fija `Content-Type` a mano, el
- * navegador añade el límite (`boundary`) correcto al construirlo desde `FormData`.
+ * navegador añade el límite (`boundary`) correcto al construirlo desde `FormData`. `fields`
+ * añade campos de texto adicionales al mismo formulario (p. ej. `origin` en una importación);
+ * sin ellos, se sube solo el archivo, igual que antes.
  */
-export async function apiUpload<T>(path: string, file: File): Promise<T> {
+export async function apiUpload<T>(
+  path: string,
+  file: File,
+  fields?: Record<string, string>,
+): Promise<T> {
   const form = new FormData();
   form.append('file', file);
+  if (fields) {
+    for (const [key, value] of Object.entries(fields)) form.append(key, value);
+  }
   const response = await fetch(`/api${path}`, {
     method: 'POST',
     credentials: 'same-origin',
