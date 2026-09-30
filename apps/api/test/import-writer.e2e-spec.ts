@@ -29,7 +29,7 @@ import { assertFinancialInvariant } from './support/financial-invariant.js';
 
 const at = (iso: string) => new Date(iso);
 const DAY = '2024-10-22T12:00:00.000Z'; // fecha sin hora: 12:00 en la zona del proyecto (D-X23)
-const CAPITAL_AT = '2024-10-21T00:00:00.000Z'; // 00:00 del día anterior a la primera apuesta
+const CAPITAL_AT = '2024-10-22T00:00:00.000Z'; // 00:00 del mismo día de la primera apuesta (D-X23)
 
 const single = (event: string, odds: string | null = '1.75') => [
   { eventGroup: 0, position: 0, event, selection: `${event}: gana`, visibleOdds: odds },

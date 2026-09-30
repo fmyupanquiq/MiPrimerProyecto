@@ -355,3 +355,19 @@ ensayo con los dos archivos y revisión final.
 - Importar depósitos, retiros o transferencias (el Excel no los tiene) ni replicar las hojas de resumen.
 - Decidir el redondeo (D-B8) o revertir transferencias.
 - Importar sobre un proyecto operativo.
+
+## Cierre de fase (registro posterior, sin cambiar las decisiones anteriores)
+
+- **Numeración real de las fases.** El trabajo previsto en "Fases previstas" se agrupó distinto: la
+  9.3 cubrió vista previa, semáforo, contraste, confirmación, backup previo, idempotencia y anulación
+  de extremo a extremo (`docs/RESUMEN_FASE_9_3_CIERRE.md`), y la 9.4 la interfaz web
+  (`docs/RESUMEN_FASE_9_4_CIERRE.md`). Sigue pendiente el **ensayo con los dos archivos reales**
+  (Betsafe y Betano) y la revisión final previstos como última subfase.
+- **Disponibilidad a confirmar por HTTP.** `GET /import-batches/:id/readiness` (`imports.view`)
+  expone el mismo chequeo que aplica la confirmación (bloqueo estructural, reconocimiento de
+  D-X17b, rojo financiero, duplicados D-X10). La interfaz lo muestra; nunca lo deduce.
+- **Origen del lote.** Se fija al subir y la confirmación lo lee del lote; el cuerpo de
+  `POST /:id/confirm` ya no lo pide.
+- **Sin cambios** en D-X1 a D-X29: siguen sin decidir **D-X7** (unidad y fronteras de cada etapa) y
+  **D-B8** (redondeo del retorno calculado), a la espera del archivo real de Betano y de retornos
+  oficiales.

@@ -251,3 +251,18 @@ backend de la 9.3 esté aprobado.
 - No se decide el contenido exacto de `stage_plan` (forma del JSON) — se define en el commit 9.3.3.
 - No se toca el ADR 0020 ni la especificación en este documento; el ajuste de §113.6 queda anotado
   como pendiente (sección "Ajuste de especificación pendiente").
+
+## Actualización posterior (Fase 9.4)
+
+Lo que este plan dejaba abierto quedó así (detalle en `docs/RESUMEN_FASE_9_4_CIERRE.md`):
+
+- **Interfaz web:** construida en la Fase 9.4 sobre estos mismos endpoints
+  (`apps/web/src/pages/project/imports/`).
+- **Nuevo endpoint `GET /:id/readiness`** (`imports.view`, 9.4.7): expone tal cual el chequeo de
+  disponibilidad de la 9.3.6 (`canConfirmImport()`), para que la web muestre bloqueos y motivos de
+  reconocimiento sin deducirlos. No sustituye ninguna comprobación de `confirm`.
+- **`origin` solo al subir:** la sección 7 ya decía que el resto de rutas lo leen del lote, pero
+  `confirmImportBatchSchema` seguía exigiéndolo; al cerrar la 9.4 se quitó del esquema (un cliente
+  que aún lo envíe no falla: la clave se descarta) y se eliminó `importOriginQuerySchema`, sin uso.
+- **Ajuste de redacción del §113.6:** sigue pendiente (requiere aprobación para tocar la
+  especificación).

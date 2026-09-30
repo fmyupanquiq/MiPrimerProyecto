@@ -2,14 +2,15 @@
 
 ## Estado actual
 
-- **Fase completada:** 9.3 (backend completo de importación histórica: subida, resolución humana,
-  reconocimientos, confirmación/anulación reales, endpoints HTTP, auditoría de cierre 9.3.9).
+- **Fase completada:** 9.4 (interfaz web completa de la importación histórica, sobre el backend de
+  la 9.3). Resumen: `docs/RESUMEN_FASE_9_4_CIERRE.md`.
 - **Rama actual:** `fase-9.1/modelo-importacion` (toda la Fase 9 vive aquí; no está integrada a
   `main`).
-- **Último commit:** `336b309` — `feat(imports): complete phase 9.3 audit and safeguards`.
-- **Qué está funcionando:** el backend completo, con PostgreSQL real y `npm run check` en verde
-  (133 pruebas de `shared`, 1182 de `api` con 2 *skips* conocidos, 265 de `web`, build incluido).
-  Sin frontend. Sin integrar a `main`. Sin `push`.
+- **Último commit:** `5d96865` — `docs: add project handoff document for Phase 9.3 close`. **Todo el
+  trabajo de la 9.4 está sin commit** en el árbol de trabajo (pendiente de confirmación del usuario).
+- **Qué está funcionando:** backend y frontend de importación completos, con PostgreSQL real y
+  `npm run check` en verde (133 pruebas de `shared`, 1186 de `api` con 2 *skips* conocidos, 315 de
+  `web`, build incluido). Sin integrar a `main`. Sin `push`.
 
 ## Arquitectura actual de importación
 
@@ -63,27 +64,42 @@ ImportConfirmationService.annulBatch() ──► ImportWriterService.annulBatch(
 ```
 
 Endpoints HTTP (`/api/projects/:projectId/import-batches`): `POST /`, `GET /`, `GET /:id`,
-`GET /:id/preview`, `POST /:id/house`, `POST /:id/stage-plan`, `POST /:id/acknowledge`,
-`POST /:id/confirm`, `POST /:id/annul`, `GET /:id/file`. Detalle completo, decisiones y pruebas en
-`docs/RESUMEN_FASE_9_3_CIERRE.md`.
+`GET /:id/preview`, `GET /:id/readiness` (9.4.7), `POST /:id/house`, `POST /:id/stage-plan`,
+`POST /:id/acknowledge`, `POST /:id/confirm` (sin `origin` desde el cierre de la 9.4),
+`POST /:id/annul`, `GET /:id/file`. Detalle del backend en `docs/RESUMEN_FASE_9_3_CIERRE.md`.
+
+## Arquitectura de la interfaz web de importación (Fase 9.4)
+
+```
+/projects/:projectId/imports            ImportsPage       (imports.view)
+/projects/:projectId/imports/new        ImportUploadPage  (import.run)
+/projects/:projectId/imports/:batchId   ImportBatchPage   (imports.view)
+   └─ casa · plan de etapas · reconocimiento · confirmación · anulación · vista previa
+
+páginas ─► hooks (hooks/useImportBatches.ts) ─► importsApi (api/imports.ts) ─► /api
+```
+
+Código en `apps/web/src/pages/project/imports/`. La web solo presenta lo que devuelve la API (no
+calcula semáforos, `stageKey`, `stake` ni disponibilidad a confirmar). Detalle, refrescos por
+acción y pruebas en `docs/RESUMEN_FASE_9_4_CIERRE.md`.
 
 ## Pendiente para continuar
 
-### Fase 9.4
+### Antes de integrar a `main`
 
-- Frontend de importación (ninguna pantalla existe todavía):
-  - pantalla de subida (archivo + origen);
-  - pantallas de vista previa (resumen, filas con su semáforo y hallazgos, contraste financiero,
-    duplicados D-X10);
-  - resolución de etapas (editor del plan, con el rango de filas de cada una);
-  - confirmación visual (reconocimiento con motivo, backup/ensayo, confirmación final, anulación).
-  - Mismos patrones que el resto de la aplicación: `useReauth`/`runWithReauth`, `useLoad`,
-    `stubApi` en pruebas.
-- Ajuste de redacción del §113.6 ("vista previa ejecutada y revertida" ya no describe la
-  arquitectura real desde la 9.2.6): documentado como pendiente, todavía sin aplicar.
-- Inconsistencia documental de D-X23 en `apps/api/test/import-writer.e2e-spec.ts` (comentario y
-  dato de prueba dicen "el día anterior a la primera apuesta"; el ADR y el código usan "el mismo
-  día"). No es un defecto funcional; sigue pendiente un commit pequeño separado.
+- Confirmar y commitear el trabajo de la 9.4 (hoy sin commit) y decidir la integración de la rama.
+- **Ajuste de redacción del §113.6** ("vista previa ejecutada y revertida" ya no describe la
+  arquitectura real desde la 9.2.6): sigue pendiente; tocar la especificación requiere aprobación.
+
+### Para la Fase 10 (o una limpieza posterior)
+
+- **Fechas en la hora del navegador** (plan de etapas, y también Apuestas y correcciones): la
+  aplicación no usa la zona horaria del proyecto en los formularios. Si se cambia, en toda la web.
+- **`ImportBatchSummaryRow`** declara sus fechas como `Date` aunque por HTTP llegan como cadenas (la
+  web usa `toIso`); corregirlo exige serializar en la API.
+- **Lista de orígenes duplicada** en la web (`IMPORT_ORIGIN_OPTIONS`): añadir Betano también allí
+  cuando la API lo registre, o exponer la lista desde la API.
+- **Nombre de quien reconoció, importó o anuló:** la API solo expone el identificador.
 
 ### Pendientes externos (no dependen de más código)
 
