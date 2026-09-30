@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { rm } from 'node:fs/promises';
 import ExcelJS from 'exceljs';
+import type { ImportConfirmationReadiness } from '@letfer/shared';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { writeManifest } from '../src/backups/backup-files.js';
@@ -11,7 +12,9 @@ import { insertMember, insertProject } from './support/factories.js';
 type Actor = 'root' | 'owner' | 'collab' | 'reader' | 'stranger';
 
 /** Hoja sintética de Betsafe: fila 11 ganada, fila 12 perdida (misma forma que el resto de la 9.3). */
-async function buildBetsafeWorkbook(): Promise<Buffer> {
+async function buildBetsafeWorkbook(
+  variant: 'clean' | 'duplicated' | 'invalid' = 'clean',
+): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet('Rondas');
   sheet.getCell('E3').value = 1000;
@@ -35,12 +38,24 @@ async function buildBetsafeWorkbook(): Promise<Buffer> {
     odds: 1.75,
     result: 'GANADO',
   });
-  row(2, {
-    description: 'Equipo C vs. Equipo D: Gana Equipo C',
-    amount: 75,
-    odds: 1.57,
-    result: 'PERDIDO',
-  });
+  if (variant === 'duplicated') {
+    // Misma fecha, monto, cuota y descripción que la fila 1: duplicado por contenido (D-X10).
+    row(2, {
+      description: 'Equipo A vs. Equipo B: Gana Equipo A',
+      amount: 25,
+      odds: 1.75,
+      result: 'GANADO',
+    });
+  } else {
+    row(2, {
+      description: 'Equipo C vs. Equipo D: Gana Equipo C',
+      amount: 75,
+      odds: 1.57,
+      result: 'PERDIDO',
+    });
+  }
+  // Una cuota que no es un número: fila inválida, que bloquea sin excepción (D-X17b).
+  if (variant === 'invalid') sheet.getCell('I12').value = 'no es una cuota';
   return Buffer.from(await workbook.xlsx.writeBuffer());
 }
 
@@ -138,6 +153,10 @@ describe('endpoints de importación (e2e, PostgreSQL real, §113, Fase 9.3.8)', 
       .post(`${base(projId)}/${batchId}/annul`)
       .set('Cookie', cookies[actor])
       .send(body);
+  const readiness = (actor: Actor, batchId: string, projId = projectId) =>
+    request(ctx.server)
+      .get(`${base(projId)}/${batchId}/readiness`)
+      .set('Cookie', cookies[actor]);
   const file = (actor: Actor, batchId: string, projId = projectId) =>
     request(ctx.server)
       .get(`${base(projId)}/${batchId}/file`)
@@ -181,6 +200,81 @@ describe('endpoints de importación (e2e, PostgreSQL real, §113, Fase 9.3.8)', 
       const workbook = await buildBetsafeWorkbook();
       await uploadReq('stranger', workbook).expect(404);
       await list('stranger').expect(404);
+    });
+  });
+
+  describe('disposición a confirmar (GET /readiness, Fase 9.4.7)', () => {
+    const upload = async (variant: 'clean' | 'duplicated' | 'invalid') =>
+      (
+        (await uploadReq('owner', await buildBetsafeWorkbook(variant)).expect(201)).body as {
+          id: string;
+        }
+      ).id;
+
+    it('un archivo sin incidencias no exige reconocimiento y puede confirmarse', async () => {
+      const batchId = await upload('clean');
+      const ready = await readiness('owner', batchId).expect(200);
+      const body = ready.body as ImportConfirmationReadiness;
+      expect(body).toMatchObject({
+        blocked: false,
+        blockingReasons: [],
+        needsAcknowledgment: false,
+        acknowledgmentReasons: [],
+        acknowledged: false,
+        canConfirm: true,
+      });
+      // El amarillo solo informa (§113.7): tampoco exigiría reconocimiento.
+      expect(['GREEN', 'YELLOW']).toContain(body.financialSemaphore);
+    });
+
+    it('un duplicado exige reconocimiento; tras reconocerlo, puede confirmarse', async () => {
+      const batchId = await upload('duplicated');
+      const before = (await readiness('owner', batchId).expect(200)).body as {
+        needsAcknowledgment: boolean;
+        acknowledgmentReasons: string[];
+        acknowledged: boolean;
+        canConfirm: boolean;
+      };
+      expect(before).toMatchObject({
+        blocked: false,
+        needsAcknowledgment: true,
+        acknowledged: false,
+        canConfirm: false,
+      });
+      expect(before.acknowledgmentReasons.some((reason) => reason.includes('D-X10'))).toBe(true);
+
+      await acknowledge('owner', batchId, { reason: 'Son dos apuestas distintas.' }).expect(200);
+      const after = await readiness('owner', batchId).expect(200);
+      expect(after.body).toMatchObject({
+        needsAcknowledgment: true,
+        acknowledged: true,
+        canConfirm: true,
+      });
+    });
+
+    it('una fila inválida bloquea aunque se reconozca', async () => {
+      const batchId = await upload('invalid');
+      await acknowledge('owner', batchId, { reason: 'Intento de reconocer.' }).expect(200);
+      const ready = (await readiness('owner', batchId).expect(200)).body as {
+        blocked: boolean;
+        blockingReasons: string[];
+        canConfirm: boolean;
+      };
+      expect(ready.blocked).toBe(true);
+      expect(ready.blockingReasons).toHaveLength(1);
+      expect(ready.canConfirm).toBe(false);
+    });
+
+    it('solo lectura con imports.view: 403 sin permiso, 404 sin acceso o lote inexistente', async () => {
+      const batchId = await upload('clean');
+      await readiness('collab', batchId).expect(403);
+      await readiness('reader', batchId).expect(403);
+      await readiness('stranger', batchId).expect(404);
+      await readiness('owner', randomUUID()).expect(404);
+      await readiness('owner', 'no-es-un-uuid').expect(404);
+      // Consultarla no cambia el lote.
+      const detail = await get('owner', batchId).expect(200);
+      expect(detail.body).toMatchObject({ status: 'UPLOADED', version: 1 });
     });
   });
 

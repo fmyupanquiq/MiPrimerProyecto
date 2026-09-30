@@ -1,5 +1,5 @@
 import { IMPORT_MAX_FILE_BYTES } from '@letfer/shared';
-import { cleanup, fireEvent, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   apiError,
@@ -590,6 +590,609 @@ describe('ImportBatchPage', () => {
     );
     expect(await screen.findByText('No se encontró el lote de importación.')).toBeTruthy();
     expect(calls.some((call) => call.path.endsWith('/preview'))).toBe(false);
+  });
+});
+
+describe('Resolución del lote (casa y plan de etapas)', () => {
+  const BATCH_URL = `${BATCHES_URL}/${BATCH_ID}`;
+
+  function openResolution({
+    batch = {},
+    preview = {},
+    project = {},
+    extra = {},
+  }: {
+    batch?: Record<string, unknown>;
+    preview?: Record<string, unknown>;
+    project?: Record<string, unknown>;
+    extra?: Record<string, Handler>;
+  } = {}) {
+    return open(`${URL}/imports/${BATCH_ID}`, project, {
+      [`GET ${BATCH_URL}`]: { status: 200, body: importBatch(batch) },
+      [`GET ${BATCH_URL}/preview`]: { status: 200, body: importPreview(preview) },
+      [`GET ${BATCH_URL}/readiness`]: readiness(),
+      [`GET ${HOUSES_URL}`]: HOUSES,
+      ...extra,
+    });
+  }
+
+  const CANDIDATES = {
+    stages: {
+      candidates: [
+        { label: 'Ronda 1', labelRow: 1, firstRow: 2, lastRow: 3, evidence: 'Fila de título' },
+      ],
+    },
+  };
+
+  const savedPlan = {
+    stages: [
+      {
+        key: 'R1',
+        name: 'Ronda 1',
+        unitStake: '10.00',
+        startsAt: null,
+        status: 'ACTIVE',
+        firstRow: 2,
+        lastRow: 3,
+      },
+    ],
+  };
+
+  const rejected = (details: unknown): StubResponse => ({
+    status: 400,
+    body: {
+      statusCode: 400,
+      code: 'VALIDATION_FAILED',
+      message: 'El plan de etapas contiene datos no válidos.',
+      details,
+    },
+  });
+
+  async function fillStage(form: HTMLElement) {
+    fireEvent.change(within(form).getByLabelText('Clave de la etapa 1'), {
+      target: { value: 'R1' },
+    });
+    fireEvent.change(within(form).getByLabelText('Unidad de la etapa 1'), {
+      target: { value: '10.00' },
+    });
+    fireEvent.change(within(form).getByLabelText('Inicio de la etapa 1'), {
+      target: { value: '2026-05-01T00:00' },
+    });
+    fireEvent.change(within(form).getByLabelText('Estado de la etapa 1'), {
+      target: { value: 'ACTIVE' },
+    });
+    fireEvent.click(await within(form).findByRole('button', { name: 'Guardar plan' }));
+  }
+
+  it('confirma la casa candidata y refresca el lote y la vista previa', async () => {
+    const { calls } = openResolution({
+      extra: {
+        [`POST ${BATCH_URL}/house`]: {
+          status: 200,
+          body: importBatch({ status: 'VALIDATED', houseId: BETSAFE_ID }),
+        },
+      },
+    });
+    const panel = await section('Casa del lote');
+    expect(within(panel).getByText('Sin confirmar')).toBeTruthy();
+    const form = await within(panel).findByRole('form', { name: 'Casa del lote' });
+    // La candidata de la API aparece sugerida, pero nada se guarda sin que la persona confirme.
+    await waitFor(() =>
+      expect(within(form).getByRole<HTMLSelectElement>('combobox').value).toBe(BETSAFE_ID),
+    );
+    expect(calls.some((c) => c.method === 'POST')).toBe(false);
+
+    fireEvent.click(within(form).getByRole('button', { name: 'Confirmar casa' }));
+
+    expect(await screen.findByText('Se confirmó la casa del lote.')).toBeTruthy();
+    const post = calls.find((c) => c.method === 'POST')!;
+    expect(post.path).toBe(`${BATCH_URL}/house`);
+    expect(post.body).toEqual({ houseId: BETSAFE_ID });
+    const summary = await section('Betsafe.xlsx');
+    expect(within(summary).getByText('Validado', { selector: 'span' })).toBeTruthy();
+    expect(within(panel).getByRole('button', { name: 'Corregir casa' })).toBeTruthy();
+    await waitFor(() =>
+      expect(calls.filter((c) => c.path === `${BATCH_URL}/preview`)).toHaveLength(2),
+    );
+  });
+
+  it('corrige una casa ya confirmada', async () => {
+    const { calls } = openResolution({
+      batch: { status: 'VALIDATED', houseId: BETSAFE_ID },
+      extra: {
+        [`POST ${BATCH_URL}/house`]: {
+          status: 200,
+          body: importBatch({ status: 'VALIDATED', houseId: BETANO_ID }),
+        },
+      },
+    });
+    const panel = await section('Casa del lote');
+    const form = await within(panel).findByRole('form', { name: 'Casa del lote' });
+    const button = within(form).getByRole('button', { name: 'Corregir casa' });
+    // Sin cambiar la elección no hay nada que corregir.
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.change(within(form).getByRole('combobox'), { target: { value: BETANO_ID } });
+    fireEvent.click(button);
+
+    expect(await screen.findByText('Se corrigió la casa del lote.')).toBeTruthy();
+    expect(calls.find((c) => c.method === 'POST')!.body).toEqual({ houseId: BETANO_ID });
+    expect(within(panel).getByText('Betano', { selector: 'dd' })).toBeTruthy();
+  });
+
+  it('muestra el error de la API al confirmar la casa', async () => {
+    openResolution({
+      extra: {
+        [`POST ${BATCH_URL}/house`]: apiError(
+          409,
+          'INVALID_STATE',
+          'Este lote ya no admite confirmar ni corregir su casa.',
+        ),
+      },
+    });
+    const panel = await section('Casa del lote');
+    const form = await within(panel).findByRole('form', { name: 'Casa del lote' });
+    await waitFor(() =>
+      expect(within(form).getByRole<HTMLSelectElement>('combobox').value).toBe(BETSAFE_ID),
+    );
+    fireEvent.click(within(form).getByRole('button', { name: 'Confirmar casa' }));
+    expect(
+      await within(panel).findByText('Este lote ya no admite confirmar ni corregir su casa.'),
+    ).toBeTruthy();
+  });
+
+  it('parte de los candidatos y guarda un plan válido tal como lo escribe la persona', async () => {
+    const { calls } = openResolution({
+      preview: CANDIDATES,
+      extra: {
+        [`POST ${BATCH_URL}/stage-plan`]: {
+          status: 200,
+          body: importBatch({ stagePlan: savedPlan }),
+        },
+      },
+    });
+    const panel = await section('Plan de etapas');
+    const candidates = await within(panel).findByRole('table', { name: 'Candidatos de etapa' });
+    expect(within(candidates).getByText('Ronda 1')).toBeTruthy();
+    expect(within(candidates).getByText('2–3')).toBeTruthy();
+
+    const form = within(panel).getByRole('form', { name: 'Plan de etapas' });
+    // Del candidato solo se toman el nombre y el rango; la clave y la unidad no se deducen.
+    expect(within(form).getByLabelText<HTMLInputElement>('Nombre de la etapa 1').value).toBe(
+      'Ronda 1',
+    );
+    expect(within(form).getByLabelText<HTMLInputElement>('Clave de la etapa 1').value).toBe('');
+    expect(within(form).getByLabelText<HTMLInputElement>('Unidad de la etapa 1').value).toBe('');
+    await fillStage(form);
+
+    expect(await screen.findByText('Se guardó el plan de etapas.')).toBeTruthy();
+    const post = calls.find((c) => c.method === 'POST')!;
+    expect(post.path).toBe(`${BATCH_URL}/stage-plan`);
+    expect(post.body).toEqual({
+      stages: [
+        {
+          key: 'R1',
+          name: 'Ronda 1',
+          unitStake: '10.00',
+          startsAt: new Date('2026-05-01T00:00').toISOString(),
+          status: 'ACTIVE',
+          firstRow: 2,
+          lastRow: 3,
+        },
+      ],
+    });
+    expect(within(form).getByText('Plan guardado (editable)')).toBeTruthy();
+  });
+
+  it('muestra los problemas del plan que rechaza la API', async () => {
+    openResolution({
+      preview: CANDIDATES,
+      extra: {
+        [`POST ${BATCH_URL}/stage-plan`]: rejected({
+          issues: [
+            'Solo la última etapa del plan (por orden de filas) puede quedar activa.',
+            'Etapa 1: la clave "R1" está repetida.',
+          ],
+        }),
+      },
+    });
+    const panel = await section('Plan de etapas');
+    const form = await within(panel).findByRole('form', { name: 'Plan de etapas' });
+    await fillStage(form);
+
+    const alert = await within(form).findByRole('alert');
+    expect(within(alert).getByText('La API rechazó el plan:')).toBeTruthy();
+    expect(
+      within(alert).getByText(
+        'Solo la última etapa del plan (por orden de filas) puede quedar activa.',
+      ),
+    ).toBeTruthy();
+    expect(within(alert).getByText('Etapa 1: la clave "R1" está repetida.')).toBeTruthy();
+    expect(screen.queryByText('Se guardó el plan de etapas.')).toBeNull();
+  });
+
+  it('traduce la ruta de un error de esquema a la etapa y el campo', async () => {
+    openResolution({
+      preview: CANDIDATES,
+      extra: {
+        [`POST ${BATCH_URL}/stage-plan`]: rejected([
+          { path: 'stages.0.unitStake', message: 'El monto debe ser mayor que cero.' },
+        ]),
+      },
+    });
+    const panel = await section('Plan de etapas');
+    const form = await within(panel).findByRole('form', { name: 'Plan de etapas' });
+    await fillStage(form);
+    expect(
+      await within(form).findByText('Etapa 1, unidad: El monto debe ser mayor que cero.'),
+    ).toBeTruthy();
+  });
+
+  it('sin import.run no ve controles, solo la casa y el plan guardados', async () => {
+    const { calls } = openResolution({
+      batch: { status: 'VALIDATED', houseId: BETSAFE_ID, stagePlan: savedPlan },
+      project: { myPermissions: VIEW_ONLY },
+    });
+    const house = await section('Casa del lote');
+    // Candidata y confirmada coinciden: las dos muestran Betsafe.
+    expect(await within(house).findAllByText('Betsafe', { selector: 'dd' })).toHaveLength(2);
+    expect(within(house).queryByRole('form')).toBeNull();
+
+    const plan = await section('Plan de etapas');
+    const table = within(plan).getByRole('table', { name: 'Plan de etapas guardado' });
+    expect(within(table).getByText('R1')).toBeTruthy();
+    expect(within(table).getByText('S/ 10.00')).toBeTruthy();
+    expect(within(plan).queryByRole('form')).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: /Confirmar casa|Corregir casa|Guardar plan/ }),
+    ).toBeNull();
+    expect(calls.some((c) => c.method === 'POST')).toBe(false);
+  });
+
+  it('un lote ya importado no ofrece controles aunque se tenga import.run', async () => {
+    openResolution({ batch: { status: 'IMPORTED', houseId: BETSAFE_ID, stagePlan: savedPlan } });
+    const plan = await section('Plan de etapas');
+    expect(within(plan).getByRole('table', { name: 'Plan de etapas guardado' })).toBeTruthy();
+    expect(screen.queryByRole('form', { name: 'Casa del lote' })).toBeNull();
+    expect(screen.queryByRole('form', { name: 'Plan de etapas' })).toBeNull();
+  });
+});
+
+describe('Reconocimiento, confirmación y anulación', () => {
+  const BATCH_URL = `${BATCHES_URL}/${BATCH_ID}`;
+  const REAUTH: StubResponse = {
+    status: 200,
+    body: { reauthenticatedAt: '2026-06-01T12:00:00.000Z' },
+  };
+  const DUPLICATE_REASON =
+    '1 grupo(s) de filas con la misma fecha, monto, cuota y descripción dentro del propio archivo (D-X10).';
+  const pendingAck = readiness({
+    needsAcknowledgment: true,
+    acknowledgmentReasons: [DUPLICATE_REASON],
+    canConfirm: false,
+  });
+  const PLAN = {
+    stages: [
+      {
+        key: 'R1',
+        name: 'Ronda 1',
+        unitStake: '10.00',
+        startsAt: null,
+        status: 'ACTIVE',
+        firstRow: 2,
+        lastRow: 3,
+      },
+    ],
+  };
+  const validated = { status: 'VALIDATED', houseId: BETSAFE_ID, stagePlan: PLAN };
+
+  function openLifecycle({
+    batch = validated,
+    ready = readiness(),
+    project = {},
+    extra = {},
+  }: {
+    batch?: Record<string, unknown>;
+    ready?: Handler;
+    project?: Record<string, unknown>;
+    extra?: Record<string, Handler>;
+  } = {}) {
+    return open(`${URL}/imports/${BATCH_ID}`, project, {
+      [`GET ${BATCH_URL}`]: { status: 200, body: importBatch(batch) },
+      [`GET ${BATCH_URL}/preview`]: { status: 200, body: importPreview() },
+      [`GET ${BATCH_URL}/readiness`]: ready,
+      [`GET ${HOUSES_URL}`]: HOUSES,
+      ...extra,
+    });
+  }
+
+  const writeResult = () => ({
+    batch: importBatch({
+      status: 'IMPORTED',
+      houseId: BETSAFE_ID,
+      importedAt: '2026-06-02T12:00:00.000Z',
+      importReason: 'Historial de Betsafe',
+    }),
+    stageIds: ['s1'],
+    initialCapitalMovementId: null,
+    betIds: ['b1', 'b2'],
+    report: {
+      houseId: BETSAFE_ID,
+      stages: 1,
+      initialCapital: null,
+      bets: { total: 2, won: 1, lost: 1, pending: 0 },
+      ledgerRows: 4,
+      profitLoss: '-0.50',
+      balanceBefore: '0.00',
+      balanceAfter: '-0.50',
+      warnings: [],
+    },
+  });
+
+  async function openConfirmForm() {
+    const panel = await section('Confirmación');
+    const start = await within(panel).findByRole('button', { name: 'Confirmar importación' });
+    await waitFor(() => expect(start).toHaveProperty('disabled', false));
+    fireEvent.click(start);
+    const form = within(panel).getByRole('form', { name: 'Confirmar importación' });
+    fireEvent.change(within(form).getByLabelText('Motivo de la confirmación'), {
+      target: { value: 'Historial de Betsafe' },
+    });
+    return { panel, form };
+  }
+
+  it('muestra los motivos de la API y registra el reconocimiento', async () => {
+    let acknowledged = false;
+    const { calls } = openLifecycle({
+      ready: () =>
+        acknowledged
+          ? readiness({
+              needsAcknowledgment: true,
+              acknowledgmentReasons: [DUPLICATE_REASON],
+              acknowledged: true,
+            })
+          : pendingAck,
+      extra: {
+        [`POST ${BATCH_URL}/acknowledge`]: () => {
+          acknowledged = true;
+          return {
+            status: 200,
+            body: importBatch({
+              ...validated,
+              acknowledgedAt: '2026-06-01T13:00:00.000Z',
+              acknowledgmentReason: 'Son dos apuestas distintas.',
+            }),
+          };
+        },
+      },
+    });
+    const panel = await section('Reconocimiento');
+    expect(await within(panel).findByText(DUPLICATE_REASON)).toBeTruthy();
+    const form = within(panel).getByRole('form', { name: 'Reconocer el lote' });
+    const submit = within(form).getByRole('button', { name: 'Reconocer' });
+    expect(submit).toHaveProperty('disabled', true); // el motivo es obligatorio
+    fireEvent.change(within(form).getByLabelText('Motivo del reconocimiento'), {
+      target: { value: 'Son dos apuestas distintas.' },
+    });
+    fireEvent.click(submit);
+
+    expect(await screen.findByText('Se registró el reconocimiento del lote.')).toBeTruthy();
+    expect(within(panel).getByText('Reconocido')).toBeTruthy();
+    expect(within(panel).getByText(/Motivo: Son dos apuestas distintas\./)).toBeTruthy();
+    expect(calls.find((c) => c.method === 'POST')!.body).toEqual({
+      reason: 'Son dos apuestas distintas.',
+    });
+    // Tras reconocer, la disponibilidad se vuelve a pedir a la API: ahora puede confirmarse.
+    const confirmation = await section('Confirmación');
+    expect(await within(confirmation).findByText('Sí, ya reconocido')).toBeTruthy();
+    expect(
+      within(confirmation).getByRole('button', { name: 'Confirmar importación' }),
+    ).toHaveProperty('disabled', false);
+  });
+
+  it('muestra el rechazo de la API al reconocer', async () => {
+    openLifecycle({
+      ready: pendingAck,
+      extra: {
+        [`POST ${BATCH_URL}/acknowledge`]: apiError(
+          409,
+          'INVALID_STATE',
+          'Este lote ya no admite reconocimientos.',
+        ),
+      },
+    });
+    const panel = await section('Reconocimiento');
+    const form = await within(panel).findByRole('form', { name: 'Reconocer el lote' });
+    fireEvent.change(within(form).getByLabelText('Motivo del reconocimiento'), {
+      target: { value: 'Revisado.' },
+    });
+    fireEvent.click(within(form).getByRole('button', { name: 'Reconocer' }));
+    const alert = await within(form).findByRole('alert');
+    expect(within(alert).getByText('Este lote ya no admite reconocimientos.')).toBeTruthy();
+    expect(screen.queryByText('Se registró el reconocimiento del lote.')).toBeNull();
+  });
+
+  it('sin reconocimiento la confirmación queda bloqueada, según la API', async () => {
+    const { calls } = openLifecycle({ ready: pendingAck });
+    const panel = await section('Confirmación');
+    expect(await within(panel).findByText('Falta el reconocimiento del lote.')).toBeTruthy();
+    expect(within(panel).getByText('Sí, pendiente (1 motivo(s))')).toBeTruthy();
+    expect(within(panel).getByRole('button', { name: 'Confirmar importación' })).toHaveProperty(
+      'disabled',
+      true,
+    );
+    expect(calls.some((c) => c.path.endsWith('/confirm'))).toBe(false);
+  });
+
+  it('si la API rechaza la confirmación, muestra su mensaje y sus motivos', async () => {
+    openLifecycle({
+      extra: {
+        [`POST ${BATCH_URL}/confirm`]: {
+          status: 409,
+          body: {
+            statusCode: 409,
+            code: 'INVALID_STATE',
+            message: 'Este lote necesita un reconocimiento explícito antes de confirmarse.',
+            details: { issues: [DUPLICATE_REASON] },
+          },
+        },
+      },
+    });
+    const { form } = await openConfirmForm();
+    fireEvent.click(within(form).getByRole('button', { name: 'Confirmar' }));
+    const alert = await within(form).findByRole('alert');
+    expect(
+      within(alert).getByText(
+        'Este lote necesita un reconocimiento explícito antes de confirmarse.',
+      ),
+    ).toBeTruthy();
+    expect(within(alert).getByText(DUPLICATE_REASON)).toBeTruthy();
+  });
+
+  it('confirma tras pedir la contraseña cuando la API exige reautenticación', async () => {
+    let reauthed = false;
+    const { calls } = openLifecycle({
+      extra: {
+        [`POST ${BATCH_URL}/confirm`]: () =>
+          reauthed ? { status: 200, body: writeResult() } : apiError(403, 'REAUTH_REQUIRED'),
+        'POST /auth/reauth': () => {
+          reauthed = true;
+          return REAUTH;
+        },
+      },
+    });
+    const { form } = await openConfirmForm();
+    fireEvent.click(within(form).getByRole('checkbox', { name: /Es un ensayo/ }));
+    fireEvent.click(within(form).getByRole('button', { name: 'Confirmar' }));
+
+    const dialog = await screen.findByRole('dialog', { name: 'Confirma tu contraseña' });
+    fireEvent.change(within(dialog).getByLabelText('Contraseña actual'), {
+      target: { value: 'mi-clave-secreta' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Confirmar' }));
+
+    expect(
+      await screen.findByText('Se importó el lote: 2 apuestas y 1 etapas registradas.'),
+    ).toBeTruthy();
+    const posts = calls.filter((c) => c.path === `${BATCH_URL}/confirm`);
+    expect(posts).toHaveLength(2);
+    // Sin `origin`: la API lo lee del propio lote.
+    expect(posts[1]!.body).toEqual({ reason: 'Historial de Betsafe', isRehearsal: true });
+  });
+
+  it('una confirmación exitosa deja el lote importado y ofrece anularlo', async () => {
+    const { calls } = openLifecycle({
+      extra: { [`POST ${BATCH_URL}/confirm`]: { status: 200, body: writeResult() } },
+    });
+    const { form } = await openConfirmForm();
+    fireEvent.click(within(form).getByRole('button', { name: 'Confirmar' }));
+
+    expect(
+      await screen.findByText('Se importó el lote: 2 apuestas y 1 etapas registradas.'),
+    ).toBeTruthy();
+    const summary = await section('Betsafe.xlsx');
+    expect(within(summary).getByText('Importado', { selector: 'span' })).toBeTruthy();
+    expect(within(summary).getByText(/Historial de Betsafe/)).toBeTruthy();
+    expect(calls.find((c) => c.path === `${BATCH_URL}/confirm`)!.body).toMatchObject({
+      isRehearsal: false,
+    });
+    // Reconocer y confirmar ya no aplican; anular sí.
+    expect(screen.queryByRole('heading', { name: 'Confirmación' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Reconocimiento' })).toBeNull();
+    expect(await screen.findByRole('button', { name: 'Anular lote' })).toBeTruthy();
+    await waitFor(() =>
+      expect(calls.filter((c) => c.path === `${BATCH_URL}/readiness`)).toHaveLength(2),
+    );
+  });
+
+  const imported = {
+    status: 'IMPORTED',
+    houseId: BETSAFE_ID,
+    importedAt: '2026-06-02T12:00:00.000Z',
+  };
+
+  async function openAnnulForm() {
+    const panel = await section('Anulación');
+    fireEvent.click(within(panel).getByRole('button', { name: 'Anular lote' }));
+    const form = within(panel).getByRole('form', { name: 'Anular lote' });
+    expect(within(form).getByText(/Esta acción no se puede deshacer/)).toBeTruthy();
+    const submit = within(form).getByRole('button', { name: 'Confirmar anulación' });
+    expect(submit).toHaveProperty('disabled', true); // el motivo es obligatorio
+    fireEvent.change(within(form).getByLabelText('Motivo de la anulación'), {
+      target: { value: 'Archivo equivocado' },
+    });
+    fireEvent.click(submit);
+    return form;
+  }
+
+  it('anula un lote importado tras la confirmación previa', async () => {
+    const { calls } = openLifecycle({
+      batch: imported,
+      extra: {
+        [`POST ${BATCH_URL}/annul`]: {
+          status: 200,
+          body: {
+            batch: importBatch({
+              ...imported,
+              status: 'ANNULLED',
+              annulledAt: '2026-06-03T12:00:00.000Z',
+              annulmentReason: 'Archivo equivocado',
+            }),
+            annulledBetIds: ['b1', 'b2'],
+            reversedMovementIds: ['m1', 'm2', 'm3'],
+            annulledStageIds: ['s1'],
+            keptStageIds: [],
+          },
+        },
+      },
+    });
+    await openAnnulForm();
+
+    expect(
+      await screen.findByText('Se anuló el lote: 2 apuestas anuladas y 3 movimientos revertidos.'),
+    ).toBeTruthy();
+    expect(calls.find((c) => c.path === `${BATCH_URL}/annul`)!.body).toEqual({
+      reason: 'Archivo equivocado',
+    });
+    const summary = await section('Betsafe.xlsx');
+    expect(within(summary).getByText('Anulado', { selector: 'span' })).toBeTruthy();
+    expect(within(summary).getByText(/Archivo equivocado/)).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'Anulación' })).toBeNull();
+  });
+
+  it('muestra el error de la API al anular', async () => {
+    openLifecycle({
+      batch: imported,
+      extra: {
+        [`POST ${BATCH_URL}/annul`]: apiError(
+          409,
+          'INVALID_STATE',
+          'Anular este lote dejaría un saldo negativo.',
+        ),
+      },
+    });
+    const form = await openAnnulForm();
+    const alert = await within(form).findByRole('alert');
+    expect(within(alert).getByText('Anular este lote dejaría un saldo negativo.')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Anulación' })).toBeTruthy();
+  });
+
+  it('sin import.run ve el estado y los motivos, pero ninguna acción', async () => {
+    openLifecycle({ ready: pendingAck, project: { myPermissions: VIEW_ONLY } });
+    const panel = await section('Reconocimiento');
+    expect(await within(panel).findByText(DUPLICATE_REASON)).toBeTruthy();
+    expect(within(panel).queryByRole('form')).toBeNull();
+    const confirmation = await section('Confirmación');
+    expect(within(confirmation).getByText('Sí, pendiente (1 motivo(s))')).toBeTruthy();
+    expect(within(confirmation).queryByRole('button')).toBeNull();
+  });
+
+  it('sin import.run no puede anular un lote importado', async () => {
+    openLifecycle({ batch: imported, project: { myPermissions: VIEW_ONLY } });
+    await section('Betsafe.xlsx');
+    await section('Resumen de la vista previa');
+    expect(screen.queryByRole('heading', { name: 'Anulación' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Anular lote' })).toBeNull();
   });
 });
 

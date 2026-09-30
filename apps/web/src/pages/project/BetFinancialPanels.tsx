@@ -30,7 +30,7 @@ import { useProject } from './ProjectContext.js';
 const panelClass = 'mt-3 flex flex-col gap-3 rounded border border-slate-200 bg-slate-50 p-3';
 
 /** `datetime-local` (hora local) a partir de un instante ISO. */
-function toLocalInput(iso: string | null): string {
+export function toLocalInput(iso: string | null): string {
   if (!iso) return '';
   const date = new Date(iso);
   const pad = (value: number) => String(value).padStart(2, '0');

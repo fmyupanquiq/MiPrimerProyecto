@@ -14,6 +14,7 @@ import {
   type ImportBatchAnnulResult,
   type ImportBatchSummaryRow,
   type ImportBatchWriteResult,
+  type ImportConfirmationReadiness,
   type ImportPreview,
   type SaveImportStagePlanInput,
   type UploadImportBatchInput,
@@ -122,6 +123,25 @@ export class ImportBatchesController {
       batchIdOrNotFound(batchId),
       access.project.timezone,
     );
+  }
+
+  /**
+   * Si el lote puede confirmarse ahora (D-X17b, §113.7, D-X10): bloqueos, motivos que exigen
+   * reconocimiento y si ya se dio. Solo lectura; es la misma comprobación que aplica `confirm`,
+   * expuesta para que la web la muestre sin deducirla (Fase 9.4.7).
+   */
+  @Get(':batchId/readiness')
+  @ProjectRoute('imports.view')
+  @Header('Cache-Control', 'no-store')
+  readiness(
+    @CurrentProject() access: ProjectAccess,
+    @Param('batchId') batchId: string,
+  ): Promise<ImportConfirmationReadiness> {
+    return this.acknowledgment.canConfirmImport({
+      projectId: access.project.id,
+      batchId: batchIdOrNotFound(batchId),
+      timeZone: access.project.timezone,
+    });
   }
 
   @Post(':batchId/house')
