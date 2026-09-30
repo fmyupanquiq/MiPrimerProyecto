@@ -21,6 +21,9 @@ import { AuditPage } from './pages/project/AuditPage.js';
 import { BetsPage } from './pages/project/BetsPage.js';
 import { DashboardPage } from './pages/project/DashboardPage.js';
 import { FinancePage } from './pages/project/FinancePage.js';
+import { ImportBatchPage } from './pages/project/imports/ImportBatchPage.js';
+import { ImportsPage } from './pages/project/imports/ImportsPage.js';
+import { ImportUploadPage } from './pages/project/imports/ImportUploadPage.js';
 import { MembersPage } from './pages/project/MembersPage.js';
 import { ProjectLayout } from './pages/project/ProjectLayout.js';
 import { ProjectSetupPage } from './pages/project/ProjectSetupPage.js';
@@ -77,6 +80,9 @@ export function App() {
             <Route path="finance" element={<FinancePage />} />
             <Route path="bets" element={<BetsPage />} />
             <Route path="returns" element={<ReturnsPage />} />
+            <Route path="imports" element={<ImportsPage />} />
+            <Route path="imports/new" element={<ImportUploadPage />} />
+            <Route path="imports/:batchId" element={<ImportBatchPage />} />
             <Route path="members" element={<MembersPage />} />
             <Route path="audit" element={<AuditPage />} />
             <Route path="trash" element={<ProjectTrashPage />} />

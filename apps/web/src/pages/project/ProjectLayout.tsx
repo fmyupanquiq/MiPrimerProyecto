@@ -96,6 +96,11 @@ export function ProjectLayout() {
         <NavLink to={`/projects/${project.id}/finance`} className={tabClass}>
           Casas y Finanzas
         </NavLink>
+        {permissions.has('imports.view') && (
+          <NavLink to={`/projects/${project.id}/imports`} className={tabClass}>
+            Importaciones
+          </NavLink>
+        )}
         <NavLink to={`/projects/${project.id}/members`} className={tabClass}>
           Miembros
         </NavLink>

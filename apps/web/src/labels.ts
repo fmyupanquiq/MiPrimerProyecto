@@ -5,6 +5,11 @@ import type {
   BetStatus,
   BetType,
   HouseStatus,
+  BatchFinancialSemaphore,
+  ImportBatchStatus,
+  ImportRowReportCategory,
+  ImportRowStatus,
+  ImportSemaphore,
   IntegrityCheckStatus,
   InvitationExpiry,
   InvitationStatus,
@@ -84,6 +89,44 @@ export const STAGE_STATUS_LABELS: Record<StageStatus, string> = {
 export const HOUSE_STATUS_LABELS: Record<HouseStatus, string> = {
   ACTIVE: 'Activa',
   INACTIVE: 'Desactivada',
+};
+
+/** Estados de un lote de importación (§113.9). */
+export const IMPORT_BATCH_STATUS_LABELS: Record<ImportBatchStatus, string> = {
+  UPLOADED: 'Subido',
+  VALIDATED: 'Validado',
+  IMPORTED: 'Importado',
+  ANNULLED: 'Anulado',
+};
+
+/** Semáforo estructural de un lote (D-X17b). */
+export const IMPORT_SEMAPHORE_LABELS: Record<ImportSemaphore, string> = {
+  OK: 'Listo',
+  NEEDS_ACKNOWLEDGMENT: 'Requiere reconocimiento',
+  BLOCKED: 'Bloqueado',
+};
+
+/** Semáforo financiero del lote frente a las cifras del archivo (§113.7). */
+export const IMPORT_FINANCIAL_SEMAPHORE_LABELS: Record<BatchFinancialSemaphore, string> = {
+  GREEN: 'Verde',
+  YELLOW: 'Amarillo',
+  RED: 'Rojo',
+};
+
+/** Clasificación de una fila del archivo (D-X21, D-X21b). */
+export const IMPORT_ROW_STATUS_LABELS: Record<ImportRowStatus, string> = {
+  VALID: 'Válida',
+  TEMPLATE: 'Plantilla',
+  EMPTY: 'Vacía',
+  PARTIAL: 'Parcial',
+  INVALID: 'Inválida',
+};
+
+/** Efecto de una fila sobre la confirmación (D-X17b). */
+export const IMPORT_ROW_CATEGORY_LABELS: Record<ImportRowReportCategory, string> = {
+  BLOCKING: 'Bloquea',
+  NEEDS_ACKNOWLEDGMENT: 'Requiere reconocimiento',
+  INFORMATIONAL: 'Informativa',
 };
 
 export const MOVEMENT_TYPE_LABELS: Record<MovementType, string> = {
