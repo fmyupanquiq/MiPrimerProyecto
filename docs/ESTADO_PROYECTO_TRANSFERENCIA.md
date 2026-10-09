@@ -99,8 +99,8 @@ acción y pruebas en `docs/RESUMEN_FASE_9_4_CIERRE.md`.
 
 ### Para la Fase 10 (o una limpieza posterior)
 
-- **Fechas en la hora del navegador** (plan de etapas, y también Apuestas y correcciones): la
-  aplicación no usa la zona horaria del proyecto en los formularios. Si se cambia, en toda la web.
+- ~~**Fechas en la hora del navegador**~~ Resuelto en la Fase 10.3g (H-20): la web lee, escribe y
+  presenta las fechas en la zona horaria del proyecto (§93).
 - **`ImportBatchSummaryRow`** declara sus fechas como `Date` aunque por HTTP llegan como cadenas (la
   web usa `toIso`); corregirlo exige serializar en la API.
 - **Lista de orígenes duplicada** en la web (`IMPORT_ORIGIN_OPTIONS`): añadir Betano también allí
