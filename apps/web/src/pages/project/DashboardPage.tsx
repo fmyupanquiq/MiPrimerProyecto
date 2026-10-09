@@ -1,565 +1,196 @@
-import { formatPEN, type BetStatus, type BetType, type DashboardPeriod } from '@letfer/shared';
-import { type FormEvent, useState } from 'react';
-import {
-  CartesianGrid,
-  Line,
-  LineChart,
-  ReferenceLine,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
-import { dashboardApi, type DashboardAnalysisFilters } from '../../api/dashboard.js';
-import { housesApi, stagesApi } from '../../api/finance.js';
-import { useLoad } from '../../hooks/useLoad.js';
-import {
-  BET_STATUS_LABELS,
-  BET_TYPE_LABELS,
-  DATE_FORMAT_LABELS,
-  formatDate,
-  roleLabel,
-} from '../../labels.js';
 import { Link } from 'react-router';
-import { inputClass, Notice, Section } from '../../ui.js';
+import { betsApi } from '../../api/bets.js';
+import { dashboardApi } from '../../api/dashboard.js';
+import { useLoad } from '../../hooks/useLoad.js';
+import { AlertIcon, PlusIcon } from '../../icons.js';
+import { Notice } from '../../ui.js';
+import { BetStatusDonut } from './dashboard/BetStatusDonut.js';
+import { PendingBets, RecentBets } from './dashboard/BetLists.js';
+import { CapitalChart } from './dashboard/CapitalChart.js';
+import { PrimaryLink } from './dashboard/DashboardCard.js';
+import { GettingStarted } from './dashboard/GettingStarted.js';
+import { KpiCards } from './dashboard/KpiCards.js';
+import {
+  HousesCard,
+  ProjectInfoCard,
+  QUICK_ACTION_ICONS,
+  QuickActions,
+  SportsCard,
+  type QuickAction,
+} from './dashboard/OverviewCards.js';
 import { useProject } from './ProjectContext.js';
 
-const PERIOD_LABELS: Record<DashboardPeriod, string> = { day: 'Día', week: 'Semana', month: 'Mes' };
-
-/** Cifra en soles, o un guion si viene `null` (razón indefinida, p. ej. sin nada apostado). */
-function money(value: string | null): string {
-  return value === null ? '—' : formatPEN(value);
-}
-
-/** Porcentaje, o un guion si viene `null` (D-M1, §108.1: no es 0%, es "todavía no definido"). */
-function percent(value: string | null): string {
-  return value === null ? '—' : `${value} %`;
-}
-
-function shortDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit' });
-}
-
-interface StatCardProps {
-  label: string;
-  value: string;
-  tone?: 'default' | 'positive' | 'negative';
-}
-
-function StatCard({ label, value, tone = 'default' }: StatCardProps) {
-  const color =
-    tone === 'positive'
-      ? 'text-green-700'
-      : tone === 'negative'
-        ? 'text-red-700'
-        : 'text-slate-900';
+/**
+ * Etiqueta de agrupación conceptual (Fase 11, §10.4): no es una tarjeta más, solo un rótulo
+ * discreto — el mismo tratamiento que ya usa la navegación del proyecto para sus grupos — para
+ * que el Dashboard se lea como "Rendimiento", "Apuestas" y "Actividad" en vez de once tarjetas
+ * sueltas una debajo de otra sin ninguna relación visible entre ellas.
+ */
+function GroupLabel({ children }: { children: string }) {
   return (
-    <div className="rounded border border-slate-200 p-3">
-      <p className="text-xs text-slate-500">{label}</p>
-      <p className={`text-lg font-semibold ${color}`}>{value}</p>
-    </div>
-  );
-}
-
-function toneOf(value: string | null): 'default' | 'positive' | 'negative' {
-  if (value === null) return 'default';
-  return value.startsWith('-') ? 'negative' : value === '0.00' ? 'default' : 'positive';
-}
-
-interface BreakdownTableProps {
-  title: string;
-  items: {
-    key: string;
-    profitLoss: string;
-    yield: string | null;
-    totalStaked: string;
-    count: number;
-  }[];
-}
-
-function BreakdownTable({ title, items }: BreakdownTableProps) {
-  return (
-    <div className="flex flex-col gap-2">
-      <h3 className="text-sm font-medium text-slate-700">{title}</h3>
-      {items.length === 0 ? (
-        <p className="text-sm text-slate-500">Sin apuestas liquidadas en este filtro.</p>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-200 text-left text-slate-500">
-                <th className="py-1 pr-2 font-normal">Grupo</th>
-                <th className="py-1 pr-2 font-normal">P/L</th>
-                <th className="py-1 pr-2 font-normal">Yield</th>
-                <th className="py-1 pr-2 font-normal">Apostado</th>
-                <th className="py-1 font-normal">Apuestas</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item) => (
-                <tr key={item.key} className="border-b border-slate-100 last:border-0">
-                  <td className="py-1 pr-2">{item.key}</td>
-                  <td
-                    className={`py-1 pr-2 ${toneOf(item.profitLoss) === 'negative' ? 'text-red-700' : ''}`}
-                  >
-                    {money(item.profitLoss)}
-                  </td>
-                  <td className="py-1 pr-2">{percent(item.yield)}</td>
-                  <td className="py-1 pr-2">{money(item.totalStaked)}</td>
-                  <td className="py-1">{item.count}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  );
-}
-
-const EMPTY_FILTERS: DashboardAnalysisFilters = {};
-
-/** Filtros y análisis del tablero (§33, §108): un formulario simple que aplica al enviarse. */
-function AnalysisFilters({
-  houses,
-  stages,
-  onApply,
-}: {
-  houses: { id: string; name: string }[];
-  stages: { id: string; name: string }[];
-  onApply: (filters: DashboardAnalysisFilters) => void;
-}) {
-  const [draft, setDraft] = useState<DashboardAnalysisFilters>(EMPTY_FILTERS);
-
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    onApply(draft);
-  };
-  const clear = () => {
-    setDraft(EMPTY_FILTERS);
-    onApply(EMPTY_FILTERS);
-  };
-
-  return (
-    <form onSubmit={submit} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-      <label className="flex flex-col gap-1 text-sm">
-        Etapa
-        <select
-          className={inputClass}
-          value={draft.stageId ?? ''}
-          onChange={(e) => setDraft({ ...draft, stageId: e.target.value || undefined })}
-        >
-          <option value="">Todas</option>
-          {stages.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.name}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="flex flex-col gap-1 text-sm">
-        Casa
-        <select
-          className={inputClass}
-          value={draft.houseId ?? ''}
-          onChange={(e) => setDraft({ ...draft, houseId: e.target.value || undefined })}
-        >
-          <option value="">Todas</option>
-          {houses.map((h) => (
-            <option key={h.id} value={h.id}>
-              {h.name}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="flex flex-col gap-1 text-sm">
-        Tipo de apuesta
-        <select
-          className={inputClass}
-          value={draft.betType ?? ''}
-          onChange={(e) =>
-            setDraft({ ...draft, betType: (e.target.value || undefined) as BetType | undefined })
-          }
-        >
-          <option value="">Todos</option>
-          {(Object.keys(BET_TYPE_LABELS) as BetType[]).map((t) => (
-            <option key={t} value={t}>
-              {BET_TYPE_LABELS[t]}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="flex flex-col gap-1 text-sm">
-        Resultado
-        <select
-          className={inputClass}
-          value={draft.status ?? ''}
-          onChange={(e) =>
-            setDraft({ ...draft, status: (e.target.value || undefined) as BetStatus | undefined })
-          }
-        >
-          <option value="">Todos</option>
-          {(Object.keys(BET_STATUS_LABELS) as BetStatus[]).map((s) => (
-            <option key={s} value={s}>
-              {BET_STATUS_LABELS[s]}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="flex flex-col gap-1 text-sm">
-        Deporte
-        <input
-          className={inputClass}
-          value={draft.sport ?? ''}
-          onChange={(e) => setDraft({ ...draft, sport: e.target.value || undefined })}
-          placeholder="p. ej. Fútbol"
-        />
-      </label>
-      <label className="flex flex-col gap-1 text-sm">
-        Mercado
-        <input
-          className={inputClass}
-          value={draft.market ?? ''}
-          onChange={(e) => setDraft({ ...draft, market: e.target.value || undefined })}
-          placeholder="p. ej. 1X2"
-        />
-      </label>
-      <label className="flex flex-col gap-1 text-sm">
-        Desde
-        <input
-          type="date"
-          className={inputClass}
-          value={draft.from?.slice(0, 10) ?? ''}
-          onChange={(e) =>
-            setDraft({
-              ...draft,
-              from: e.target.value ? `${e.target.value}T00:00:00.000Z` : undefined,
-            })
-          }
-        />
-      </label>
-      <label className="flex flex-col gap-1 text-sm">
-        Hasta
-        <input
-          type="date"
-          className={inputClass}
-          value={draft.to?.slice(0, 10) ?? ''}
-          onChange={(e) =>
-            setDraft({
-              ...draft,
-              to: e.target.value ? `${e.target.value}T23:59:59.999Z` : undefined,
-            })
-          }
-        />
-      </label>
-      <label className="flex flex-col gap-1 text-sm">
-        Agrupar por periodo
-        <select
-          className={inputClass}
-          value={draft.period ?? 'month'}
-          onChange={(e) => setDraft({ ...draft, period: e.target.value as DashboardPeriod })}
-        >
-          {(Object.keys(PERIOD_LABELS) as DashboardPeriod[]).map((p) => (
-            <option key={p} value={p}>
-              {PERIOD_LABELS[p]}
-            </option>
-          ))}
-        </select>
-      </label>
-      <div className="flex items-end gap-2 sm:col-span-2 lg:col-span-4">
-        <button
-          type="submit"
-          className="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white"
-        >
-          Aplicar filtros
-        </button>
-        <button
-          type="button"
-          onClick={clear}
-          className="rounded border border-slate-300 px-3 py-1.5 text-sm"
-        >
-          Limpiar
-        </button>
-      </div>
-    </form>
+    <p className="mt-2 px-1 text-xs font-medium tracking-wide text-slate-400 uppercase">
+      {children}
+    </p>
   );
 }
 
 /**
- * Dashboard y métricas (§33, §34, §108, ADR 0015). Amplía la pantalla "Resumen" existente
- * (D-M2): la tarjeta de datos del proyecto se conserva; debajo se añaden el estado financiero
- * actual, los filtros y los indicadores del análisis, y los gráficos de evolución de banca y
- * curva de rendimiento (Recharts, D-M9).
+ * Dashboard del proyecto (§33, §34, §108; rediseño de la Fase 10.3): el estado financiero de un
+ * vistazo, la evolución del capital, el estado de las apuestas, las recientes y las pendientes, las
+ * casas, los deportes y los accesos directos. Solo presenta datos de la API (`/dashboard/status`,
+ * `/dashboard/analysis` sin filtros, `/dashboard/bankroll-chart` y la lista de apuestas): no calcula
+ * ninguna regla financiera. El análisis con filtros y el drawdown están en "Reportes".
  */
 export function DashboardPage() {
-  const { project } = useProject();
-  const [filters, setFilters] = useState<DashboardAnalysisFilters>(EMPTY_FILTERS);
+  const { project, can } = useProject();
 
-  const houses = useLoad(`houses:${project.id}`, () => housesApi.list(project.id));
-  const stages = useLoad(`stages:${project.id}`, () => stagesApi.list(project.id));
+  return (
+    <>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 className="text-2xl font-semibold tracking-tight">Dashboard</h2>
+          <p className="text-sm text-slate-500">
+            ¿Cómo estás ahora? El dinero de {project.name}, tus apuestas y lo que queda por hacer.
+          </p>
+        </div>
+        {project.setupComplete && can('bets.create') && (
+          <PrimaryLink to={`/projects/${project.id}/bets?nueva=1`}>
+            <PlusIcon className="h-4 w-4" /> Añadir apuesta
+          </PrimaryLink>
+        )}
+      </div>
+      {!project.setupComplete && (
+        <GettingStarted
+          projectId={project.id}
+          setupComplete={false}
+          counts={null}
+          canSetup={can('project.setup')}
+          canCreateBet={can('bets.create')}
+          canSettle={can('bets.settle')}
+        />
+      )}
+      {!project.setupComplete ? null : !can('bets.view') ? (
+        <Notice tone="info">Tu rol no incluye la consulta de apuestas ni de métricas.</Notice>
+      ) : (
+        <DashboardContent />
+      )}
+      <GroupLabel>Accesos</GroupLabel>
+      <div className="grid gap-4 lg:grid-cols-3">
+        <QuickActions actions={quickActions(project.id, project.setupComplete, can)} />
+        <ProjectInfoCard project={project} />
+      </div>
+    </>
+  );
+}
+
+function quickActions(
+  projectId: string,
+  setupComplete: boolean,
+  can: ReturnType<typeof useProject>['can'],
+): QuickAction[] {
+  const base = `/projects/${projectId}`;
+  const actions: QuickAction[] = [];
+  if (setupComplete && can('bets.create')) {
+    actions.push({
+      to: `${base}/bets?nueva=1`,
+      title: 'Añadir apuesta',
+      text: 'Registrar una apuesta, pendiente o ya liquidada',
+      icon: QUICK_ACTION_ICONS.addBet,
+    });
+  }
+  if (setupComplete && can('import.run')) {
+    actions.push({
+      to: `${base}/imports/new`,
+      title: 'Importar apuestas',
+      text: 'Subir el historial de una casa (.xlsx)',
+      icon: QUICK_ACTION_ICONS.import,
+    });
+  }
+  if (can('bets.view')) {
+    actions.push({
+      to: `${base}/reports`,
+      title: 'Ver reportes',
+      text: 'P/L, Yield, ROI y drawdown con filtros',
+      icon: QUICK_ACTION_ICONS.reports,
+    });
+  }
+  actions.push({
+    to: `${base}/finance`,
+    title: 'Gestionar casas',
+    text: 'Saldos, movimientos, retiros y conciliación',
+    icon: QUICK_ACTION_ICONS.houses,
+  });
+  return actions;
+}
+
+/** Secciones con datos: solo se montan (y piden sus datos) con el setup completo y `bets.view`. */
+function DashboardContent() {
+  const { project, can } = useProject();
   const status = useLoad(`dashboard-status:${project.id}`, () => dashboardApi.status(project.id));
-  const analysis = useLoad(`dashboard-analysis:${project.id}:${JSON.stringify(filters)}`, () =>
-    dashboardApi.analysis(project.id, filters),
+  const analysis = useLoad(`dashboard-overview-analysis:${project.id}`, () =>
+    dashboardApi.analysis(project.id),
   );
   const bankroll = useLoad(`dashboard-bankroll:${project.id}`, () =>
     dashboardApi.bankrollChart(project.id),
   );
-  const performance = useLoad(`dashboard-performance:${project.id}`, () =>
-    dashboardApi.performanceChart(project.id),
-  );
+  const bets = useLoad(`dashboard-bets:${project.id}`, () => betsApi.list(project.id));
+
+  const base = `/projects/${project.id}`;
+  const addBetPath = can('bets.create') ? `${base}/bets?nueva=1` : null;
+  const pendingReturns = status.data?.retornosPorConfirmar ?? 0;
 
   return (
     <>
-      <Section title="Resumen">
-        {project.description ? (
-          <p className="whitespace-pre-line">{project.description}</p>
-        ) : (
-          <p className="text-slate-500">Este proyecto todavía no tiene descripción.</p>
-        )}
-        <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
-          <div>
-            <dt className="text-slate-500">Propietario</dt>
-            <dd>{project.ownerName}</dd>
-          </div>
-          <div>
-            <dt className="text-slate-500">Tu rol</dt>
-            <dd>
-              {project.isOwner && 'Propietario · '}
-              {project.myRole ? roleLabel(project.myRole) : 'Acceso como administrador global'}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-slate-500">Moneda</dt>
-            <dd>{project.currency}</dd>
-          </div>
-          <div>
-            <dt className="text-slate-500">Zona horaria</dt>
-            <dd>{project.timezone}</dd>
-          </div>
-          <div>
-            <dt className="text-slate-500">Formato de fecha</dt>
-            <dd>{DATE_FORMAT_LABELS[project.dateFormat]}</dd>
-          </div>
-          <div>
-            <dt className="text-slate-500">Creado</dt>
-            <dd>{formatDate(project.createdAt)}</dd>
-          </div>
-        </dl>
-      </Section>
-
-      {(status.data?.retornosPorConfirmar ?? 0) > 0 && (
-        <Notice tone="info">
-          <strong>
-            Hay {status.data?.retornosPorConfirmar}{' '}
-            {status.data?.retornosPorConfirmar === 1 ? 'apuesta ganada' : 'apuestas ganadas'} con
-            retorno calculado, sin confirmar.
-          </strong>{' '}
-          Ya cuentan en la ganancia, el Yield y el ROI con su valor calculado, pero son
-          provisionales hasta confirmar el retorno oficial.{' '}
-          <Link to={`/projects/${project.id}/returns`} className="underline">
+      <GettingStarted
+        projectId={project.id}
+        setupComplete
+        counts={status.data?.conteoApuestas ?? null}
+        canSetup={can('project.setup')}
+        canCreateBet={can('bets.create')}
+        canSettle={can('bets.settle')}
+      />
+      {pendingReturns > 0 && (
+        <div
+          role="status"
+          className="flex flex-wrap items-center gap-3 rounded-2xl border border-orange-200 bg-orange-50 p-4 text-sm text-orange-900"
+        >
+          <AlertIcon className="h-5 w-5 shrink-0 text-orange-600" />
+          <p className="min-w-0 flex-1">
+            <strong>
+              Hay {pendingReturns} {pendingReturns === 1 ? 'apuesta ganada' : 'apuestas ganadas'}{' '}
+              con retorno calculado, sin confirmar.
+            </strong>{' '}
+            Ya cuentan en la ganancia, el Yield y el ROI con su valor calculado, pero son
+            provisionales hasta confirmar el retorno oficial.
+          </p>
+          <Link
+            to={`${base}/returns`}
+            className="w-full pl-8 font-medium underline sm:w-auto sm:pl-0"
+          >
             Ver retornos por confirmar
           </Link>
-          .
-        </Notice>
+        </div>
       )}
 
-      <Section title="Estado financiero actual">
-        {status.error && <Notice tone="error">{status.error}</Notice>}
-        {status.data && (
-          <>
-            <div className="grid gap-3 sm:grid-cols-3">
-              <StatCard label="Capital actual" value={formatPEN(status.data.capitalActual)} />
-              <StatCard label="Disponible" value={formatPEN(status.data.disponible)} />
-              <StatCard label="Comprometido" value={formatPEN(status.data.comprometido)} />
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-slate-200 text-left text-slate-500">
-                    <th className="py-1 pr-2 font-normal">Casa</th>
-                    <th className="py-1 pr-2 font-normal">Saldo</th>
-                    <th className="py-1 pr-2 font-normal">Comprometido</th>
-                    <th className="py-1 font-normal">Disponible</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {status.data.porCasa.map((house) => (
-                    <tr key={house.houseId} className="border-b border-slate-100 last:border-0">
-                      <td className="py-1 pr-2">{house.houseName}</td>
-                      <td className="py-1 pr-2">{formatPEN(house.balance)}</td>
-                      <td className="py-1 pr-2">{formatPEN(house.committed)}</td>
-                      <td className="py-1">{formatPEN(house.available)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <p className="text-sm text-slate-500">
-              Pendientes: {status.data.conteoApuestas.pending} · Ganadas:{' '}
-              {status.data.conteoApuestas.won} · Perdidas: {status.data.conteoApuestas.lost} ·
-              Anuladas: {status.data.conteoApuestas.void} · Cash Out:{' '}
-              {status.data.conteoApuestas.cashout}
-            </p>
-          </>
-        )}
-      </Section>
+      <KpiCards status={status} analysis={analysis} />
 
-      <Section title="Análisis filtrado">
-        <AnalysisFilters
-          houses={houses.data ?? []}
-          stages={stages.data ?? []}
-          onApply={setFilters}
-        />
-        {analysis.error && <Notice tone="error">{analysis.error}</Notice>}
-        {analysis.data && (
-          <>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <StatCard
-                label="P/L"
-                value={money(analysis.data.profitLoss)}
-                tone={toneOf(analysis.data.profitLoss)}
-              />
-              <StatCard
-                label="Yield"
-                value={percent(analysis.data.yield)}
-                tone={toneOf(analysis.data.yield)}
-              />
-              <StatCard
-                label="ROI"
-                value={percent(analysis.data.roi)}
-                tone={toneOf(analysis.data.roi)}
-              />
-              <StatCard label="Apostado" value={money(analysis.data.totalStaked)} />
-              <StatCard label="Capital invertido" value={money(analysis.data.capitalInvested)} />
-              <StatCard label="Depósitos del periodo" value={money(analysis.data.deposits)} />
-              <StatCard label="Retiros del periodo" value={money(analysis.data.withdrawals)} />
-              <StatCard
-                label="Extraordinarios del periodo"
-                value={money(analysis.data.extraordinary)}
-              />
-            </div>
-            {analysis.data.unconfirmedReturns.count > 0 && (
-              <Notice tone="info">
-                Este análisis incluye {analysis.data.unconfirmedReturns.count}{' '}
-                {analysis.data.unconfirmedReturns.count === 1
-                  ? 'apuesta ganada con retorno calculado'
-                  : 'apuestas ganadas con retorno calculado'}{' '}
-                (sin confirmar), con una ganancia provisional de{' '}
-                {formatPEN(analysis.data.unconfirmedReturns.profitLoss)}.
-              </Notice>
-            )}
-            <p className="text-sm text-slate-500">
-              Total: {analysis.data.counts.total} · Pendientes: {analysis.data.counts.pending} ·
-              Ganadas: {analysis.data.counts.won} · Perdidas: {analysis.data.counts.lost} ·
-              Anuladas: {analysis.data.counts.void} · Cash Out: {analysis.data.counts.cashout}
-            </p>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <BreakdownTable title="Por casa" items={analysis.data.byHouse} />
-              <BreakdownTable title="Por etapa" items={analysis.data.byStage} />
-              <BreakdownTable title="Por deporte" items={analysis.data.bySport} />
-              <BreakdownTable title="Por mercado" items={analysis.data.byMarket} />
-            </div>
-            <BreakdownTable title="Por periodo" items={analysis.data.byPeriod} />
-          </>
-        )}
-      </Section>
+      <GroupLabel>Rendimiento</GroupLabel>
+      <div className="grid gap-4 lg:grid-cols-3">
+        <CapitalChart bankroll={bankroll} />
+        <BetStatusDonut status={status} addBetPath={addBetPath} />
+      </div>
 
-      <Section title="Evolución de banca">
-        {bankroll.error && <Notice tone="error">{bankroll.error}</Notice>}
-        {bankroll.data && bankroll.data.points.length === 0 && (
-          <p className="text-sm text-slate-500">Todavía no hay movimientos.</p>
-        )}
-        {bankroll.data && bankroll.data.points.length > 0 && (
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart
-                data={bankroll.data.points.map((p) => ({ ...p, balanceNumber: Number(p.balance) }))}
-              >
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="occurredAt" tickFormatter={shortDate} fontSize={12} />
-                <YAxis fontSize={12} width={70} tickFormatter={(v: number) => v.toFixed(0)} />
-                <Tooltip
-                  labelFormatter={(label) => (typeof label === 'string' ? shortDate(label) : '')}
-                  formatter={(value) =>
-                    typeof value === 'number' ? formatPEN(value.toFixed(2)) : ''
-                  }
-                />
-                <Line
-                  type="monotone"
-                  dataKey="balanceNumber"
-                  name="Banca"
-                  stroke="#0f172a"
-                  dot={false}
-                />
-                {bankroll.data.points
-                  .filter((p) => p.stageStarted !== null)
-                  .map((p) => (
-                    <ReferenceLine
-                      key={p.occurredAt}
-                      x={p.occurredAt}
-                      stroke="#94a3b8"
-                      strokeDasharray="4 4"
-                      label={{ value: p.stageStarted!.name, fontSize: 10, position: 'top' }}
-                    />
-                  ))}
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        )}
-      </Section>
+      <GroupLabel>Apuestas</GroupLabel>
+      <div className="grid gap-4 lg:grid-cols-3">
+        <RecentBets bets={bets} betsPath={`${base}/bets`} addBetPath={addBetPath} />
+        <PendingBets bets={bets} betsPath={`${base}/bets`} />
+      </div>
 
-      <Section title="Curva de rendimiento y drawdown">
-        {performance.error && <Notice tone="error">{performance.error}</Notice>}
-        {performance.data && performance.data.points.length === 0 && (
-          <p className="text-sm text-slate-500">Todavía no hay apuestas liquidadas.</p>
-        )}
-        {performance.data && performance.data.points.length > 0 && (
-          <>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <StatCard label="Drawdown máximo" value={formatPEN(performance.data.maxDrawdown)} />
-              <StatCard
-                label="Drawdown máximo (%)"
-                value={percent(performance.data.maxDrawdownPercent)}
-              />
-            </div>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart
-                  data={performance.data.points.map((p) => ({
-                    ...p,
-                    cumulative: Number(p.cumulativeProfitLoss),
-                    drawdownNumber: Number(p.drawdown),
-                  }))}
-                >
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="occurredAt" tickFormatter={shortDate} fontSize={12} />
-                  <YAxis fontSize={12} width={70} tickFormatter={(v: number) => v.toFixed(0)} />
-                  <Tooltip
-                    labelFormatter={(label) => (typeof label === 'string' ? shortDate(label) : '')}
-                    formatter={(value) =>
-                      typeof value === 'number' ? formatPEN(value.toFixed(2)) : ''
-                    }
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="cumulative"
-                    name="P/L acumulado"
-                    stroke="#0f172a"
-                    dot={false}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="drawdownNumber"
-                    name="Drawdown"
-                    stroke="#b91c1c"
-                    dot={false}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </>
-        )}
-      </Section>
+      <GroupLabel>Actividad</GroupLabel>
+      <div className="grid gap-4 md:grid-cols-2">
+        <HousesCard status={status} financePath={`${base}/finance`} />
+        <SportsCard analysis={analysis} />
+      </div>
     </>
   );
 }

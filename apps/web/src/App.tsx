@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { lazy, type ReactNode, Suspense } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router';
 import { AuthProvider, useAuth } from './auth/AuthContext.js';
 import { loginPathFor } from './auth/redirect.js';
@@ -19,7 +19,6 @@ import { ProjectsPage } from './pages/ProjectsPage.js';
 import { ReturnsPage } from './pages/project/ReturnsPage.js';
 import { AuditPage } from './pages/project/AuditPage.js';
 import { BetsPage } from './pages/project/BetsPage.js';
-import { DashboardPage } from './pages/project/DashboardPage.js';
 import { FinancePage } from './pages/project/FinancePage.js';
 import { ImportBatchPage } from './pages/project/imports/ImportBatchPage.js';
 import { ImportsPage } from './pages/project/imports/ImportsPage.js';
@@ -32,6 +31,29 @@ import { ProjectTrashPage } from './pages/project/TrashPage.js';
 import { StagesPage } from './pages/project/StagesPage.js';
 import { ResetPasswordPage } from './pages/ResetPasswordPage.js';
 import { TrashPage } from './pages/TrashPage.js';
+
+// Dashboard y Reportes usan Recharts: se cargan aparte para no engordar el paquete inicial.
+const DashboardPage = lazy(() =>
+  import('./pages/project/DashboardPage.js').then((module) => ({ default: module.DashboardPage })),
+);
+const ReportsPage = lazy(() =>
+  import('./pages/project/ReportsPage.js').then((module) => ({ default: module.ReportsPage })),
+);
+
+/** Mientras llega una página diferida: bloques grises, sin texto ni cifras provisionales. */
+function PageLoading() {
+  return (
+    <div className="flex flex-col gap-4" aria-busy="true">
+      <p className="sr-only">Cargando…</p>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {[0, 1, 2, 3].map((index) => (
+          <div key={index} className="h-32 animate-pulse rounded-2xl bg-slate-200/70" />
+        ))}
+      </div>
+      <div className="h-80 animate-pulse rounded-2xl bg-slate-200/70" />
+    </div>
+  );
+}
 
 /** Solo deja pasar a usuarios con sesión; si no, redirige al inicio de sesión y vuelve después. */
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -74,7 +96,22 @@ export function App() {
           </Route>
           <Route path="/account" element={<AccountPage />} />
           <Route path="/projects/:projectId" element={<ProjectLayout />}>
-            <Route index element={<DashboardPage />} />
+            <Route
+              index
+              element={
+                <Suspense fallback={<PageLoading />}>
+                  <DashboardPage />
+                </Suspense>
+              }
+            />
+            <Route
+              path="reports"
+              element={
+                <Suspense fallback={<PageLoading />}>
+                  <ReportsPage />
+                </Suspense>
+              }
+            />
             <Route path="setup" element={<ProjectSetupPage />} />
             <Route path="stages" element={<StagesPage />} />
             <Route path="finance" element={<FinancePage />} />
