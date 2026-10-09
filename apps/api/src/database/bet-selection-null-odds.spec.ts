@@ -68,7 +68,13 @@ describe('cuota nula solo en apuestas de un lote (PostgreSQL real, §113.5)', ()
     return batch!;
   }
 
-  const bet = (overrides: { batchId?: string; visibleOdds?: string | null } = {}) => {
+  const bet = (
+    overrides: {
+      batchId?: string;
+      betType?: 'SIMPLE' | 'CREATED' | 'MULTIPLE';
+      visibleOdds?: string | null;
+    } = {},
+  ) => {
     const { visibleOdds, ...rest } = overrides;
     return insertBet(t.db, {
       projectId,
@@ -161,6 +167,44 @@ describe('cuota nula solo en apuestas de un lote (PostgreSQL real, §113.5)', ()
       .update(bets)
       .set({ batchId: null })
       .where(eq(bets.id, withOdds.id))
+      .returning();
+    expect(freed!.batchId).toBeNull();
+  });
+
+  it('una apuesta Creada ordinaria (sin lote) también acepta selecciones sin cuota (Fase 10.6)', async () => {
+    const { bet: created, selections } = await bet({ betType: 'CREATED', visibleOdds: null });
+    expect(created.batchId).toBeNull();
+    expect(selections[0]!.visibleOdds).toBeNull();
+    // La cuota total de la apuesta sigue siendo la autoridad y sigue siendo obligatoria.
+    expect(created.visibleTotalOdds).toBe('1.950000');
+  });
+
+  it('una apuesta Simple o Múltiple ordinaria sigue exigiendo cuota, aunque se intente sin ella', async () => {
+    await expect(bet({ betType: 'SIMPLE', visibleOdds: null })).rejects.toSatisfy(rejected);
+    await expect(bet({ betType: 'MULTIPLE', visibleOdds: null })).rejects.toSatisfy(rejected);
+  });
+
+  it('quitar la cuota a la selección de una apuesta Creada ordinaria ya existente se acepta', async () => {
+    const { selections } = await bet({ betType: 'CREATED' });
+    const [updated] = await t.db
+      .update(betSelections)
+      .set({ visibleOdds: null })
+      .where(eq(betSelections.id, selections[0]!.id))
+      .returning();
+    expect(updated!.visibleOdds).toBeNull();
+  });
+
+  it('una apuesta Creada con selecciones sin cuota puede quedar sin lote (no exige el lote como antes)', async () => {
+    const batch = await uploadBatch();
+    const { bet: created } = await bet({
+      batchId: batch.id,
+      betType: 'CREATED',
+      visibleOdds: null,
+    });
+    const [freed] = await t.db
+      .update(bets)
+      .set({ batchId: null })
+      .where(eq(bets.id, created.id))
       .returning();
     expect(freed!.batchId).toBeNull();
   });

@@ -166,4 +166,83 @@ describe('cuota nula en apuestas importadas (e2e, PostgreSQL real, §113.5)', ()
       expect(list.map((item) => item.id)).toEqual([settled.id]);
     });
   });
+
+  /**
+   * Fase 10.6 (decisión del usuario, 2026-10-06): una casa puede mostrar una Creada con varias
+   * selecciones y solo la cuota total; la cuota individual no se inventa ni se distribuye.
+   */
+  describe('una apuesta Creada manual sin cuotas individuales (Fase 10.6)', () => {
+    const createdNoOdds = [
+      {
+        eventGroup: 0,
+        position: 0,
+        event: 'Real Madrid vs. Barcelona',
+        selection: 'Más de 2.5 goles',
+      },
+      { eventGroup: 0, position: 1, event: 'Real Madrid vs. Barcelona', selection: 'Ambos marcan' },
+    ];
+
+    it('se registra con solo la cuota total; las cuotas individuales quedan null, sin inventarse', async () => {
+      const created = (
+        await createBet({ visibleTotalOdds: '3.42', selections: createdNoOdds }).expect(201)
+      ).body as BetDetail;
+      expect(created.betType).toBe('CREATED');
+      expect(created.visibleTotalOdds).toBe('3.420000');
+      expect(created.selections.map((s) => s.visibleOdds)).toEqual([null, null]);
+      await invariant();
+    });
+
+    it('una Simple o una Múltiple (eventos distintos) siguen exigiendo la cuota de cada selección', async () => {
+      await createBet({ selections: [{ ...selection, visibleOdds: undefined }] }).expect(400);
+      const multiple = [
+        {
+          eventGroup: 0,
+          position: 0,
+          event: 'Real Madrid vs. Barcelona',
+          selection: 'Real Madrid gana',
+        },
+        {
+          eventGroup: 1,
+          position: 0,
+          event: 'Arsenal vs Chelsea',
+          selection: 'Arsenal gana',
+          visibleOdds: '1.80',
+        },
+      ];
+      await createBet({ visibleTotalOdds: '3.42', selections: multiple }).expect(400);
+      expect(await ctx.t.db.select().from(bets)).toEqual([]);
+    });
+
+    it('el importe, el retorno calculado y el ledger salen de la cuota total, nunca de las ausentes', async () => {
+      const created = (
+        await createBet({ stake: '6', visibleTotalOdds: '3.42', selections: createdNoOdds }).expect(
+          201,
+        )
+      ).body as BetDetail;
+      await post(`/bets/${created.id}/settle`, {
+        status: 'WON',
+        settledAt: '2026-06-01T14:00:00.000Z',
+        version: created.version,
+      }).expect(200);
+      const detail = await get<BetDetail>(`/bets/${created.id}`);
+      expect(detail.effectiveAmount).toBe('60.00'); // 6 × unidad 10
+      expect(detail.calculatedRealizedReturn).toBe('205.20'); // 60 × 3.42
+      await invariant();
+    });
+
+    it('editar una Creada manteniendo su estructura puede seguir sin cuotas individuales', async () => {
+      const created = (
+        await createBet({ visibleTotalOdds: '3.42', selections: createdNoOdds }).expect(201)
+      ).body as BetDetail;
+      await request(ctx.server)
+        .patch(api(`/bets/${created.id}`))
+        .set('Cookie', cookie)
+        .send({ version: created.version, selections: createdNoOdds, visibleTotalOdds: '3.50' })
+        .expect(200);
+      const after = await get<BetDetail>(`/bets/${created.id}`);
+      expect(after.selections.map((s) => s.visibleOdds)).toEqual([null, null]);
+      expect(after.visibleTotalOdds).toBe('3.500000');
+      await invariant();
+    });
+  });
 });
