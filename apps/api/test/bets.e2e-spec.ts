@@ -11,6 +11,7 @@ import {
   type TestApp,
 } from './support/create-app.js';
 import { insertMember, insertProject } from './support/factories.js';
+import { assertFinancialInvariant } from './support/financial-invariant.js';
 
 type Actor = 'root' | 'owner' | 'admin' | 'collab' | 'collab2' | 'reader' | 'stranger';
 
@@ -326,6 +327,48 @@ describe('apuestas, selecciones y liquidaciones (e2e, PostgreSQL real, §18-§27
     });
   });
 
+  describe('lista: datos para leer cada apuesta (Fase 10.3)', () => {
+    it('incluye los partidos de sus selecciones, sin repetir y en orden, y cuántos tickets tiene', async () => {
+      await createBet(
+        'collab',
+        simpleBet({
+          visibleTotalOdds: '3.50',
+          selections: [
+            {
+              eventGroup: 0,
+              position: 0,
+              event: 'Arsenal vs City',
+              selection: 'Gana Arsenal',
+              visibleOdds: '1.80',
+            },
+            {
+              eventGroup: 0,
+              position: 1,
+              event: 'Arsenal vs City',
+              selection: 'Más de 2.5',
+              visibleOdds: '1.50',
+            },
+            {
+              eventGroup: 1,
+              position: 0,
+              event: 'Madrid vs Barça',
+              selection: 'Empate',
+              visibleOdds: '1.30',
+            },
+          ],
+        }),
+      ).expect(201);
+      const [listed] = (await listBets('collab').expect(200)).body as {
+        events: string[];
+        ticketCount: number;
+      }[];
+      expect(listed!.events).toEqual(['Arsenal vs City', 'Madrid vs Barça']);
+      // simpleSelection no indica deporte: se listan solo los que existen, sin inventar uno.
+      expect((listed as unknown as { sports: string[] }).sports).toEqual([]);
+      expect(listed!.ticketCount).toBe(0);
+    });
+  });
+
   describe('editar (§24)', () => {
     it('pendiente: admite cambiar casa, stake y selecciones, revalidando saldo', async () => {
       const created = (await createBet('collab', simpleBet()).expect(201)).body as BetBody;
@@ -437,6 +480,56 @@ describe('apuestas, selecciones y liquidaciones (e2e, PostgreSQL real, §18-§27
       expect((await houseOf()).balance).toBe('500.00'); // sale y vuelve: neto 0
     });
 
+    it('liquidar como lo envía la web (H-14): calculado, oficial ajustado, perdida y anulada, con integridad', async () => {
+      const settle = async (overrides: Record<string, unknown>, body: Record<string, unknown>) => {
+        const created = (await createBet('collab', simpleBet(overrides)).expect(201))
+          .body as BetBody;
+        return (
+          await settleBet('admin', created.id, {
+            settledAt: '2026-06-02T22:00:00.000Z',
+            version: created.version,
+            ...body,
+          }).expect(200)
+        ).body as BetBody & {
+          calculatedRealizedReturn: string | null;
+          effectiveOdds: string | null;
+          visibleTotalOdds: string;
+        };
+      };
+
+      // Ganada sin retorno indicado: queda el calculado (provisional, se confirma después).
+      const calculated = await settle({}, { status: 'WON' });
+      expect(calculated).toMatchObject({
+        officialRealizedReturn: null,
+        calculatedRealizedReturn: '39.00',
+        profitLoss: '19.00',
+      });
+
+      // Ganada con la ganancia ajustada a la casa: retorno oficial, cuota visible intacta.
+      const official = await settle(
+        { stake: '6', visibleTotalOdds: '1.56' },
+        { status: 'WON', officialRealizedReturn: '94.07' },
+      );
+      expect(official).toMatchObject({
+        officialRealizedReturn: '94.07',
+        calculatedRealizedReturn: '93.60',
+        profitLoss: '34.07',
+        effectiveOdds: '1.567833',
+      });
+      expect(Number(official.visibleTotalOdds)).toBe(1.56);
+
+      // Perdida y anulada, sin retorno indicado (la anulada devuelve el monto, §21.4).
+      expect(await settle({}, { status: 'LOST' })).toMatchObject({ profitLoss: '-20.00' });
+      expect(await settle({}, { status: 'VOID' })).toMatchObject({
+        officialRealizedReturn: '20.00',
+        profitLoss: '0.00',
+      });
+
+      // 500 + 19.00 + 34.07 − 20.00 + 0.00 = 533.07
+      expect(await houseOf()).toMatchObject({ balance: '533.07', committed: '0.00' });
+      await assertFinancialInvariant(ctx, { projectId, cookie: cookies.owner });
+    });
+
     it('rechaza liquidar dos veces', async () => {
       const created = (await createBet('collab', simpleBet()).expect(201)).body as BetBody;
       await settleBet('admin', created.id, {
@@ -482,6 +575,155 @@ describe('apuestas, selecciones y liquidaciones (e2e, PostgreSQL real, §18-§27
         settledAt: '2026-06-02T22:00:00.000Z',
         version: created.version,
       }).expect(400);
+    });
+  });
+
+  describe('registrar ya liquidada (Fase 10.3: alta con resultado en una sola transacción)', () => {
+    const settled = (
+      settlement: Record<string, unknown>,
+      overrides: Record<string, unknown> = {},
+    ) =>
+      simpleBet({
+        settlement: { settledAt: '2026-06-01T22:00:00.000Z', ...settlement },
+        ...overrides,
+      });
+    const ledgerOf = async (betId: string) =>
+      (
+        await ctx.t.db
+          .select()
+          .from(financialMovements)
+          .where(eq(financialMovements.operationId, betId))
+      )
+        .map((m) => `${m.type}:${m.direction}:${m.amount}`)
+        .sort();
+    const auditActionsOf = async (betId: string) =>
+      (await ctx.t.db.select().from(auditLogs).where(eq(auditLogs.entityId, betId)))
+        .map((row) => row.action)
+        .sort();
+
+    it('ganada sin retorno oficial: mismo resultado que registrar y liquidar por separado', async () => {
+      const response = await createBet('admin', settled({ status: 'WON' })).expect(201);
+      const body = response.body as BetBody & {
+        calculatedRealizedReturn: string | null;
+        visibleTotalOdds: string;
+      };
+      expect(body).toMatchObject({
+        status: 'WON',
+        effectiveAmount: '20.00', // stake 2.00 × unidad 10.00
+        officialRealizedReturn: null,
+        calculatedRealizedReturn: '39.00', // 20.00 × 1.95, el retorno calculado provisional
+        profitLoss: '19.00',
+      });
+      expect(await ledgerOf(body.id)).toEqual(
+        ['BET_PLACEMENT:DEBIT:20.00', 'BET_SETTLEMENT:CREDIT:39.00'].sort(),
+      );
+      expect(await houseOf()).toMatchObject({ balance: '519.00', committed: '0.00' });
+      expect(await auditActionsOf(body.id)).toEqual(['bet.created', 'bet.settled']);
+      await assertFinancialInvariant(ctx, { projectId, cookie: cookies.owner });
+    });
+
+    it('ganancia ajustada a la casa = retorno oficial; la cuota visible no cambia (regla 6, §77)', async () => {
+      const response = await createBet(
+        'admin',
+        settled({ status: 'WON', officialRealizedReturn: '39.50' }),
+      ).expect(201);
+      const body = response.body as BetBody & {
+        calculatedRealizedReturn: string | null;
+        visibleTotalOdds: string;
+      };
+      expect(body).toMatchObject({
+        status: 'WON',
+        officialRealizedReturn: '39.50',
+        calculatedRealizedReturn: '39.00',
+        profitLoss: '19.50',
+      });
+      expect(Number(body.visibleTotalOdds)).toBe(1.95);
+      expect(await ledgerOf(body.id)).toEqual(
+        ['BET_PLACEMENT:DEBIT:20.00', 'BET_SETTLEMENT:CREDIT:39.50'].sort(),
+      );
+      await assertFinancialInvariant(ctx, { projectId, cookie: cookies.owner });
+    });
+
+    it('ejemplo de la casa: monto 60, cuota visible 1.56, ganancia oficial 34.07 → cuota efectiva 1.567833', async () => {
+      const response = await createBet(
+        'admin',
+        settled(
+          { status: 'WON', officialRealizedReturn: '94.07' },
+          { stake: '6', visibleTotalOdds: '1.56' }, // 6 × unidad 10.00 = 60.00
+        ),
+      ).expect(201);
+      const body = response.body as BetBody & {
+        visibleTotalOdds: string;
+        effectiveOdds: string | null;
+        calculatedRealizedReturn: string | null;
+      };
+      expect(body).toMatchObject({
+        effectiveAmount: '60.00',
+        officialRealizedReturn: '94.07',
+        calculatedRealizedReturn: '93.60', // 60 × 1.56, lo que calcula LetFer con la cuota visible
+        profitLoss: '34.07',
+        effectiveOdds: '1.567833', // 94.07 ÷ 60, con la precisión de las cuotas (6 decimales)
+      });
+      expect(Number(body.visibleTotalOdds)).toBe(1.56); // la de la casa, intacta (regla 6)
+      // Es consistente a la precisión del dinero: 60 × 1.567833 = 94.06998 → 94.07.
+      expect((60 * Number(body.effectiveOdds)).toFixed(2)).toBe('94.07');
+      expect(await ledgerOf(body.id)).toEqual(
+        ['BET_PLACEMENT:DEBIT:60.00', 'BET_SETTLEMENT:CREDIT:94.07'].sort(),
+      );
+      await assertFinancialInvariant(ctx, { projectId, cookie: cookies.owner });
+    });
+
+    it('perdida y anulada se registran liquidadas con su efecto en el ledger', async () => {
+      const lost = (await createBet('admin', settled({ status: 'LOST' })).expect(201))
+        .body as BetBody;
+      expect(lost).toMatchObject({ status: 'LOST', profitLoss: '-20.00' });
+      expect(await ledgerOf(lost.id)).toEqual(['BET_PLACEMENT:DEBIT:20.00']);
+      const voided = (await createBet('admin', settled({ status: 'VOID' })).expect(201))
+        .body as BetBody;
+      expect(voided).toMatchObject({ status: 'VOID', profitLoss: '0.00' });
+      expect(await houseOf()).toMatchObject({ balance: '480.00', committed: '0.00' });
+      await assertFinancialInvariant(ctx, { projectId, cookie: cookies.owner });
+    });
+
+    it('el Colaborador puede registrar pendiente, pero no ya liquidada (exige bets.settle)', async () => {
+      const response = await createBet('collab', settled({ status: 'LOST' }));
+      expect(response.status).toBe(403);
+      expect(await ctx.t.db.select().from(bets)).toHaveLength(0);
+      await createBet('collab', simpleBet()).expect(201);
+    });
+
+    it('es atómica: si la liquidación no es válida, no queda ni la apuesta', async () => {
+      const response = await createBet(
+        'admin',
+        settled({ status: 'WON', settledAt: '2026-06-01T10:00:00.000Z' }), // antes de colocarla
+      );
+      expect(response.status).toBe(400);
+      expect(await ctx.t.db.select().from(bets)).toHaveLength(0);
+      expect(
+        await ctx.t.db
+          .select()
+          .from(financialMovements)
+          .where(eq(financialMovements.type, 'BET_PLACEMENT')),
+      ).toHaveLength(0);
+      expect(await houseOf()).toMatchObject({ balance: '500.00', committed: '0.00' });
+    });
+
+    it('valida el retorno según el estado, igual que liquidar (400)', async () => {
+      await createBet('admin', settled({ status: 'CASHOUT' })).expect(400);
+      await createBet('admin', settled({ status: 'LOST', officialRealizedReturn: '5.00' })).expect(
+        400,
+      );
+      expect(await ctx.t.db.select().from(bets)).toHaveLength(0);
+    });
+
+    it('editar no admite cambiar la liquidación por esta vía', async () => {
+      const created = (await createBet('collab', simpleBet()).expect(201)).body as BetBody;
+      await updateBet('collab', created.id, {
+        settlement: { status: 'LOST', settledAt: '2026-06-01T22:00:00.000Z' },
+        version: created.version,
+      }).expect(200);
+      const [bet] = await ctx.t.db.select().from(bets).where(eq(bets.id, created.id));
+      expect(bet!.status).toBe('PENDING');
     });
   });
 

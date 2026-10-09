@@ -145,6 +145,9 @@ interface SummaryContext {
   stageUnitStake: MoneyString;
   houseName: string;
   createdByName: string;
+  events: string[];
+  sports: string[];
+  ticketCount: number;
 }
 
 function toSelectionSummary(row: BetSelectionRow): BetSelectionSummary {
@@ -210,7 +213,12 @@ export class BetsService {
    */
   async create(access: ProjectAccess, actor: UserRow, input: CreateBetInput): Promise<BetDetail> {
     assertFinanceReady(access);
+    // Registrar con resultado también liquida (Fase 10.3): exige el mismo permiso que liquidar.
+    if (input.settlement && !access.permissions.has('bets.settle')) {
+      throw betForbidden('No tienes permiso para registrar una apuesta ya liquidada.');
+    }
     const betType = deriveBetType(input.selections);
+    this.assertSelectionOddsRequired(betType, input.selections);
     const canChooseStage = access.permissions.has('bets.move_stage');
     const created = await this.db.transaction(async (tx) => {
       await lockByKey(tx, `finance:${access.project.id}`);
@@ -274,6 +282,14 @@ export class BetsService {
           officialAmount: input.officialAmount ?? null,
         },
       });
+      // Con resultado, se liquida en esta misma transacción por el único camino de liquidación:
+      // si algo falla (saldo, línea de tiempo, fechas), no queda ni la apuesta ni su liquidación.
+      if (input.settlement) {
+        return this.settleLocked(tx, access, actor, bet!, {
+          ...input.settlement,
+          version: bet!.version,
+        });
+      }
       return bet!;
     });
     return this.detailOf(this.db, created);
@@ -337,6 +353,7 @@ export class BetsService {
         if (input.selections !== undefined) {
           newSelections = input.selections;
           patch.betType = deriveBetType(input.selections);
+          this.assertSelectionOddsRequired(patch.betType, input.selections);
         }
 
         const effectiveHouseId = newHouse?.id ?? bet.houseId;
@@ -440,94 +457,107 @@ export class BetsService {
       await lockByKey(tx, `finance:${access.project.id}`);
       const bet = await this.lockOwned(tx, access.project.id, betId);
       this.assertNotTrashed(bet);
-      if (bet.status !== 'PENDING') throw betConflict('Esta apuesta ya está liquidada.');
-      if (new Date(input.settledAt).getTime() < bet.placedAt.getTime()) {
-        throw invalidBetStructure(
-          'La fecha de liquidación no puede ser anterior a la de colocación.',
-        );
-      }
+      return this.settleLocked(tx, access, actor, bet, input);
+    });
+    return this.detailOf(this.db, updated);
+  }
 
-      const stage = await this.stageById(tx, bet.stageId);
-      // Un monto indicado al liquidar lo confirma una persona (§76); si no, se conserva el que ya
-      // estaba confirmado, o se congela el calculado SIN marcarlo como confirmado (§112.2).
-      const amountConfirmed = input.officialAmount !== undefined || bet.amountConfirmed;
-      const officialAmount =
-        input.officialAmount ??
-        bet.officialAmount ??
-        multiplyMoney(stage.unitStake, bet.stakeAmount);
-
-      // El monto que se registrará en el ledger debe caber en el saldo bruto de la casa
-      // (todavía no se ha debitado nada de esta apuesta, D-B7/§107.3).
-      const balances = await computeHouseBalances(tx, access.project.id);
-      const grossBalance = balances.get(bet.houseId)?.balance ?? ZERO_MONEY;
-      if (compareMoney(grossBalance, officialAmount) < 0) throw betInsufficientBalance();
-
-      const settledAt = new Date(input.settledAt);
-      const returns = settlementReturns(input, officialAmount, bet.visibleTotalOdds);
-      const updated = expectUpdated(
-        await tx
-          .update(bets)
-          .set({
-            status: input.status,
-            officialAmount,
-            amountConfirmed,
-            officialRealizedReturn: returns.official,
-            calculatedRealizedReturn: returns.calculated,
-            settledAt,
-            settledTimeKnown: input.settledTimeKnown,
-            version: nextVersion(bets.version),
-          })
-          .where(and(eq(bets.id, bet.id), eq(bets.version, input.version)))
-          .returning(),
-        'bets',
+  /**
+   * Liquidación de una apuesta `PENDING` ya bloqueada, dentro de la transacción de quien llama (que
+   * además tiene el bloqueo financiero del proyecto). Único camino de liquidación: lo usan `settle`
+   * y el alta con resultado (Fase 10.3), con las mismas validaciones, ledger y auditoría.
+   */
+  private async settleLocked(
+    tx: DbExecutor,
+    access: ProjectAccess,
+    actor: UserRow,
+    bet: BetRow,
+    input: SettleBetInput,
+  ): Promise<BetRow> {
+    if (bet.status !== 'PENDING') throw betConflict('Esta apuesta ya está liquidada.');
+    if (new Date(input.settledAt).getTime() < bet.placedAt.getTime()) {
+      throw invalidBetStructure(
+        'La fecha de liquidación no puede ser anterior a la de colocación.',
       );
+    }
 
-      // El efecto en el ledger (BET_PLACEMENT y, con retorno positivo, BET_SETTLEMENT; D-B2) lo
-      // calcula y valida el motor único de §112.1, también para la primera liquidación: además del
-      // saldo bruto actual, comprueba la línea de tiempo (una colocación fechada antes de un depósito
-      // dejaría la casa en negativo en el pasado, §74).
-      const plan = await planBetLedgerChange(tx, {
-        projectId: access.project.id,
-        betId: bet.id,
-        desired: desiredBetLedgerLines(updated, stage),
-        now: this.clock.now(),
-        // Al liquidar, la reserva de la pendiente pasa a ser su colocación real en el ledger.
-        subject: { before: betHold(bet, stage), after: null },
-      });
-      await applyBetLedgerPlan(tx, plan, {
-        actorId: actor.id,
-        correctionId: null,
-        stageId: updated.stageId,
-      });
-      // El BET_PLACEMENT recién insertado está fechado en bet.placedAt (§107.3), que puede ser
-      // anterior a un checkpoint existente: esa fotografía asumía "sin ledger todavía" (D-B7) y
-      // acaba de dejar de ser cierta (§74, §109.1.3).
-      await this.invalidateAffectedCheckpoints(
-        tx,
-        bet.houseId,
-        bet.placedAt,
-        'Se liquidó una apuesta cuyo BET_PLACEMENT quedó fechado en o antes de este checkpoint.',
-      );
+    const stage = await this.stageById(tx, bet.stageId);
+    // Un monto indicado al liquidar lo confirma una persona (§76); si no, se conserva el que ya
+    // estaba confirmado, o se congela el calculado SIN marcarlo como confirmado (§112.2).
+    const amountConfirmed = input.officialAmount !== undefined || bet.amountConfirmed;
+    const officialAmount =
+      input.officialAmount ?? bet.officialAmount ?? multiplyMoney(stage.unitStake, bet.stakeAmount);
 
-      await this.audit.record(tx, {
-        action: 'bet.settled',
-        entityType: 'bet',
-        entityId: bet.id,
-        projectId: access.project.id,
-        actorUserId: actor.id,
-        oldValues: { status: 'PENDING' },
-        newValues: {
+    // El monto que se registrará en el ledger debe caber en el saldo bruto de la casa
+    // (todavía no se ha debitado nada de esta apuesta, D-B7/§107.3).
+    const balances = await computeHouseBalances(tx, access.project.id);
+    const grossBalance = balances.get(bet.houseId)?.balance ?? ZERO_MONEY;
+    if (compareMoney(grossBalance, officialAmount) < 0) throw betInsufficientBalance();
+
+    const settledAt = new Date(input.settledAt);
+    const returns = settlementReturns(input, officialAmount, bet.visibleTotalOdds);
+    const updated = expectUpdated(
+      await tx
+        .update(bets)
+        .set({
           status: input.status,
           officialAmount,
           amountConfirmed,
           officialRealizedReturn: returns.official,
           calculatedRealizedReturn: returns.calculated,
-          returnSource: returnSourceOf(returns),
-        },
-      });
-      return updated;
+          settledAt,
+          settledTimeKnown: input.settledTimeKnown,
+          version: nextVersion(bets.version),
+        })
+        .where(and(eq(bets.id, bet.id), eq(bets.version, input.version)))
+        .returning(),
+      'bets',
+    );
+
+    // El efecto en el ledger (BET_PLACEMENT y, con retorno positivo, BET_SETTLEMENT; D-B2) lo
+    // calcula y valida el motor único de §112.1, también para la primera liquidación: además del
+    // saldo bruto actual, comprueba la línea de tiempo (una colocación fechada antes de un depósito
+    // dejaría la casa en negativo en el pasado, §74).
+    const plan = await planBetLedgerChange(tx, {
+      projectId: access.project.id,
+      betId: bet.id,
+      desired: desiredBetLedgerLines(updated, stage),
+      now: this.clock.now(),
+      // Al liquidar, la reserva de la pendiente pasa a ser su colocación real en el ledger.
+      subject: { before: betHold(bet, stage), after: null },
     });
-    return this.detailOf(this.db, updated);
+    await applyBetLedgerPlan(tx, plan, {
+      actorId: actor.id,
+      correctionId: null,
+      stageId: updated.stageId,
+    });
+    // El BET_PLACEMENT recién insertado está fechado en bet.placedAt (§107.3), que puede ser
+    // anterior a un checkpoint existente: esa fotografía asumía "sin ledger todavía" (D-B7) y
+    // acaba de dejar de ser cierta (§74, §109.1.3).
+    await this.invalidateAffectedCheckpoints(
+      tx,
+      bet.houseId,
+      bet.placedAt,
+      'Se liquidó una apuesta cuyo BET_PLACEMENT quedó fechado en o antes de este checkpoint.',
+    );
+
+    await this.audit.record(tx, {
+      action: 'bet.settled',
+      entityType: 'bet',
+      entityId: bet.id,
+      projectId: access.project.id,
+      actorUserId: actor.id,
+      oldValues: { status: 'PENDING' },
+      newValues: {
+        status: input.status,
+        officialAmount,
+        amountConfirmed,
+        officialRealizedReturn: returns.official,
+        calculatedRealizedReturn: returns.calculated,
+        returnSource: returnSourceOf(returns),
+      },
+    });
+    return updated;
   }
 
   /**
@@ -1113,6 +1143,24 @@ export class BetsService {
     return bet;
   }
 
+  /**
+   * Una Creada (§90, Fase 10.6) puede mostrar varias selecciones con una sola cuota total,
+   * sin cuota por selección; Simple y Múltiple siguen exigiendo la cuota de cada una (el
+   * disparador de 0041 es la defensa de última línea, esto es el mensaje legible antes de
+   * llegar a la base de datos).
+   */
+  private assertSelectionOddsRequired(
+    betType: BetType,
+    selections: readonly BetSelectionInput[],
+  ): void {
+    if (betType === 'CREATED') return;
+    if (selections.some((s) => s.visibleOdds === undefined)) {
+      throw invalidBetStructure(
+        'Cada selección necesita su cuota individual, salvo en una apuesta Creada.',
+      );
+    }
+  }
+
   private async insertSelections(
     executor: DbExecutor,
     betId: string,
@@ -1129,7 +1177,7 @@ export class BetsService {
         event: selection.event,
         market: selection.market ?? null,
         selection: selection.selection,
-        visibleOdds: selection.visibleOdds,
+        visibleOdds: selection.visibleOdds ?? null,
       })),
     );
   }
@@ -1199,6 +1247,9 @@ export class BetsService {
       settledTimeKnown: bet.settledTimeKnown,
       reason: bet.reason,
       createdBy: { id: bet.createdBy, name: ctx.createdByName },
+      events: ctx.events,
+      sports: ctx.sports,
+      ticketCount: ctx.ticketCount,
       createdAt: bet.createdAt.toISOString(),
       updatedAt: bet.updatedAt.toISOString(),
       deletedAt: bet.deletedAt ? bet.deletedAt.toISOString() : null,
@@ -1256,26 +1307,54 @@ export class BetsService {
     const houseIds = [...new Set(rows.map((r) => r.houseId))];
     const userIds = [...new Set(rows.map((r) => r.createdBy))];
     const batchIds = [...new Set(rows.flatMap((r) => (r.batchId ? [r.batchId] : [])))];
-    const [stageRows, houseRows, userRows, batchRows] = await Promise.all([
-      executor
-        .select({ id: stages.id, name: stages.name, unitStake: stages.unitStake })
-        .from(stages)
-        .where(inArray(stages.id, stageIds)),
-      executor
-        .select({ id: houses.id, name: houses.name })
-        .from(houses)
-        .where(inArray(houses.id, houseIds)),
-      executor
-        .select({ id: users.id, firstName: users.firstName, lastName: users.lastName })
-        .from(users)
-        .where(inArray(users.id, userIds)),
-      batchIds.length === 0
-        ? Promise.resolve([] as { id: string; status: ImportBatchStatus }[])
-        : executor
-            .select({ id: importBatches.id, status: importBatches.status })
-            .from(importBatches)
-            .where(inArray(importBatches.id, batchIds)),
-    ]);
+    const betIds = rows.map((r) => r.id);
+    const [stageRows, houseRows, userRows, batchRows, selectionRows, ticketRows] =
+      await Promise.all([
+        executor
+          .select({ id: stages.id, name: stages.name, unitStake: stages.unitStake })
+          .from(stages)
+          .where(inArray(stages.id, stageIds)),
+        executor
+          .select({ id: houses.id, name: houses.name })
+          .from(houses)
+          .where(inArray(houses.id, houseIds)),
+        executor
+          .select({ id: users.id, firstName: users.firstName, lastName: users.lastName })
+          .from(users)
+          .where(inArray(users.id, userIds)),
+        batchIds.length === 0
+          ? Promise.resolve([] as { id: string; status: ImportBatchStatus }[])
+          : executor
+              .select({ id: importBatches.id, status: importBatches.status })
+              .from(importBatches)
+              .where(inArray(importBatches.id, batchIds)),
+        // Solo para leer la apuesta en la lista (partidos y si tiene ticket): nada financiero.
+        executor
+          .select({
+            betId: betSelections.betId,
+            event: betSelections.event,
+            sport: betSelections.sport,
+          })
+          .from(betSelections)
+          .where(inArray(betSelections.betId, betIds))
+          .orderBy(betSelections.eventGroup, betSelections.position),
+        executor
+          .select({ betId: tickets.betId, total: count() })
+          .from(tickets)
+          .where(inArray(tickets.betId, betIds))
+          .groupBy(tickets.betId),
+      ]);
+    const eventsByBet = new Map<string, string[]>();
+    const sportsByBet = new Map<string, string[]>();
+    for (const row of selectionRows) {
+      const events = eventsByBet.get(row.betId) ?? [];
+      if (!events.includes(row.event)) events.push(row.event);
+      eventsByBet.set(row.betId, events);
+      const sports = sportsByBet.get(row.betId) ?? [];
+      if (row.sport && !sports.includes(row.sport)) sports.push(row.sport);
+      sportsByBet.set(row.betId, sports);
+    }
+    const ticketCountByBet = new Map(ticketRows.map((t) => [t.betId, Number(t.total)]));
     const batchStatusById = new Map(batchRows.map((b) => [b.id, b.status]));
     const stageById = new Map(stageRows.map((s) => [s.id, s]));
     const houseNameById = new Map(houseRows.map((h) => [h.id, h.name]));
@@ -1289,6 +1368,9 @@ export class BetsService {
           stageUnitStake: stageById.get(bet.stageId)?.unitStake ?? ZERO_MONEY,
           houseName: houseNameById.get(bet.houseId) ?? '',
           createdByName: userNameById.get(bet.createdBy) ?? '',
+          events: eventsByBet.get(bet.id) ?? [],
+          sports: sportsByBet.get(bet.id) ?? [],
+          ticketCount: ticketCountByBet.get(bet.id) ?? 0,
         },
       ]),
     );
