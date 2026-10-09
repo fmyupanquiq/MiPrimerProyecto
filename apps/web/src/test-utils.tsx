@@ -1,7 +1,8 @@
-import { render } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { vi } from 'vitest';
 import { App } from './App.js';
+import { ThemeProvider } from './theme.js';
 
 export interface StubResponse {
   status: number;
@@ -50,9 +51,11 @@ export function stubApi(routes: Record<string, Handler>): { calls: RecordedCall[
 
 export function renderApp(route: string) {
   return render(
-    <MemoryRouter initialEntries={[route]}>
-      <App />
-    </MemoryRouter>,
+    <ThemeProvider>
+      <MemoryRouter initialEntries={[route]}>
+        <App />
+      </MemoryRouter>
+    </ThemeProvider>,
   );
 }
 
@@ -108,7 +111,7 @@ export function authState(
   return { status: 200, body: { user, session: SESSION, permissions } };
 }
 
-export const STAGE_ID = '0195f7c0-0000-7000-8000-0000000000s1';
+export const STAGE_ID = '0195f7c0-0000-7000-8000-0000000000e1';
 
 export function projectSummary(overrides: Record<string, unknown> = {}) {
   return {
@@ -197,4 +200,55 @@ export function projectDetail(overrides: Record<string, unknown> = {}) {
     myPermissions: OWNER_PERMISSIONS,
     ...overrides,
   };
+}
+
+// --- Acciones de una apuesta en la lista (Fase 10.3: menú ⋮ y selector de estado) ---------------
+
+/** Botones de acción visibles en la fila (Editar, Eliminar): fuera del menú ⋮ desde la 10.3e. */
+const ROW_BUTTONS = ['Editar', 'Eliminar'];
+
+async function betRow(index: number): Promise<HTMLElement> {
+  await screen.findAllByRole('button', { name: /^Estado:/ });
+  const rows = document.querySelectorAll<HTMLElement>('[data-bet-row]');
+  const row = rows[index];
+  if (!row) throw new Error(`No hay apuesta en la posición ${index}`);
+  return row;
+}
+
+/**
+ * Elige la acción `name` de la apuesta `index` (0 = primera): el botón visible de la fila si lo
+ * es (Editar, Eliminar) o, si no, la opción del menú ⋮.
+ */
+export async function openRowAction(name: string, index = 0) {
+  const row = await betRow(index);
+  const direct = ROW_BUTTONS.includes(name) ? within(row).queryByRole('button', { name }) : null;
+  if (direct) {
+    fireEvent.click(direct);
+    return;
+  }
+  fireEvent.click(within(row).getByRole('button', { name: 'Más acciones' }));
+  fireEvent.click(await screen.findByRole('menuitem', { name }));
+}
+
+/** Abre el selector de estado de la apuesta `index` y elige el estado `name`. */
+export async function chooseRowStatus(name: string, index = 0) {
+  const selectors = await screen.findAllByRole('button', { name: /^Estado:/ });
+  fireEvent.click(selectors[index]!);
+  fireEvent.click(await screen.findByRole('menuitem', { name }));
+}
+
+/**
+ * Acciones de la apuesta `index`: los botones visibles de la fila (Editar, Eliminar) y las del
+ * menú ⋮. Vacío si no tiene ninguna. Deja el menú cerrado.
+ */
+export function rowActionNames(index = 0): string[] {
+  const row = document.querySelectorAll<HTMLElement>('[data-bet-row]')[index];
+  if (!row) return [];
+  const direct = ROW_BUTTONS.filter((name) => within(row).queryByRole('button', { name }));
+  const menu = within(row).queryByRole('button', { name: 'Más acciones' });
+  if (!menu) return direct;
+  fireEvent.click(menu);
+  const names = screen.queryAllByRole('menuitem').map((item) => item.textContent ?? '');
+  fireEvent.click(menu);
+  return [...direct, ...names];
 }
