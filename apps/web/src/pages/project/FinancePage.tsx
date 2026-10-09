@@ -8,6 +8,7 @@ import {
   requestWithdrawalSchema,
   type HouseSummary,
   type MovementDirection,
+  type MovementSummary,
   type ReconciliationCheckpointSummary,
   type ReconciliationReview,
   type WithdrawalRequestSummary,
@@ -28,7 +29,21 @@ import {
   RECONCILIATION_STATUS_LABELS,
   WITHDRAWAL_STATUS_LABELS,
 } from '../../labels.js';
-import { Badge, btn, btnDanger, btnPrimary, inputClass, Notice, Section } from '../../ui.js';
+import { Help, TermLabel } from '../../glossary.js';
+import { ArrowDownLeftIcon, ArrowUpRightIcon, PlusIcon, SwapIcon } from '../../icons.js';
+import {
+  Badge,
+  btn,
+  btnDanger,
+  btnPrimary,
+  chipClass,
+  inputClass,
+  LoadingBlock,
+  Notice,
+  PageHeader,
+  Section,
+  SubNav,
+} from '../../ui.js';
 import { useProject } from './ProjectContext.js';
 
 /** Casas y Finanzas del proyecto (§13-§17, §49). */
@@ -47,55 +62,97 @@ export function FinancePage() {
 
   if (!project.setupComplete) {
     return (
-      <Notice tone="info">
-        Completa primero la{' '}
-        <Link to={`/projects/${project.id}/setup`} className="underline">
-          configuración inicial del proyecto
-        </Link>
-        .
-      </Notice>
+      <>
+        <PageHeader title="Casas y Finanzas" />
+        <Notice tone="info">
+          Completa primero la{' '}
+          <Link to={`/projects/${project.id}/setup`} className="font-medium underline">
+            configuración inicial del proyecto
+          </Link>
+          .
+        </Notice>
+      </>
     );
   }
 
+  const showMovementForm =
+    can('movements.deposit') || can('movements.transfer') || can('movements.extraordinary');
+  const showReconciliation = can('reconciliations.view') && houses.data && houses.data.length > 0;
+  // Navegación interna (Fase 11, §17): solo ofrece un ancla a lo que de verdad va a existir en
+  // esta pantalla para esta persona — nunca un salto a una sección que su rol no muestra.
+  const subNavItems = [
+    { id: 'casas', label: 'Casas' },
+    ...(showMovementForm ? [{ id: 'movimientos', label: 'Movimientos' }] : []),
+    { id: 'retiros', label: 'Retiros' },
+    ...(showReconciliation ? [{ id: 'conciliacion', label: 'Conciliación' }] : []),
+    { id: 'historial', label: 'Historial' },
+  ];
+
   return (
     <>
-      {notice && <Notice tone="success">{notice}</Notice>}
-      <HousesSection
-        houses={houses.data ?? []}
-        loading={houses.loading}
-        error={houses.error}
-        canCreate={can('houses.create')}
-        canDeactivate={can('houses.deactivate')}
-        onChanged={(message) => {
-          setNotice(message);
-          reloadAll();
+      <PageHeader
+        title="Casas y Finanzas"
+        description="El saldo de cada casa, sus movimientos y la conciliación con la realidad."
+        help={{
+          label: 'Casas y Finanzas',
+          text: 'El dinero del proyecto está repartido en casas de apuestas. Aquí ves cuánto hay en cada una, registras entradas y salidas, y compruebas que LetFer coincide con lo que muestra cada casa.',
         }}
       />
-      {can('movements.deposit') || can('movements.transfer') || can('movements.extraordinary') ? (
-        <NewMovementSection
+      <SubNav items={subNavItems} />
+      {notice && <Notice tone="success">{notice}</Notice>}
+      {/* `scroll-mt` despeja la barra superior + el `SubNav`, ambos fijos (QA responsiva, Fase
+          11 §8): a menos de 640px esa pila mide ~135px, más que a 640px en adelante (~107px). */}
+      <div id="casas" className="scroll-mt-[140px] sm:scroll-mt-28">
+        <HousesSection
           houses={houses.data ?? []}
+          loading={houses.loading}
+          error={houses.error}
+          canCreate={can('houses.create')}
+          canDeactivate={can('houses.deactivate')}
           onChanged={(message) => {
             setNotice(message);
             reloadAll();
           }}
         />
-      ) : null}
-      <WithdrawalsSection
-        houses={houses.data ?? []}
-        withdrawals={withdrawals.data ?? []}
-        loading={withdrawals.loading}
-        error={withdrawals.error}
-        onChanged={(message) => {
-          setNotice(message);
-          reloadAll();
-        }}
-      />
-      {can('reconciliations.view') && houses.data && houses.data.length > 0 && (
-        <ReconciliationSection houses={houses.data} />
+      </div>
+      {showMovementForm && (
+        <div id="movimientos" className="scroll-mt-[140px] sm:scroll-mt-28">
+          <NewMovementSection
+            houses={houses.data ?? []}
+            onChanged={(message) => {
+              setNotice(message);
+              reloadAll();
+            }}
+          />
+        </div>
       )}
-      <Section title="Historial de movimientos">
+      <div id="retiros" className="scroll-mt-[140px] sm:scroll-mt-28">
+        <WithdrawalsSection
+          houses={houses.data ?? []}
+          withdrawals={withdrawals.data ?? []}
+          loading={withdrawals.loading}
+          error={withdrawals.error}
+          onChanged={(message) => {
+            setNotice(message);
+            reloadAll();
+          }}
+        />
+      </div>
+      {showReconciliation && (
+        <div id="conciliacion" className="scroll-mt-[140px] sm:scroll-mt-28">
+          <ReconciliationSection houses={houses.data!} />
+        </div>
+      )}
+      <Section
+        id="historial"
+        title="Historial de movimientos"
+        description="Cada entrada (+) y salida (-) de dinero, de la más reciente a la más antigua. Nada se edita: una corrección es un movimiento nuevo."
+        className="scroll-mt-[140px] sm:scroll-mt-28"
+      >
         {movements.error && <Notice tone="error">{movements.error}</Notice>}
-        {movements.loading && !movements.data && <p>Cargando historial…</p>}
+        {movements.loading && !movements.data && (
+          <LoadingBlock lines={4} label="Cargando historial…" />
+        )}
         {movements.data && movements.data.length === 0 && (
           <Notice tone="info">Todavía no hay movimientos.</Notice>
         )}
@@ -103,7 +160,7 @@ export function FinancePage() {
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead>
-                <tr className="border-b border-slate-200 text-slate-500">
+                <tr className="border-b border-slate-200 text-xs text-slate-500">
                   <th className="py-2 pr-3 font-medium">Fecha</th>
                   <th className="py-2 pr-3 font-medium">Tipo</th>
                   <th className="py-2 pr-3 font-medium">Casa</th>
@@ -123,7 +180,9 @@ export function FinancePage() {
                     <td className="py-2 pr-3">
                       {movement.houseName ?? `${movement.fromHouseName} → ${movement.toHouseName}`}
                     </td>
-                    <td className="py-2 pr-3">{formatPEN(movement.amount)}</td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      <MovementAmount movement={movement} />
+                    </td>
                     <td className="py-2 pr-3">{movement.reason ?? '—'}</td>
                     <td className="py-2">{movement.createdBy.name}</td>
                   </tr>
@@ -200,24 +259,27 @@ function HousesSection({
   }
 
   return (
-    <Section title="Casas">
-      {canCreate && !showForm && (
-        <button
-          type="button"
-          className={`${btnPrimary} self-start`}
-          onClick={() => setShowForm(true)}
-        >
-          Nueva casa
-        </button>
-      )}
+    <Section
+      title="Casas"
+      description="Cada casa es una cuenta con su propio saldo. Una casa nunca se borra: se desactiva."
+      action={
+        canCreate &&
+        !showForm && (
+          <button type="button" className={btnPrimary} onClick={() => setShowForm(true)}>
+            <PlusIcon className="h-4 w-4" />
+            Nueva casa
+          </button>
+        )
+      }
+    >
       {showForm && (
         <form
           onSubmit={(event) => void onCreate(event)}
-          className="flex flex-wrap items-end gap-2"
+          className="flex flex-wrap items-end gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3"
           noValidate
         >
-          <label className="flex flex-col gap-1 text-sm font-medium">
-            Nombre
+          <label className="flex flex-col gap-1.5 text-sm font-medium">
+            Nombre de la casa
             <input
               value={name}
               onChange={(event) => setName(event.target.value)}
@@ -225,7 +287,7 @@ function HousesSection({
             />
           </label>
           <button type="submit" disabled={submitting} className={btnPrimary}>
-            Crear
+            {submitting ? 'Creando…' : 'Crear casa'}
           </button>
           <button type="button" className={btn} onClick={() => setShowForm(false)}>
             Cancelar
@@ -235,18 +297,24 @@ function HousesSection({
       )}
       {error && <Notice tone="error">{error}</Notice>}
       {rowError && <Notice tone="error">{rowError}</Notice>}
-      {loading && houses.length === 0 && <p>Cargando casas…</p>}
+      {loading && houses.length === 0 && <LoadingBlock lines={2} label="Cargando casas…" />}
       {!loading && houses.length === 0 && <Notice tone="info">Todavía no hay casas.</Notice>}
       {houses.length > 0 && (
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead>
-              <tr className="border-b border-slate-200 text-slate-500">
+              <tr className="border-b border-slate-200 text-xs text-slate-500">
                 <th className="py-2 pr-3 font-medium">Casa</th>
                 <th className="py-2 pr-3 font-medium">Estado</th>
-                <th className="py-2 pr-3 font-medium">Saldo</th>
-                <th className="py-2 pr-3 font-medium">Comprometido</th>
-                <th className="py-2 pr-3 font-medium">Disponible</th>
+                <th className="py-2 pr-3 font-medium">
+                  <TermLabel term="balance" />
+                </th>
+                <th className="py-2 pr-3 font-medium">
+                  <TermLabel term="committed" />
+                </th>
+                <th className="py-2 pr-3 font-medium">
+                  <TermLabel term="available" />
+                </th>
                 <th className="py-2 font-medium">
                   <span className="sr-only">Acciones</span>
                 </th>
@@ -255,15 +323,19 @@ function HousesSection({
             <tbody>
               {houses.map((house) => (
                 <tr key={house.id} className="border-b border-slate-100">
-                  <td className="py-2 pr-3">{house.name}</td>
+                  <td className="py-2 pr-3 font-medium">{house.name}</td>
                   <td className="py-2 pr-3">
                     <Badge tone={house.status === 'ACTIVE' ? 'green' : 'slate'}>
                       {HOUSE_STATUS_LABELS[house.status]}
                     </Badge>
                   </td>
-                  <td className="py-2 pr-3">{formatPEN(house.balance)}</td>
-                  <td className="py-2 pr-3">{formatPEN(house.committed)}</td>
-                  <td className="py-2 pr-3">{formatPEN(house.available)}</td>
+                  <td className="py-2 pr-3 tabular-nums">{formatPEN(house.balance)}</td>
+                  <td className="py-2 pr-3 text-slate-600 tabular-nums">
+                    {formatPEN(house.committed)}
+                  </td>
+                  <td className="py-2 pr-3 font-semibold tabular-nums">
+                    {formatPEN(house.available)}
+                  </td>
                   <td className="py-2">
                     {canDeactivate && (
                       <button
@@ -301,17 +373,42 @@ function NewMovementSection({
   onChanged: (message: string) => void;
 }) {
   const { can } = useProject();
-  const kinds: { key: MovementKind; label: string }[] = [
-    ...(can('movements.deposit') ? [{ key: 'deposit' as const, label: 'Depósito' }] : []),
-    ...(can('movements.transfer') ? [{ key: 'transfer' as const, label: 'Transferencia' }] : []),
+  const kinds: { key: MovementKind; label: string; hint: string }[] = [
+    ...(can('movements.deposit')
+      ? [
+          {
+            key: 'deposit' as const,
+            label: 'Depósito',
+            hint: 'Dinero nuevo que entra al proyecto en una casa. Aumenta el capital.',
+          },
+        ]
+      : []),
+    ...(can('movements.transfer')
+      ? [
+          {
+            key: 'transfer' as const,
+            label: 'Transferencia',
+            hint: 'Mover dinero de una casa a otra del proyecto. El capital total no cambia y no es ganancia.',
+          },
+        ]
+      : []),
     ...(can('movements.extraordinary')
-      ? [{ key: 'extraordinary' as const, label: 'Extraordinario' }]
+      ? [
+          {
+            key: 'extraordinary' as const,
+            label: 'Extraordinario',
+            hint: 'Un cambio real de saldo que no es apuesta: bono, cashback, comisión. Pide tu contraseña.',
+          },
+        ]
       : []),
   ];
   const [kind, setKind] = useState<MovementKind>(kinds[0]?.key ?? 'deposit');
 
   return (
-    <Section title="Registrar movimiento">
+    <Section
+      title="Registrar movimiento"
+      description="Para dinero que entra o se mueve entre casas. Las apuestas mueven el saldo solas; los retiros van en su propia sección."
+    >
       <div role="group" aria-label="Tipo de movimiento" className="flex flex-wrap gap-2">
         {kinds.map((option) => (
           <button
@@ -319,14 +416,13 @@ function NewMovementSection({
             type="button"
             aria-pressed={kind === option.key}
             onClick={() => setKind(option.key)}
-            className={`rounded border px-3 py-1.5 text-sm ${
-              kind === option.key ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300'
-            }`}
+            className={chipClass(kind === option.key)}
           >
             {option.label}
           </button>
         ))}
       </div>
+      <p className="text-sm text-slate-500">{kinds.find((option) => option.key === kind)?.hint}</p>
       {kind === 'deposit' && <DepositForm houses={houses} onChanged={onChanged} />}
       {kind === 'transfer' && <TransferForm houses={houses} onChanged={onChanged} />}
       {kind === 'extraordinary' && <ExtraordinaryForm houses={houses} onChanged={onChanged} />}
@@ -347,26 +443,35 @@ function HouseSelect({
   label: string;
   exclude?: string;
 }) {
+  const chosen = houses.find((house) => house.id === value);
   return (
-    <label className="flex flex-col gap-1 text-sm font-medium">
-      {label}
-      <select
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className={inputClass}
-      >
-        <option value="" disabled>
-          Elige una casa
-        </option>
-        {houses
-          .filter((house) => house.status === 'ACTIVE' && house.id !== exclude)
-          .map((house) => (
-            <option key={house.id} value={house.id}>
-              {house.name}
-            </option>
-          ))}
-      </select>
-    </label>
+    <div className="flex flex-col gap-1.5">
+      <label className="flex flex-col gap-1.5 text-sm font-medium">
+        {label}
+        <select
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          className={inputClass}
+        >
+          <option value="" disabled>
+            Elige una casa
+          </option>
+          {houses
+            .filter((house) => house.status === 'ACTIVE' && house.id !== exclude)
+            .map((house) => (
+              <option key={house.id} value={house.id}>
+                {house.name}
+              </option>
+            ))}
+        </select>
+      </label>
+      {chosen && (
+        <p className="text-xs text-slate-500">
+          Disponible ahora:{' '}
+          <strong className="text-slate-800">{formatPEN(chosen.available)}</strong>
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -422,7 +527,7 @@ function DepositForm({
     >
       <div className="grid gap-3 sm:grid-cols-2">
         <HouseSelect houses={houses} value={houseId} onChange={setHouseId} label="Casa" />
-        <label className="flex flex-col gap-1 text-sm font-medium">
+        <label className="flex flex-col gap-1.5 text-sm font-medium">
           Monto
           <input
             value={amount}
@@ -431,7 +536,7 @@ function DepositForm({
           />
         </label>
       </div>
-      <label className="flex flex-col gap-1 text-sm font-medium">
+      <label className="flex flex-col gap-1.5 text-sm font-medium">
         Motivo (opcional)
         <input
           value={reason}
@@ -511,7 +616,7 @@ function TransferForm({
           exclude={fromHouseId}
         />
       </div>
-      <label className="flex max-w-xs flex-col gap-1 text-sm font-medium">
+      <label className="flex max-w-xs flex-col gap-1.5 text-sm font-medium">
         Monto
         <input
           value={amount}
@@ -519,7 +624,7 @@ function TransferForm({
           className={inputClass}
         />
       </label>
-      <label className="flex flex-col gap-1 text-sm font-medium">
+      <label className="flex flex-col gap-1.5 text-sm font-medium">
         Motivo (opcional)
         <input
           value={reason}
@@ -584,13 +689,13 @@ function ExtraordinaryForm({
       aria-label="Extraordinario"
       noValidate
     >
-      <p className="text-xs text-slate-500">
+      <Notice tone="warning">
         Solo para hechos reales de la casa (cashback, bonificación, comisión, corrección oficial):
-        nunca un ajuste genérico.
-      </p>
+        nunca un ajuste genérico para cuadrar un saldo.
+      </Notice>
       <div className="grid gap-3 sm:grid-cols-3">
         <HouseSelect houses={houses} value={houseId} onChange={setHouseId} label="Casa" />
-        <label className="flex flex-col gap-1 text-sm font-medium">
+        <label className="flex flex-col gap-1.5 text-sm font-medium">
           Monto
           <input
             value={amount}
@@ -598,7 +703,7 @@ function ExtraordinaryForm({
             className={inputClass}
           />
         </label>
-        <label className="flex flex-col gap-1 text-sm font-medium">
+        <label className="flex flex-col gap-1.5 text-sm font-medium">
           Sentido
           <select
             value={direction}
@@ -610,7 +715,7 @@ function ExtraordinaryForm({
           </select>
         </label>
       </div>
-      <label className="flex flex-col gap-1 text-sm font-medium">
+      <label className="flex flex-col gap-1.5 text-sm font-medium">
         Motivo
         <input
           value={reason}
@@ -643,16 +748,18 @@ function WithdrawalsSection({
   const [showForm, setShowForm] = useState(false);
 
   return (
-    <Section title="Retiros">
-      {can('withdrawals.request') && !showForm && (
-        <button
-          type="button"
-          className={`${btnPrimary} self-start`}
-          onClick={() => setShowForm(true)}
-        >
-          Solicitar retiro
-        </button>
-      )}
+    <Section
+      title="Retiros"
+      description="Sacar dinero del proyecto. Al solicitarlo el monto queda reservado; se descuenta del saldo cuando alguien lo aprueba."
+      action={
+        can('withdrawals.request') &&
+        !showForm && (
+          <button type="button" className={btn} onClick={() => setShowForm(true)}>
+            Solicitar retiro
+          </button>
+        )
+      }
+    >
       {showForm && (
         <RequestWithdrawalForm
           houses={houses}
@@ -664,7 +771,7 @@ function WithdrawalsSection({
         />
       )}
       {error && <Notice tone="error">{error}</Notice>}
-      {loading && withdrawals.length === 0 && <p>Cargando retiros…</p>}
+      {loading && withdrawals.length === 0 && <LoadingBlock lines={2} label="Cargando retiros…" />}
       {!loading && withdrawals.length === 0 && <Notice tone="info">Todavía no hay retiros.</Notice>}
       <ul className="flex flex-col gap-3">
         {withdrawals.map((item) => (
@@ -676,10 +783,11 @@ function WithdrawalsSection({
           />
         ))}
       </ul>
-      <p className="text-xs text-slate-500">
-        {project.status === 'CLOSED' &&
-          'El proyecto está cerrado: los retiros de cierre siguen disponibles.'}
-      </p>
+      {project.status === 'CLOSED' && (
+        <p className="text-xs text-slate-500">
+          El proyecto está cerrado: los retiros de cierre siguen disponibles.
+        </p>
+      )}
     </Section>
   );
 }
@@ -721,13 +829,13 @@ function RequestWithdrawalForm({
   return (
     <form
       onSubmit={(event) => void onSubmit(event)}
-      className="flex flex-col gap-3"
+      className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4"
       aria-label="Solicitar retiro"
       noValidate
     >
       <div className="grid gap-3 sm:grid-cols-2">
         <HouseSelect houses={houses} value={houseId} onChange={setHouseId} label="Casa" />
-        <label className="flex flex-col gap-1 text-sm font-medium">
+        <label className="flex flex-col gap-1.5 text-sm font-medium">
           Monto
           <input
             value={amount}
@@ -736,7 +844,7 @@ function RequestWithdrawalForm({
           />
         </label>
       </div>
-      <label className="flex flex-col gap-1 text-sm font-medium">
+      <label className="flex flex-col gap-1.5 text-sm font-medium">
         Motivo
         <input
           value={reason}
@@ -747,7 +855,7 @@ function RequestWithdrawalForm({
       {error && <Notice tone="error">{error}</Notice>}
       <div className="flex gap-2">
         <button type="submit" disabled={submitting} className={btnPrimary}>
-          Solicitar
+          {submitting ? 'Enviando…' : 'Enviar solicitud'}
         </button>
         <button type="button" className={btn} onClick={onCancel} disabled={submitting}>
           Cancelar
@@ -826,10 +934,10 @@ function WithdrawalRow({
   } as const;
 
   return (
-    <li className="rounded border border-slate-200 p-3">
+    <li className="rounded-xl border border-slate-200 p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <p className="font-medium">
+          <p className="font-medium tabular-nums">
             {formatPEN(item.amount)} de {item.houseName}{' '}
             <Badge tone={badgeTone[item.status]}>{WITHDRAWAL_STATUS_LABELS[item.status]}</Badge>
           </p>
@@ -847,6 +955,7 @@ function WithdrawalRow({
                 type="button"
                 className={btnPrimary}
                 disabled={busy}
+                title="Descuenta el monto del saldo de la casa. Pide tu contraseña."
                 onClick={() => void approve()}
               >
                 Aprobar
@@ -877,7 +986,7 @@ function WithdrawalRow({
               ))}
             {(canApprove || user?.id === item.requestedBy.id) && (
               <button type="button" className={btn} disabled={busy} onClick={() => void cancel()}>
-                Cancelar
+                Cancelar solicitud
               </button>
             )}
           </div>
@@ -908,11 +1017,20 @@ function ReconciliationSection({ houses }: { houses: HouseSummary[] }) {
   );
 
   if (houses.length === 0) return null;
+  const selected = houses.find((house) => house.id === houseId);
 
   return (
-    <Section title="Conciliación">
+    <Section
+      title="Conciliación"
+      description={
+        <>
+          Compara el disponible que calcula LetFer con el que muestra la casa.{' '}
+          <Help term="reconciliation" />
+        </>
+      }
+    >
       {notice && <Notice tone="success">{notice}</Notice>}
-      <label className="flex max-w-xs flex-col gap-1 text-sm font-medium">
+      <label className="flex max-w-xs flex-col gap-1.5 text-sm font-medium">
         Casa
         <select
           value={houseId}
@@ -932,13 +1050,21 @@ function ReconciliationSection({ houses }: { houses: HouseSummary[] }) {
 
       {status.error && <Notice tone="error">{status.error}</Notice>}
       {status.data && (
-        <p className="text-sm">
+        <div className="flex flex-wrap items-center gap-3 text-sm">
           {status.data.requiresReconciliation ? (
             <Badge tone="amber">Requiere nueva conciliación</Badge>
           ) : (
             <Badge tone="green">Al día</Badge>
           )}
-        </p>
+          {selected && (
+            <span className="text-slate-600">
+              Disponible según LetFer:{' '}
+              <strong className="text-slate-900 tabular-nums">
+                {formatPEN(selected.available)}
+              </strong>
+            </span>
+          )}
+        </div>
       )}
 
       {can('reconciliations.confirm') && (
@@ -952,7 +1078,11 @@ function ReconciliationSection({ houses }: { houses: HouseSummary[] }) {
         />
       )}
 
-      <button type="button" className={btn} onClick={() => setShowReview((v) => !v)}>
+      <button
+        type="button"
+        className={`${btn} self-start`}
+        onClick={() => setShowReview((v) => !v)}
+      >
         {showReview ? 'Ocultar' : 'Revisar desde última conciliación'}
       </button>
       {showReview && review.data && (
@@ -969,7 +1099,7 @@ function ReconciliationSection({ houses }: { houses: HouseSummary[] }) {
         </div>
       )}
 
-      <h3 className="text-sm font-medium text-slate-700">Historial</h3>
+      <h3 className="text-sm font-semibold text-slate-800">Historial de conciliaciones</h3>
       {history.error && <Notice tone="error">{history.error}</Notice>}
       {history.data && history.data.length === 0 && (
         <p className="text-sm text-slate-500">Todavía no hay conciliaciones para esta casa.</p>
@@ -978,7 +1108,7 @@ function ReconciliationSection({ houses }: { houses: HouseSummary[] }) {
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead>
-              <tr className="border-b border-slate-200 text-slate-500">
+              <tr className="border-b border-slate-200 text-xs text-slate-500">
                 <th className="py-2 pr-3 font-medium">Fecha</th>
                 <th className="py-2 pr-3 font-medium">Estado</th>
                 <th className="py-2 pr-3 font-medium">LetFer</th>
@@ -1065,12 +1195,16 @@ function ConfirmReconciliationForm({
   return (
     <form
       onSubmit={(event) => void onSubmit(event)}
-      className="flex flex-col gap-3"
+      className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4"
       aria-label="Conciliar"
       noValidate
     >
+      <p className="text-sm text-slate-600">
+        Escribe el saldo disponible que muestra la casa ahora. Si coincide, queda un punto de
+        control; si no, se registra la diferencia (nunca se ajusta el saldo).
+      </p>
       <div className="grid gap-3 sm:grid-cols-2">
-        <label className="flex flex-col gap-1 text-sm font-medium">
+        <label className="flex flex-col gap-1.5 text-sm font-medium">
           Saldo disponible oficial
           <input
             value={officialAvailable}
@@ -1078,7 +1212,7 @@ function ConfirmReconciliationForm({
             className={inputClass}
           />
         </label>
-        <label className="flex flex-col gap-1 text-sm font-medium">
+        <label className="flex flex-col gap-1.5 text-sm font-medium">
           Nota (opcional)
           <input
             value={note}
@@ -1089,8 +1223,38 @@ function ConfirmReconciliationForm({
       </div>
       {error && <Notice tone="error">{error}</Notice>}
       <button type="submit" disabled={submitting} className={`${btnPrimary} self-start`}>
-        Conciliar
+        {submitting ? 'Conciliando…' : 'Conciliar'}
       </button>
     </form>
+  );
+}
+
+/**
+ * Importe de un movimiento con su signo, igual que lo aplica el ledger: en una casa, una salida
+ * (`DEBIT`) resta y una entrada suma; una transferencia mueve dinero entre casas sin cambiar el
+ * total. El signo y la flecha se leen sin depender del color.
+ */
+function MovementAmount({ movement }: { movement: MovementSummary }) {
+  if (movement.houseId === null) {
+    return (
+      <span className="inline-flex items-center gap-1 text-slate-700 tabular-nums">
+        <SwapIcon className="h-3.5 w-3.5" />
+        {formatPEN(movement.amount)}
+      </span>
+    );
+  }
+  const out = movement.direction === 'DEBIT';
+  return (
+    <span
+      className={`inline-flex items-center gap-1 font-medium tabular-nums ${out ? 'text-red-700' : 'text-green-700'}`}
+    >
+      {out ? (
+        <ArrowDownLeftIcon className="h-3.5 w-3.5" />
+      ) : (
+        <ArrowUpRightIcon className="h-3.5 w-3.5" />
+      )}
+      {out ? '-' : '+'}
+      {formatPEN(movement.amount)}
+    </span>
   );
 }

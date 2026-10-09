@@ -89,6 +89,22 @@ describe('casas y finanzas del proyecto (§13-§17, §49)', () => {
     expect(screen.queryByText('Betano')).toBeNull();
   });
 
+  it('ofrece una navegación interna para saltar a cada bloque (Fase 11, §17)', async () => {
+    open();
+    renderApp(FINANCE_URL);
+    const nav = await screen.findByRole('navigation', { name: 'Ir a una sección de esta página' });
+    // "Conciliación" solo aparece tras cargar las casas (depende de `houses.data.length > 0`):
+    // se espera a que el enlace exista antes de leer la lista completa.
+    await within(nav).findByRole('link', { name: 'Conciliación' });
+    const hrefs = within(nav)
+      .getAllByRole('link')
+      .map((link) => link.getAttribute('href'));
+    expect(hrefs).toEqual(['#casas', '#movimientos', '#retiros', '#conciliacion', '#historial']);
+    expect(document.querySelector('#casas')).toBeTruthy();
+    expect(document.querySelector('#retiros')).toBeTruthy();
+    expect(document.querySelector('#historial')).toBeTruthy();
+  });
+
   it('lista casas con saldo, comprometido y disponible', async () => {
     open();
     renderApp(FINANCE_URL);
@@ -129,8 +145,8 @@ describe('casas y finanzas del proyecto (§13-§17, §49)', () => {
     });
     renderApp(FINANCE_URL);
     fireEvent.click(await screen.findByRole('button', { name: 'Nueva casa' }));
-    fireEvent.change(screen.getByLabelText('Nombre'), { target: { value: 'Betsafe' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Crear' }));
+    fireEvent.change(screen.getByLabelText('Nombre de la casa'), { target: { value: 'Betsafe' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Crear casa' }));
     expect(await screen.findByText('Se añadió la casa «Betsafe».')).toBeTruthy();
     expect(calls.find((c) => c.method === 'POST' && c.path === HOUSES_URL)!.body).toEqual({
       name: 'Betsafe',
@@ -346,6 +362,9 @@ describe('casas y finanzas del proyecto (§13-§17, §49)', () => {
       const historyTable = (await screen.findByText('Betano → Betsafe')).closest('table')!;
       expect(within(historyTable).getByText('Depósito (Entrada)')).toBeTruthy();
       expect(within(historyTable).getByText('Transferencia')).toBeTruthy();
+      // Entradas con "+" y la transferencia sin signo (no cambia el total): no solo color.
+      expect(within(historyTable).getByText('+S/ 50.00')).toBeTruthy();
+      expect(within(historyTable).getByText('S/ 30.00')).toBeTruthy();
     });
   });
 
@@ -363,7 +382,7 @@ describe('casas y finanzas del proyecto (§13-§17, §49)', () => {
       fireEvent.change(within(form).getByLabelText('Motivo'), {
         target: { value: 'Retiro de ganancias' },
       });
-      fireEvent.click(within(form).getByRole('button', { name: 'Solicitar' }));
+      fireEvent.click(within(form).getByRole('button', { name: 'Enviar solicitud' }));
 
       expect(
         await screen.findByText('Se solicitó el retiro; el monto ya está reservado.'),
@@ -452,10 +471,10 @@ describe('casas y finanzas del proyecto (§13-§17, §49)', () => {
         },
       });
       renderApp(FINANCE_URL);
-      expect(await screen.findByRole('button', { name: 'Cancelar' })).toBeTruthy();
+      expect(await screen.findByRole('button', { name: 'Cancelar solicitud' })).toBeTruthy();
       expect(screen.queryByRole('button', { name: 'Aprobar' })).toBeNull();
 
-      fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Cancelar solicitud' }));
       expect(await screen.findByText('Se canceló el retiro.')).toBeTruthy();
       expect(calls.some((c) => c.path === `${WITHDRAWALS_URL}/${WITHDRAWAL_ID}/cancel`)).toBe(true);
     });
@@ -597,5 +616,59 @@ describe('casas y finanzas del proyecto (§13-§17, §49)', () => {
       expect(await screen.findByText('Discrepancia')).toBeTruthy();
       expect(screen.getByText('S/ -50.00')).toBeTruthy();
     });
+  });
+});
+
+describe('casas y finanzas: lectura para quien empieza (10.3e)', () => {
+  it('una salida se muestra con "-" y el disponible de la casa elegida a la vista', async () => {
+    open({
+      [`GET ${MOVEMENTS_URL}`]: {
+        status: 200,
+        body: [
+          {
+            id: 'm3',
+            operationId: 'op3',
+            projectId: PROJECT_ID,
+            stageId: 'e1',
+            type: 'EXTRAORDINARY',
+            direction: 'DEBIT',
+            houseId: HOUSE_A,
+            houseName: 'Betano',
+            fromHouseId: null,
+            fromHouseName: null,
+            toHouseId: null,
+            toHouseName: null,
+            amount: '5.00',
+            reason: 'Comisión',
+            occurredAt: '2026-06-02T10:00:00.000Z',
+            createdAt: '2026-06-02T10:00:00.000Z',
+            createdBy: { id: ANA.id, name: 'Ana Pérez' },
+          },
+        ],
+      },
+    });
+    renderApp(FINANCE_URL);
+    expect(await screen.findByText('-S/ 5.00')).toBeTruthy();
+    const form = screen.getByRole('form', { name: 'Depósito' });
+    fireEvent.change(within(form).getByLabelText('Casa'), { target: { value: HOUSE_A } });
+    expect(within(form).getByText(/Disponible ahora/).textContent).toMatch(/S\/ 500\.00/);
+  });
+
+  it('cada tipo de movimiento explica qué es', async () => {
+    open();
+    renderApp(FINANCE_URL);
+    const group = await screen.findByRole('group', { name: 'Tipo de movimiento' });
+    expect(screen.getByText(/Dinero nuevo que entra al proyecto/)).toBeTruthy();
+    fireEvent.click(within(group).getByRole('button', { name: 'Transferencia' }));
+    expect(screen.getByText(/El capital total no cambia y no es ganancia/)).toBeTruthy();
+  });
+
+  it('las columnas de saldo, comprometido y disponible tienen su ayuda', async () => {
+    open();
+    renderApp(FINANCE_URL);
+    await screen.findByRole('cell', { name: 'Betano' });
+    for (const term of ['Saldo', 'Comprometido', 'Disponible']) {
+      expect(screen.getByRole('button', { name: `¿Qué es ${term}?` })).toBeTruthy();
+    }
   });
 });
