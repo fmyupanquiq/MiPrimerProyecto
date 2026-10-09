@@ -9,7 +9,7 @@ import {
 } from '../../../hooks/useImportBatches.js';
 import { useLoad } from '../../../hooks/useLoad.js';
 import { formatDateTime } from '../../../labels.js';
-import { Badge, Notice, Section } from '../../../ui.js';
+import { Badge, LoadingBlock, Notice, Section } from '../../../ui.js';
 import { useProject } from '../ProjectContext.js';
 import {
   type ImportBatchLocationState,
@@ -20,6 +20,7 @@ import {
   toIso,
 } from './ImportsCommon.js';
 import { ImportPreviewSection } from './ImportPreviewPanels.js';
+import { ImportProgress } from './ImportProgress.js';
 import { HouseResolutionPanel, StagePlanPanel } from './ImportResolutionPanels.js';
 import {
   AcknowledgmentPanel,
@@ -50,11 +51,14 @@ function ImportBatchDetail() {
   return (
     <>
       <p>
-        <Link to={importsPath(project.id)} className="text-sm underline">
+        <Link
+          to={importsPath(project.id)}
+          className="inline-flex items-center gap-1 text-sm text-violet-700 hover:text-violet-900"
+        >
           ← Volver a importaciones
         </Link>
       </p>
-      {loaded.loading && !batch && <p>Cargando lote…</p>}
+      {loaded.loading && !batch && <LoadingBlock lines={3} label="Cargando lote…" />}
       {!loaded.loading && !batch && (
         <Notice tone="error">
           {loaded.errorStatus === 404
@@ -70,15 +74,15 @@ function ImportBatchDetail() {
           </div>
           <dl className="grid gap-3 text-sm sm:grid-cols-3">
             <div>
-              <dt className="text-slate-600">Origen</dt>
+              <dt className="text-xs text-slate-500">Origen</dt>
               <dd>{batch.origin}</dd>
             </div>
             <div>
-              <dt className="text-slate-600">Subido</dt>
+              <dt className="text-xs text-slate-500">Subido</dt>
               <dd>{formatDateTime(toIso(batch.createdAt))}</dd>
             </div>
             <div>
-              <dt className="text-slate-600">Filas</dt>
+              <dt className="text-xs text-slate-500">Filas</dt>
               <dd>
                 {batch.rowsTotal} en total · {batch.rowsValid} válidas · {batch.rowsPartial}{' '}
                 parciales · {batch.rowsInvalid} inválidas
@@ -86,7 +90,7 @@ function ImportBatchDetail() {
             </div>
             {batch.importedAt && (
               <div>
-                <dt className="text-slate-600">Importado</dt>
+                <dt className="text-xs text-slate-500">Importado</dt>
                 <dd>
                   {formatDateTime(toIso(batch.importedAt))}
                   {batch.importReason && ` · ${batch.importReason}`}
@@ -95,7 +99,7 @@ function ImportBatchDetail() {
             )}
             {batch.annulledAt && (
               <div>
-                <dt className="text-slate-600">Anulado</dt>
+                <dt className="text-xs text-slate-500">Anulado</dt>
                 <dd>
                   {formatDateTime(toIso(batch.annulledAt))}
                   {batch.annulmentReason && ` · ${batch.annulmentReason}`}
@@ -160,6 +164,7 @@ function ImportBatchWorkspace({
   return (
     <>
       {notice && <Notice tone="success">{notice}</Notice>}
+      <ImportProgress batch={batch} readiness={readiness.data} />
       {batch.status === 'IMPORTED' && (
         <Notice tone="info">
           Este lote ya está registrado en el ledger. Su casa y su plan de etapas ya no se pueden

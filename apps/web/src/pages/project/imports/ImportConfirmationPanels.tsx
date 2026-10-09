@@ -83,7 +83,7 @@ export function AcknowledgmentPanel({
       {data?.blocked && (
         <div
           role="alert"
-          className="rounded border border-red-300 bg-red-50 p-3 text-sm text-red-800"
+          className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800"
         >
           <p className="font-medium">El lote está bloqueado: no puede confirmarse.</p>
           <p>Un reconocimiento no levanta estos motivos:</p>
@@ -259,7 +259,7 @@ export function ConfirmationPanel({
       {canRun && open && (
         <form
           onSubmit={(event) => void onSubmit(event)}
-          className="flex flex-col gap-2 rounded border border-slate-200 p-3"
+          className="flex flex-col gap-2 rounded-xl border border-slate-200 p-3"
           aria-label="Confirmar importación"
         >
           <p className="text-sm font-medium">¿Confirmar la importación?</p>
@@ -362,7 +362,7 @@ export function AnnulmentPanel({
       ) : (
         <form
           onSubmit={(event) => void onSubmit(event)}
-          className="flex flex-col gap-2 rounded border border-red-200 p-3"
+          className="flex flex-col gap-2 rounded-xl border border-red-200 p-3"
           aria-label="Anular lote"
         >
           <p className="text-sm font-medium">

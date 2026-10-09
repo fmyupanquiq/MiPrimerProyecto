@@ -390,11 +390,13 @@ describe('ImportUploadPage', () => {
 
   it('muestra el error de la API y se queda en el formulario', async () => {
     const { form } = await openForm({
-      [`POST ${BATCHES_URL}`]: apiError(400, 'VALIDATION_FAILED'),
+      [`POST ${BATCHES_URL}`]: apiError(400, 'VALIDATION_FAILED', 'Adjunta un archivo.'),
     });
     choose(form, xlsx());
     submit(form);
-    expect(await within(form).findByText('Revisa los datos ingresados.')).toBeTruthy();
+    expect(
+      await within(form).findByText('Revisa los datos ingresados. Adjunta un archivo.'),
+    ).toBeTruthy();
     expect(within(form).getByRole('button', { name: 'Subir archivo' })).toBeTruthy();
   });
 
@@ -568,9 +570,7 @@ describe('ImportBatchPage', () => {
 
   it('si la vista previa falla, lo informa y conserva el resumen del lote', async () => {
     openBatch(apiError(500, 'INTERNAL'));
-    expect(
-      await screen.findByText('No se pudo completar la operación. Inténtalo de nuevo.'),
-    ).toBeTruthy();
+    expect(await screen.findByText(/Ocurrió un error inesperado en el servidor/)).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Betsafe.xlsx' })).toBeTruthy();
     expect(screen.queryByRole('table', { name: 'Apuestas preliminares' })).toBeNull();
   });

@@ -12,7 +12,7 @@ import { useConfirmImportHouse, useSaveImportStagePlan } from '../../../hooks/us
 import type { Loaded } from '../../../hooks/useLoad.js';
 import { formatDateTime, STAGE_STATUS_LABELS } from '../../../labels.js';
 import { Badge, btn, btnPrimary, inputClass, Notice, Section } from '../../../ui.js';
-import { toLocalInput } from '../BetFinancialPanels.js';
+import { fromLocalInput, toLocalInput } from '../../../date-inputs.js';
 import { useProject } from '../ProjectContext.js';
 import { apiIssues, ImportActionError, isBatchOpen } from './ImportsCommon.js';
 
@@ -283,7 +283,7 @@ export function StagePlanPanel({
         key: row.key,
         name: row.name,
         unitStake: row.unitStake,
-        startsAt: row.startsAt ? new Date(row.startsAt).toISOString() : null,
+        startsAt: row.startsAt ? (fromLocalInput(row.startsAt) ?? row.startsAt) : null,
         status: row.status,
         firstRow: Number(row.firstRow),
         lastRow: Number(row.lastRow),
@@ -353,7 +353,7 @@ export function StagePlanPanel({
           {editing.map((row, index) => (
             <fieldset
               key={row.rowKey}
-              className="flex flex-wrap items-end gap-2 rounded border border-slate-200 p-3"
+              className="flex flex-wrap items-end gap-2 rounded-xl border border-slate-200 p-3"
             >
               <legend className="px-1 text-sm font-medium">Etapa {index + 1}</legend>
               <PlanField label={`Clave de la etapa ${index + 1}`} text="Clave">

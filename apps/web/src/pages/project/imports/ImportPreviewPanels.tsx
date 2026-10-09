@@ -1,6 +1,7 @@
 import {
   type BatchFinancialSemaphore,
   type ExcelFinancialContrastReport,
+  formatOdds,
   formatPEN,
   type ImportDuplicateMatch,
   type ImportDuplicateReport,
@@ -18,7 +19,7 @@ import {
   IMPORT_ROW_STATUS_LABELS,
   IMPORT_SEMAPHORE_LABELS,
 } from '../../../labels.js';
-import { Badge, Notice, Section } from '../../../ui.js';
+import { Badge, LoadingBlock, Notice, Section } from '../../../ui.js';
 import { FinancialSemaphoreBadge } from './ImportsCommon.js';
 
 /*
@@ -59,7 +60,8 @@ const td = 'py-1 pr-3 align-top';
 
 /** La vista previa ya pedida por la página (que la recarga tras corregir la casa del lote). */
 export function ImportPreviewSection({ preview }: { preview: Loaded<ImportPreview> }) {
-  if (preview.loading && !preview.data) return <p>Cargando vista previa…</p>;
+  if (preview.loading && !preview.data)
+    return <LoadingBlock lines={2} label="Cargando vista previa…" />;
   if (!preview.data) {
     return (
       <Notice tone="error">{preview.error ?? 'No se pudo cargar la vista previa del lote.'}</Notice>
@@ -365,7 +367,7 @@ function PreliminaryBets({ preview }: { preview: ImportPreview }) {
                       </ul>
                     </td>
                     <td className={td}>{formatPEN(bet.amount)}</td>
-                    <td className={td}>{bet.visibleTotalOdds}</td>
+                    <td className={td}>{formatOdds(bet.visibleTotalOdds)}</td>
                     <td className={td}>{BET_STATUS_LABELS[bet.status]}</td>
                     <td className={td}>
                       {bet.provisionalReturn === null ? (
@@ -418,7 +420,7 @@ function DuplicateTable({ label, matches }: { label: string; matches: ImportDupl
               {/* Fecha de calendario en la zona del proyecto (AAAA-MM-DD), tal como la da la API. */}
               <td className={td}>{match.date}</td>
               <td className={td}>{formatPEN(match.amount)}</td>
-              <td className="py-1">{match.odds}</td>
+              <td className="py-1">{formatOdds(match.odds)}</td>
             </tr>
           ))}
         </tbody>

@@ -73,7 +73,10 @@ export function apiIssues(caught: unknown): string[] {
 export function ImportActionError({ error, issues }: { error: string | null; issues: string[] }) {
   if (!error) return null;
   return (
-    <div role="alert" className="rounded border border-red-300 bg-red-50 p-3 text-sm text-red-800">
+    <div
+      role="alert"
+      className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800"
+    >
       <p>{error}</p>
       {issues.length > 0 && (
         <ul className="list-disc pl-5">
