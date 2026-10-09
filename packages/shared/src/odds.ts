@@ -76,3 +76,22 @@ export function deriveEffectiveOdds(
     .toDecimalPlaces(ODDS_SCALE)
     .toString();
 }
+
+/**
+ * Producto de varias cuotas (p. ej. las cuotas individuales de una combinada), Fase 10.8 (§9-§10
+ * del prellenado por IA): única forma de obtener una cifra de referencia cuando una apuesta está
+ * perdida y la casa no muestra una cuota total explícita (sin retorno real que dividir, D-T1). Es
+ * siempre un valor **calculado/provisional**, nunca la cuota oficial de la casa (regla crítica 6):
+ * quien lo muestre debe rotularlo como tal. Ignora cualquier cuota inválida o no positiva de la
+ * lista; `null` si no queda ninguna.
+ */
+export function multiplyOdds(values: readonly string[]): OddsString | null {
+  const valid = values.filter(
+    (value): value is OddsString => isOddsString(value) && isPositiveOdds(value),
+  );
+  if (valid.length === 0) return null;
+  return valid
+    .reduce((product, value) => product.times(toOddsDecimal(value)), new OddsDecimal(1))
+    .toDecimalPlaces(ODDS_SCALE)
+    .toString();
+}

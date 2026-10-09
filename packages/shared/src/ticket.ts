@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { deriveEffectiveOdds, multiplyOdds, type OddsString } from './odds.js';
 
 /**
  * Tickets e IA (§28-§31, §51-§53, §90, §97, §110). El ticket es una entrada no confiable
@@ -31,15 +32,89 @@ export interface TicketExtraction {
   placedTime?: string;
   betType?: string;
   selections?: TicketExtractionSelection[];
+  /** Stake (nivel de apuesta) solo si el ticket lo muestra explícitamente; nunca derivado del importe. */
+  stake?: string;
+  /**
+   * Cuota TOTAL/combinada tal como la imprime la casa ("cuota visible", regla crítica 6): se
+   * conserva exactamente, nunca se sustituye por una calculada (Fase 10.8, §6, §10-§11).
+   */
   officialTotalOdds?: string;
+  /** Importe apostado (el dinero puesto en juego), nunca el stake (un multiplicador, §12). */
   officialAmount?: string;
+  /**
+   * Retorno TOTAL potencial de una apuesta aún pendiente, tal como lo muestra la casa (incluye el
+   * importe apostado, no es ganancia neta). En Betano corresponde a "Ganancias potenciales"
+   * (Fase 10.8, §8). `calculada a partir del retorno potencial` ≠ retorno oficial: la apuesta
+   * sigue pendiente, nunca se presenta como un resultado confirmado.
+   */
   officialPotentialReturn?: string;
+  /**
+   * Retorno TOTAL (pago total) de una apuesta ya resuelta, tal como lo muestra la casa — **nunca
+   * la ganancia neta** (Fase 10.8, §7). En Betano, el campo "Ganancias" de un ticket Ganado es
+   * este pago total (importe + ganancia); LetFer calcula la ganancia neta como
+   * `officialRealizedReturn − officialAmount`, nunca al revés. Una apuesta perdida no tiene
+   * retorno: se deja ausente, nunca `0` inventado por la IA (lo decide `result`, §9).
+   */
   officialRealizedReturn?: string;
   result?: string;
 }
 
 /** Confianza por campo (D-T6), 0-1; solo para ayudar la revisión humana, nunca decide nada. */
 export type TicketConfidenceByField = Record<string, number>;
+
+/** De dónde sale una cuota efectiva calculada (Fase 10.8, §10): solo para rotular, nunca decide nada. */
+export const TICKET_EFFECTIVE_ODDS_SOURCES = [
+  'REALIZED_RETURN',
+  'POTENTIAL_RETURN',
+  'SELECTIONS_PRODUCT',
+] as const;
+export type TicketEffectiveOddsSource = (typeof TICKET_EFFECTIVE_ODDS_SOURCES)[number];
+
+export interface TicketOddsSummary {
+  /** Cuota visible de la casa, exactamente como la mostró (`officialTotalOdds`); `null` si no hay. */
+  visible: OddsString | null;
+  /** Cuota calculada, solo de referencia (regla crítica 6); nunca sustituye a `visible`. */
+  effective: { value: OddsString; source: TicketEffectiveOddsSource } | null;
+}
+
+/**
+ * Jerarquía de fuentes para "la cuota" de un ticket (Fase 10.8, §10-§11): 1) retorno real ÷
+ * importe (apuesta liquidada); 2) retorno potencial ÷ importe (apuesta pendiente); 3) cuota total
+ * explícita (ya es `visible`, no necesita calcularse); 4) producto de las cuotas individuales,
+ * solo si no hay ninguna de las anteriores (referencia, nunca oficial). Nunca sustituye la cuota
+ * visible por una calculada (regla crítica 6): ambas se devuelven por separado, para que quien
+ * muestre el resultado pueda presentar las dos sin ocultar ninguna.
+ */
+export function resolveTicketOdds(input: {
+  officialTotalOdds?: string;
+  officialAmount?: string;
+  officialRealizedReturn?: string;
+  officialPotentialReturn?: string;
+  individualOdds?: readonly string[];
+}): TicketOddsSummary {
+  const visible = input.officialTotalOdds ?? null;
+  const amount = input.officialAmount;
+
+  const realized =
+    amount && input.officialRealizedReturn
+      ? deriveEffectiveOdds(input.officialRealizedReturn, amount)
+      : null;
+  if (realized) return { visible, effective: { value: realized, source: 'REALIZED_RETURN' } };
+
+  const potential =
+    amount && input.officialPotentialReturn
+      ? deriveEffectiveOdds(input.officialPotentialReturn, amount)
+      : null;
+  if (potential) return { visible, effective: { value: potential, source: 'POTENTIAL_RETURN' } };
+
+  if (visible) return { visible, effective: null };
+
+  const product = input.individualOdds ? multiplyOdds(input.individualOdds) : null;
+  if (product)
+    return { visible: null, effective: { value: product, source: 'SELECTIONS_PRODUCT' } };
+
+  return { visible: null, effective: null };
+}
 
 export interface TicketAnalysisSummary {
   id: string;

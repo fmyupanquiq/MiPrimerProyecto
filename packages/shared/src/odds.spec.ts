@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { deriveEffectiveOdds, formatOdds, isOddsString, oddsInputSchema } from './odds.js';
+import {
+  deriveEffectiveOdds,
+  formatOdds,
+  isOddsString,
+  multiplyOdds,
+  oddsInputSchema,
+} from './odds.js';
 
 describe('isOddsString', () => {
   it('acepta enteros y hasta 6 decimales, siempre positivos', () => {
@@ -44,9 +50,39 @@ describe('deriveEffectiveOdds (§22, §77)', () => {
   });
 });
 
-describe('formatOdds', () => {
+describe('multiplyOdds (Fase 10.8, §9-§10: referencia cuando no hay retorno ni cuota total)', () => {
+  it('multiplica las cuotas individuales', () => {
+    // 1.31 × 1.42 × 1.29 × 1.30 × 1.53 (ticket real de Betano, perdida, 5 selecciones)
+    expect(multiplyOdds(['1.31', '1.42', '1.29', '1.30', '1.53'])).toBe('4.77292');
+  });
+
+  it('ignora cuotas inválidas o no positivas en vez de reventar', () => {
+    expect(multiplyOdds(['1.5', '0', '-1', 'abc', '2'])).toBe('3');
+  });
+
+  it('null sin ninguna cuota válida', () => {
+    expect(multiplyOdds([])).toBeNull();
+    expect(multiplyOdds(['0', 'abc'])).toBeNull();
+  });
+});
+
+describe('formatOdds (Fase 10.9, §7-§8: presentación, máximo 2 decimales, nunca la precisión guardada)', () => {
   it('presenta con 2 decimales por defecto, sin alterar el valor almacenado', () => {
     expect(formatOdds('1.9548')).toBe('1.95');
     expect(formatOdds('1.9548', 4)).toBe('1.9548');
+  });
+
+  it('recorta el relleno de ceros que trae NUMERIC(12,6) de la base de datos', () => {
+    expect(formatOdds('2.170000')).toBe('2.17');
+    expect(formatOdds('1.500000')).toBe('1.50');
+    expect(formatOdds('1.560000')).toBe('1.56');
+  });
+
+  it('redondea (no trunca) una cifra con más de 2 decimales reales, p. ej. la calculada por producto', () => {
+    expect(formatOdds('4.772919762')).toBe('4.77');
+  });
+
+  it('una cuota que ya tiene 2 decimales queda igual', () => {
+    expect(formatOdds('5.14')).toBe('5.14');
   });
 });

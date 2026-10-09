@@ -161,6 +161,24 @@ export function stakeFromAmount(
   };
 }
 
+/**
+ * Normaliza dinero de una fuente NO confiable (p. ej. la extracción de IA de un ticket, Fase
+ * 10.7.1) a la forma interna (`MoneyString`, sin símbolo): quita el símbolo de soles en sus
+ * formas usuales ("S/", "S/.", con o sin espacio después). Dinero ya validado por el sistema
+ * (formularios, API) sigue pasando tal cual por `isMoneyString`/`moneyInputSchema` — esto es
+ * solo el adaptador en el límite "texto externo" → "dinero interno" (regla crítica: nunca
+ * `number`/float para dinero). No adivina: ante cualquier forma no reconocida devuelve `null`
+ * en vez de forzar un valor, para que quien llama pida revisión humana en lugar de reventar.
+ */
+export function normalizeMoneyInput(raw: string): MoneyString | null {
+  const withoutCurrency = raw
+    .trim()
+    .replace(/^S\/\.?\s*/i, '')
+    .trim();
+  if (!isMoneyString(withoutCurrency)) return null;
+  return roundMoney(withoutCurrency);
+}
+
 /** Formato de presentación en soles, p. ej. `"S/ 1,234.50"`. Solo para mostrar; nunca para calcular. */
 export function formatPEN(value: MoneyString): string {
   const decimal = toDecimal(value);

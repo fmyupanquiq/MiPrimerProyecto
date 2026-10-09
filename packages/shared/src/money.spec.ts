@@ -9,6 +9,7 @@ import {
   isZeroMoney,
   moneyInputSchema,
   multiplyMoney,
+  normalizeMoneyInput,
   percentageOf,
   roundMoney,
   stakeFromAmount,
@@ -163,5 +164,37 @@ describe('formatPEN', () => {
   it('formatea con el prefijo S/ y separador de miles', () => {
     expect(formatPEN('1234.5')).toBe('S/ 1,234.50');
     expect(formatPEN('0.00')).toBe('S/ 0.00');
+  });
+});
+
+/**
+ * Fase 10.7.1: bug real encontrado con un ticket de Betano — la IA devolvió el importe como
+ * "S/10.72" (con símbolo) y `compareMoney` reventó al recibirlo directo. Este es el adaptador en
+ * el límite "texto externo no confiable" → "dinero interno".
+ */
+describe('normalizeMoneyInput (dinero de una fuente no confiable, p. ej. IA sobre un ticket)', () => {
+  it('quita el símbolo de soles en sus formas usuales', () => {
+    expect(normalizeMoneyInput('S/10.72')).toBe('10.72');
+    expect(normalizeMoneyInput('S/ 10.72')).toBe('10.72');
+    expect(normalizeMoneyInput('S/.10.72')).toBe('10.72');
+    expect(normalizeMoneyInput('S/. 10.72')).toBe('10.72');
+  });
+
+  it('un valor ya sin símbolo pasa igual', () => {
+    expect(normalizeMoneyInput('10.72')).toBe('10.72');
+  });
+
+  it('redondea a la forma canónica de 2 decimales', () => {
+    expect(normalizeMoneyInput('S/10')).toBe('10.00');
+    expect(normalizeMoneyInput('S/ 10.7')).toBe('10.70');
+  });
+
+  it('un valor que no puede interpretarse con seguridad devuelve null, nunca se adivina', () => {
+    expect(normalizeMoneyInput('')).toBeNull();
+    expect(normalizeMoneyInput('   ')).toBeNull();
+    expect(normalizeMoneyInput('diez soles')).toBeNull();
+    expect(normalizeMoneyInput('S/')).toBeNull();
+    expect(normalizeMoneyInput('S/10,72')).toBeNull(); // coma ambigua: no se adivina el separador
+    expect(normalizeMoneyInput('USD 10.72')).toBeNull(); // otra moneda: no se asume que es soles
   });
 });
