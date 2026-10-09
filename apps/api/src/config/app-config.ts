@@ -90,10 +90,13 @@ const envSchema = z.object({
   // Tickets: los backups también empaquetan este directorio con `tar` (ADR 0017).
   TAR_PATH: z.string().min(1).default('tar'),
 
-  // Tickets e IA (§28-§31, §110, D-T2 a D-T6, ADR 0017)
+  // Tickets e IA (§28-§31, §110, D-T2 a D-T6, ADR 0017; Fase 10.6: modelo actualizado a Sonnet 5.5)
   TICKETS_DIR: z.string().min(1).default('.data/tickets'),
   ANTHROPIC_API_KEY: z.string().min(1).optional(),
-  ANTHROPIC_MODEL: z.string().min(1).default('claude-sonnet-5'),
+  ANTHROPIC_MODEL: z.string().min(1).default('claude-sonnet-5-5'),
+  // Interruptor explícito, independiente de si hay clave configurada (por si se quiere
+  // desactivar el análisis temporalmente sin quitarla); por defecto activado.
+  AI_TICKETS_ENABLED: booleanFlag(true),
   AI_MAX_ANALYSES_PER_TICKET: positiveInt(5),
   AI_MAX_ANALYSES_PER_PROJECT_DAY: positiveInt(50),
 });
@@ -147,6 +150,8 @@ export interface AppConfig {
     dir: string;
     anthropicApiKey: string | undefined;
     anthropicModel: string;
+    /** Interruptor manual del análisis por IA, separado de si hay clave configurada. */
+    aiEnabled: boolean;
     /** D-T6/§110.4: límites de análisis IA, contados sobre `ticket_analyses` (sin tabla aparte). */
     maxAnalysesPerTicket: number;
     maxAnalysesPerProjectDay: number;
@@ -252,6 +257,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       dir: values.TICKETS_DIR,
       anthropicApiKey: values.ANTHROPIC_API_KEY,
       anthropicModel: values.ANTHROPIC_MODEL,
+      aiEnabled: values.AI_TICKETS_ENABLED,
       maxAnalysesPerTicket: values.AI_MAX_ANALYSES_PER_TICKET,
       maxAnalysesPerProjectDay: values.AI_MAX_ANALYSES_PER_PROJECT_DAY,
     },

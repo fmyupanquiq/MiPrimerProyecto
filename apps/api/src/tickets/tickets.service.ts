@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   ErrorCode,
   type TicketAnalysisSummary,
@@ -40,6 +40,8 @@ const EXTENSION_BY_MIME: Record<TicketMimeType, string> = {
  */
 @Injectable()
 export class TicketsService {
+  private readonly logger = new Logger(TicketsService.name);
+
   constructor(
     @Inject(DATABASE) private readonly db: Database,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
@@ -154,10 +156,14 @@ export class TicketsService {
       .returning();
 
     if (!result) {
+      // El detalle técnico (del SDK de Anthropic o de la red) queda en `ticket_analyses.error_message`
+      // (auditoría propia, ADR 0017) y en el log del servidor; a quien pidió el análisis solo le
+      // llega un mensaje genérico, nunca el error crudo del proveedor (§29, D-T1).
+      this.logger.error(`No se pudo analizar el ticket ${ticket.id}`, errorMessage ?? undefined);
       throw new AppError(
         502,
         ErrorCode.INTERNAL_ERROR,
-        `No se pudo analizar el ticket: ${errorMessage}`,
+        'No pudimos leer el ticket. Revisa la imagen e inténtalo nuevamente.',
       );
     }
     const history = await analysesOfTicket(this.db, ticket.id);

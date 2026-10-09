@@ -32,10 +32,21 @@ describe('loadConfig', () => {
     expect(config.tickets).toEqual({
       dir: '.data/tickets',
       anthropicApiKey: undefined,
-      anthropicModel: 'claude-sonnet-5',
+      anthropicModel: 'claude-sonnet-5-5',
+      aiEnabled: true,
       maxAnalysesPerTicket: 5,
       maxAnalysesPerProjectDay: 50,
     });
+  });
+
+  it('el modelo de Anthropic y el interruptor de IA son configurables (Fase 10.6)', () => {
+    const config = loadConfig({
+      ...baseEnv,
+      ANTHROPIC_MODEL: 'claude-opus-5-5',
+      AI_TICKETS_ENABLED: 'false',
+    });
+    expect(config.tickets.anthropicModel).toBe('claude-opus-5-5');
+    expect(config.tickets.aiEnabled).toBe(false);
   });
 
   it('permite sobrescribir parámetros mediante variables de entorno', () => {

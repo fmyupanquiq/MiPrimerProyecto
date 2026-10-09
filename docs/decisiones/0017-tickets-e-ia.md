@@ -151,6 +151,29 @@ esta fase (ver "Fuera de alcance").
 - **Cambiar `betType` automáticamente según la IA.** Sigue §90: la IA propone, el backend valida
   contra la estructura real de selecciones, el humano confirma.
 
+## Adenda (Fase 10.6, 2026-10-06)
+
+Tres ajustes sobre lo decidido arriba, sin tocar la arquitectura (`TicketReader`/`FileStorage`
+siguen intactos):
+
+- **Modelo actualizado.** `ANTHROPIC_MODEL` por defecto pasa de `claude-sonnet-5` (no verificado
+  como identificador real) a `claude-sonnet-5-5`. Se añade `AI_TICKETS_ENABLED` (por defecto
+  activado): un interruptor manual independiente de si hay `ANTHROPIC_API_KEY`, por si se quiere
+  desactivar el análisis sin quitar la clave.
+- **Cuota individual nula también en una Creada manual (decisión del usuario, no solo D-X15).**
+  Una casa puede mostrar una apuesta Creada (varias selecciones del mismo evento) con una sola
+  cuota total visible, sin cuota por selección. El disparador de `bet_selections` (migración
+  0036) distinguía solo "pertenece a un lote de importación"; la migración 0041 añade "o es de
+  tipo CREATED", sin tocar Simple ni Múltiple (siguen exigiendo la cuota de cada selección fuera
+  de un lote). `BetsService.assertSelectionOddsRequired` da el mensaje legible antes de llegar al
+  disparador. Nunca se inventa ni se distribuye la cuota total entre las selecciones.
+- **El error que ve quien pidió el análisis es siempre genérico.** `TicketsService.analyze`
+  registraba ya el detalle técnico en `ticket_analyses.error_message` (correcto, es auditoría
+  propia); lo que le llegaba a la respuesta HTTP era ese mismo texto crudo del proveedor (p. ej.
+  un error de autenticación del SDK de Anthropic). Ahora la respuesta al cliente es siempre "No
+  pudimos leer el ticket. Revisa la imagen e inténtalo nuevamente."; el detalle sigue en
+  `ticket_analyses` y, además, en el log del servidor (`TicketsService`, nunca en la respuesta).
+
 ## Consecuencias
 
 - `BackupsService` gana una responsabilidad más (archivar/restaurar `TICKETS_DIR`), pero

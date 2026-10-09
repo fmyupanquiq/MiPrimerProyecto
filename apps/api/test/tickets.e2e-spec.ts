@@ -249,6 +249,22 @@ describe('tickets e IA (e2e, PostgreSQL real, §28-§31, §110)', () => {
       expect(history[0]!.errorMessage).toContain('proveedor caído');
     });
 
+    // §9, §28, §29: el detalle técnico del proveedor (SDK de Anthropic, red) nunca llega al
+    // cliente; solo queda en `ticket_analyses.errorMessage` (arriba) y en el log del servidor.
+    it('el error que ve el cliente es genérico, sin el detalle técnico del proveedor', async () => {
+      const uploaded = bodyOf(
+        await upload('collab', JPEG_BYTES, 'ticket.jpg'),
+      ) as unknown as TicketBody;
+      ctx.ticketReader.failNext(
+        '401 {"type":"authentication_error","message":"invalid x-api-key"}',
+      );
+      const res = await analyze('collab', uploaded.id);
+      expect(res.status).toBe(502);
+      const { message } = res.body as { message: string };
+      expect(message).not.toContain('x-api-key');
+      expect(message).not.toContain('authentication_error');
+    });
+
     it('el Lector no puede analizar (tickets.analyze, §110.6)', async () => {
       const uploaded = bodyOf(
         await upload('collab', JPEG_BYTES, 'ticket.jpg'),
@@ -324,6 +340,34 @@ describe('tickets e IA (e2e, PostgreSQL real, §28-§31, §110)', () => {
       const bet = bodyOf(res) as unknown as BetBody;
       expect(bet.tickets).toHaveLength(1);
       expect(bet.tickets![0]!.id).toBe(uploaded.id);
+    });
+
+    it('la lista de apuestas indica cuántos tickets tiene cada una, sin cargar el detalle', async () => {
+      const uploaded = bodyOf(
+        await upload('collab', JPEG_BYTES, 'ticket.jpg'),
+      ) as unknown as TicketBody;
+      const base = {
+        houseId,
+        stageId,
+        stake: '1.00',
+        visibleTotalOdds: '1.95',
+        placedAt: '2026-06-01T10:00:00.000Z',
+        selections: [simpleSelection],
+      };
+      const withTicket = bodyOf(
+        await createBet('collab', { ...base, ticketId: uploaded.id }).expect(201),
+      ) as unknown as BetBody;
+      const withoutTicket = bodyOf(
+        await createBet('collab', base).expect(201),
+      ) as unknown as BetBody;
+      const list = (
+        await request(ctx.server)
+          .get(`/api/projects/${projectId}/bets`)
+          .set('Cookie', cookies.collab)
+          .expect(200)
+      ).body as { id: string; ticketCount: number }[];
+      expect(list.find((b) => b.id === withTicket.id)!.ticketCount).toBe(1);
+      expect(list.find((b) => b.id === withoutTicket.id)!.ticketCount).toBe(0);
     });
 
     it('vincular un ticket ya vinculado a otra apuesta falla con 409', async () => {
