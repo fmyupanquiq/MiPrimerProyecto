@@ -1,23 +1,50 @@
 import {
-  createBetSchema,
+  formatOdds,
   formatPEN,
   settleBetSchema,
   updateBetSchema,
-  type BetSelectionInput,
+  type BetStatus,
   type BetSummary,
+  type BetType,
   type HouseSummary,
   type TicketSummary,
 } from '@letfer/shared';
-import { type FormEvent, useState } from 'react';
-import { Link } from 'react-router';
+import { type FormEvent, type ReactNode, useState } from 'react';
+import { Link, useSearchParams } from 'react-router';
 import { betsApi } from '../../api/bets.js';
 import { housesApi, stagesApi } from '../../api/finance.js';
 import { describeApiError } from '../../api/errors.js';
 import { useAuth } from '../../auth/AuthContext.js';
 import { isReauthCancelled, useReauth } from '../../auth/ReauthContext.js';
 import { useLoad } from '../../hooks/useLoad.js';
-import { BET_STATUS_LABELS, BET_TYPE_LABELS, formatDateTime } from '../../labels.js';
-import { Badge, btn, btnDanger, btnPrimary, inputClass, Notice, Section } from '../../ui.js';
+import { BET_STATUS_LABELS, BET_TYPE_LABELS, formatMoment } from '../../labels.js';
+import { formatStake, moneyTone, signedPEN } from '../../format.js';
+import { Help, TermLabel } from '../../glossary.js';
+import {
+  ChartIcon,
+  CheckCircleIcon,
+  ChevronDownIcon,
+  ClockIcon,
+  DotsIcon,
+  FileIcon,
+  LayersIcon,
+  PencilIcon,
+  PlusIcon,
+  TicketIcon,
+  TrashIcon,
+} from '../../icons.js';
+import {
+  Badge,
+  btn,
+  btnDanger,
+  btnPrimary,
+  EmptyState,
+  inputClass,
+  LoadingBlock,
+  Modal,
+  Notice,
+  PageHeader,
+} from '../../ui.js';
 import { useProject } from './ProjectContext.js';
 import {
   BetLedgerPanel,
@@ -26,58 +53,28 @@ import {
   ReopenPanel,
   SettledTrashPanel,
 } from './BetFinancialPanels.js';
+import { allowsProfitOverride, betDraftFigures, type DraftStatus } from './bet-draft.js';
+import { SettlementSection } from './BetSettlementFields.js';
+import { BET_STATUS_STYLE } from './bet-status-style.js';
+import { betStatusIcon } from './BetStatusBadge.js';
+import { DropdownMenu, type DropdownItem } from './DropdownMenu.js';
+import { HouseSelect, NewBetForm } from './NewBetForm.js';
+import { fromDateTimeParts, nowDateTimeParts, toDateTimeParts } from '../../date-inputs.js';
 import { TicketPanel } from './TicketPanel.js';
 
-const BADGE_TONE = {
-  PENDING: 'amber',
-  WON: 'green',
-  LOST: 'red',
-  VOID: 'slate',
-  CASHOUT: 'blue',
-} as const;
+type SettledStatus = 'WON' | 'LOST' | 'VOID' | 'CASHOUT';
+/** Resultados de una apuesta liquidada (§21, §78): los que ofrece el selector de estado. */
+const SETTLED_STATUSES: SettledStatus[] = ['WON', 'LOST', 'VOID', 'CASHOUT'];
 
-let nextKey = 0;
-
-interface SelectionDraft {
-  key: number;
-  eventGroup: number;
-  position: number;
-  sport: string;
-  event: string;
-  market: string;
-  selection: string;
-  visibleOdds: string;
-}
-
-const newSelection = (eventGroup: number, position: number): SelectionDraft => ({
-  key: nextKey++,
-  eventGroup,
-  position,
-  sport: '',
-  event: '',
-  market: '',
-  selection: '',
-  visibleOdds: '',
-});
-
-/** Simple/Creada/Múltiple aproximado en el cliente, solo para orientar; el backend lo deriva (§90). */
-function previewBetType(selections: SelectionDraft[]): string {
-  const groups = new Set(selections.map((s) => s.eventGroup));
-  if (groups.size === 1) return selections.length === 1 ? 'Simple' : 'Creada';
-  return 'Múltiple';
-}
-
-function toSelectionInputs(selections: SelectionDraft[]): BetSelectionInput[] {
-  return selections.map((s) => ({
-    eventGroup: s.eventGroup,
-    position: s.position,
-    sport: s.sport.trim() === '' ? undefined : s.sport,
-    event: s.event,
-    market: s.market.trim() === '' ? undefined : s.market,
-    selection: s.selection,
-    visibleOdds: s.visibleOdds,
-  }));
-}
+/** Filtros de la lista por estado (sobre la lista ya cargada; no piden nada nuevo a la API). */
+const FILTERS: { key: 'ALL' | BetStatus; label: string }[] = [
+  { key: 'ALL', label: 'Todas' },
+  { key: 'PENDING', label: 'Pendientes' },
+  { key: 'WON', label: 'Ganadas' },
+  { key: 'LOST', label: 'Perdidas' },
+  { key: 'VOID', label: 'Anuladas' },
+  { key: 'CASHOUT', label: 'Cash Out' },
+];
 
 /** Apuestas, selecciones y liquidaciones (§18-§27, §90, §107). */
 export function BetsPage() {
@@ -88,8 +85,15 @@ export function BetsPage() {
   const bets = useLoad(`bets:${project.id}:${showTrashed}`, () =>
     betsApi.list(project.id, showTrashed ? 'TRASHED' : undefined),
   );
-  const [showForm, setShowForm] = useState(false);
+  // `?nueva=1` (accesos "Añadir apuesta" del dashboard) abre el formulario directamente.
+  const [searchParams] = useSearchParams();
+  const [showForm, setShowForm] = useState(() => searchParams.get('nueva') === '1');
+  // Ancho del panel flotante según el formato (Fase 11, §11): Simple compacto, Múltiple/Creada
+  // más ancho para varias selecciones. Nunca forzado a un único ancho fijo para todos los casos.
+  const [newBetFormat, setNewBetFormat] = useState<BetType>('SIMPLE');
   const [notice, setNotice] = useState<string | null>(null);
+  const [filter, setFilter] = useState<'ALL' | BetStatus>('ALL');
+  const [query, setQuery] = useState('');
 
   const reload = () => {
     bets.reload();
@@ -98,41 +102,71 @@ export function BetsPage() {
 
   if (!project.setupComplete) {
     return (
-      <Notice tone="info">
-        Completa primero la{' '}
-        <Link to={`/projects/${project.id}/setup`} className="underline">
-          configuración inicial del proyecto
-        </Link>
-        .
-      </Notice>
+      <>
+        <PageHeader title="Apuestas" />
+        <Notice tone="info">
+          Completa primero la{' '}
+          <Link to={`/projects/${project.id}/setup`} className="font-medium underline">
+            configuración inicial del proyecto
+          </Link>
+          .
+        </Notice>
+      </>
     );
   }
 
+  const all = bets.data ?? [];
+  const counts = new Map<string, number>([['ALL', all.length]]);
+  for (const bet of all) counts.set(bet.status, (counts.get(bet.status) ?? 0) + 1);
+  const needle = query.trim().toLocaleLowerCase('es');
+  const visible = all.filter(
+    (bet) =>
+      (filter === 'ALL' || bet.status === filter) &&
+      (needle === '' ||
+        [bet.houseName, bet.stageName, ...(bet.events ?? []), ...(bet.sports ?? [])]
+          .join(' ')
+          .toLocaleLowerCase('es')
+          .includes(needle)),
+  );
+
   return (
     <>
-      {notice && <Notice tone="success">{notice}</Notice>}
-      <Section title="Apuestas">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          {canSeeTrashed && (
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={showTrashed}
-                onChange={(event) => setShowTrashed(event.target.checked)}
-              />
-              Ver la papelera
-            </label>
-          )}
-          {can('bets.create') && !showForm && (
-            <button type="button" className={btnPrimary} onClick={() => setShowForm(true)}>
-              Registrar apuesta
+      <PageHeader
+        title="Apuestas"
+        description={
+          showTrashed
+            ? 'Apuestas enviadas a la papelera. Puedes restaurarlas si fue un error.'
+            : 'Registra cada apuesta, marca su resultado cuando termine el evento y revisa cuánto ganaste o perdiste.'
+        }
+        actions={
+          can('bets.create') &&
+          !showForm &&
+          !showTrashed && (
+            <button
+              type="button"
+              className={btnPrimary}
+              onClick={() => {
+                setNewBetFormat('SIMPLE');
+                setShowForm(true);
+              }}
+            >
+              <PlusIcon className="h-4 w-4" />
+              Añadir apuesta
             </button>
-          )}
-        </div>
+          )
+        }
+      />
+      {notice && <Notice tone="success">{notice}</Notice>}
 
-        {showForm && (
+      {showForm && (
+        <Modal
+          onClose={() => setShowForm(false)}
+          ariaLabel="Añadir apuesta"
+          widthClassName={newBetFormat === 'SIMPLE' ? 'sm:max-w-2xl' : 'sm:max-w-4xl'}
+        >
           <NewBetForm
             houses={houses.data ?? []}
+            onFormatChange={setNewBetFormat}
             onDone={(message) => {
               setShowForm(false);
               setNotice(message);
@@ -140,17 +174,89 @@ export function BetsPage() {
             }}
             onCancel={() => setShowForm(false)}
           />
-        )}
+        </Modal>
+      )}
+
+      <section
+        aria-label="Lista de apuestas"
+        className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-surface p-4 shadow-sm sm:p-5"
+      >
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div role="group" aria-label="Filtrar por estado" className="flex flex-wrap gap-1.5">
+            {FILTERS.map((option) => (
+              <button
+                key={option.key}
+                type="button"
+                aria-pressed={filter === option.key}
+                onClick={() => setFilter(option.key)}
+                className={`rounded-full px-3 py-1 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-violet-500 ${
+                  filter === option.key
+                    ? 'bg-violet-600 text-white'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900'
+                }`}
+              >
+                {option.label}
+                {bets.data && (
+                  <span className="ml-1 opacity-75">{counts.get(option.key) ?? 0}</span>
+                )}
+              </button>
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <input
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Buscar partido, casa o deporte"
+              aria-label="Buscar apuestas"
+              className={`${inputClass} w-64 max-w-full`}
+            />
+            {canSeeTrashed && (
+              <label className="flex items-center gap-2 text-sm text-slate-600">
+                <input
+                  type="checkbox"
+                  checked={showTrashed}
+                  onChange={(event) => setShowTrashed(event.target.checked)}
+                  className="h-4 w-4 accent-violet-600"
+                />
+                Ver la papelera
+              </label>
+            )}
+          </div>
+        </div>
+
+        {all.length > 0 && <BetLegend />}
 
         {bets.error && <Notice tone="error">{bets.error}</Notice>}
-        {bets.loading && !bets.data && <p>Cargando apuestas…</p>}
-        {bets.data && bets.data.length === 0 && (
-          <Notice tone="info">
-            {showTrashed ? 'La papelera está vacía.' : 'Todavía no hay apuestas.'}
-          </Notice>
+        {bets.loading && !bets.data && <LoadingBlock lines={3} label="Cargando apuestas…" />}
+        {bets.data && all.length === 0 && (
+          <EmptyState
+            icon={<TicketIcon />}
+            title={showTrashed ? 'La papelera está vacía.' : 'Todavía no hay apuestas.'}
+            text={
+              showTrashed
+                ? 'Aquí aparecen las apuestas eliminadas, para restaurarlas si hace falta.'
+                : 'Registra la primera con "Añadir apuesta": eliges la casa, el partido, el stake y la cuota, y LetFer calcula el importe.'
+            }
+          />
+        )}
+        {bets.data && all.length > 0 && visible.length === 0 && (
+          <p className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
+            Ninguna apuesta coincide con el filtro.{' '}
+            <button
+              type="button"
+              className="font-medium text-violet-700 underline"
+              onClick={() => {
+                setFilter('ALL');
+                setQuery('');
+              }}
+            >
+              Ver todas
+            </button>
+          </p>
         )}
         <ul className="flex flex-col gap-3">
-          {bets.data?.map((bet) => (
+          {visible.map((bet) => (
             <BetRow
               key={bet.id}
               bet={bet}
@@ -163,319 +269,50 @@ export function BetsPage() {
             />
           ))}
         </ul>
-      </Section>
+      </section>
     </>
   );
 }
 
-function HouseSelect({
-  houses,
-  value,
-  onChange,
-}: {
-  houses: HouseSummary[];
-  value: string;
-  onChange: (value: string) => void;
-}) {
+/** Cómo leer cada apuesta: los conceptos de las cifras, con su ayuda. */
+function BetLegend() {
   return (
-    <label className="flex flex-col gap-1 text-sm font-medium">
-      Casa
-      <select
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className={inputClass}
-      >
-        <option value="" disabled>
-          Elige una casa
-        </option>
-        {houses
-          .filter((house) => house.status === 'ACTIVE')
-          .map((house) => (
-            <option key={house.id} value={house.id}>
-              {house.name}
-            </option>
-          ))}
-      </select>
-    </label>
+    <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
+      <span>Cómo leer cada apuesta:</span>
+      <TermLabel term="stake" />
+      <TermLabel term="amount">Importe</TermLabel>
+      <TermLabel term="odds" />
+      <TermLabel term="ag">Retorno (A+G)</TermLabel>
+      <TermLabel term="profit" />
+    </p>
   );
 }
 
-function SelectionsEditor({
-  selections,
-  onChange,
+/** Una cifra de la apuesta: rótulo, valor y, si hace falta, de dónde sale. */
+function Figure({
+  label,
+  note,
+  valueClass = 'font-medium text-slate-900',
+  children,
 }: {
-  selections: SelectionDraft[];
-  onChange: (selections: SelectionDraft[]) => void;
+  label: string;
+  note?: string;
+  valueClass?: string;
+  children: ReactNode;
 }) {
-  function update(key: number, patch: Partial<SelectionDraft>) {
-    onChange(selections.map((s) => (s.key === key ? { ...s, ...patch } : s)));
-  }
-  function remove(key: number) {
-    onChange(selections.filter((s) => s.key !== key));
-  }
-  function addSameEvent() {
-    const last = selections[selections.length - 1];
-    const eventGroup = last?.eventGroup ?? 0;
-    const position = selections.filter((s) => s.eventGroup === eventGroup).length;
-    onChange([...selections, newSelection(eventGroup, position)]);
-  }
-  function addNewEvent() {
-    const nextGroup = selections.reduce((max, s) => Math.max(max, s.eventGroup), -1) + 1;
-    onChange([...selections, newSelection(nextGroup, 0)]);
-  }
-
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium">Selecciones</h3>
-        <p className="text-xs text-slate-500">Se registrará como: {previewBetType(selections)}</p>
-      </div>
-      {selections.map((selection, index) => (
-        <div
-          key={selection.key}
-          className="grid gap-2 rounded border border-slate-200 p-2 sm:grid-cols-6"
-        >
-          <label className="flex flex-col gap-1 text-xs sm:col-span-2">
-            {index === 0 ? 'Evento' : ''}
-            <input
-              value={selection.event}
-              onChange={(event) => update(selection.key, { event: event.target.value })}
-              className={inputClass}
-              placeholder="Real Madrid vs. Barcelona"
-              aria-label={`Evento de la selección ${index + 1}`}
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-xs sm:col-span-2">
-            {index === 0 ? 'Selección' : ''}
-            <input
-              value={selection.selection}
-              onChange={(event) => update(selection.key, { selection: event.target.value })}
-              className={inputClass}
-              placeholder="Real Madrid gana"
-              aria-label={`Selección ${index + 1}`}
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-xs">
-            {index === 0 ? 'Cuota' : ''}
-            <input
-              value={selection.visibleOdds}
-              onChange={(event) => update(selection.key, { visibleOdds: event.target.value })}
-              className={inputClass}
-              placeholder="1.95"
-              aria-label={`Cuota de la selección ${index + 1}`}
-            />
-          </label>
-          <div className="flex items-end">
-            <button
-              type="button"
-              className={btn}
-              disabled={selections.length === 1}
-              onClick={() => remove(selection.key)}
-              aria-label={`Quitar la selección ${index + 1}`}
-            >
-              Quitar
-            </button>
-          </div>
-          <label className="flex flex-col gap-1 text-xs sm:col-span-3">
-            Deporte (opcional)
-            <input
-              value={selection.sport}
-              onChange={(event) => update(selection.key, { sport: event.target.value })}
-              className={inputClass}
-              aria-label={`Deporte de la selección ${index + 1}`}
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-xs sm:col-span-3">
-            Mercado (opcional)
-            <input
-              value={selection.market}
-              onChange={(event) => update(selection.key, { market: event.target.value })}
-              className={inputClass}
-              aria-label={`Mercado de la selección ${index + 1}`}
-            />
-          </label>
-        </div>
-      ))}
-      <div className="flex flex-wrap gap-2">
-        <button type="button" className={btn} onClick={addSameEvent}>
-          Añadir selección (mismo evento)
-        </button>
-        <button type="button" className={btn} onClick={addNewEvent}>
-          Añadir evento nuevo
-        </button>
-      </div>
+    <div className="min-w-0">
+      <dt className="text-xs text-slate-500">{label}</dt>
+      <dd className={`tabular-nums ${valueClass}`}>
+        {children}
+        {note && (
+          <>
+            {' '}
+            <span className="block text-xs font-normal text-slate-500">{note}</span>
+          </>
+        )}
+      </dd>
     </div>
-  );
-}
-
-function NewBetForm({
-  houses,
-  onDone,
-  onCancel,
-}: {
-  houses: HouseSummary[];
-  onDone: (message: string) => void;
-  onCancel: () => void;
-}) {
-  const { project, can } = useProject();
-  const [houseId, setHouseId] = useState('');
-  const [stake, setStake] = useState('1.00');
-  const [visibleTotalOdds, setVisibleTotalOdds] = useState('');
-  const [officialAmount, setOfficialAmount] = useState('');
-  const [officialPotentialReturn, setOfficialPotentialReturn] = useState('');
-  const [placedAt, setPlacedAt] = useState('');
-  const [placedTimeKnown, setPlacedTimeKnown] = useState(true);
-  const [reason, setReason] = useState('');
-  const [selections, setSelections] = useState<SelectionDraft[]>([newSelection(0, 0)]);
-  const [ticket, setTicket] = useState<TicketSummary | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-
-  // D-T5 (§110.3): cada campo de la propuesta de IA se aplica por separado, nunca el ticket
-  // completo de una vez; el formulario sigue siendo editable después de aplicarlo.
-  function applyField(formField: string, value: string) {
-    if (formField === 'officialAmount') setOfficialAmount(value);
-    else if (formField === 'visibleTotalOdds') setVisibleTotalOdds(value);
-    else if (formField === 'officialPotentialReturn') setOfficialPotentialReturn(value);
-  }
-
-  async function onSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError(null);
-    if (houseId === '') {
-      setError('Elige una casa.');
-      return;
-    }
-    if (placedAt === '') {
-      setError('Indica la fecha de colocación.');
-      return;
-    }
-    const parsed = createBetSchema.safeParse({
-      houseId,
-      stake,
-      visibleTotalOdds,
-      officialAmount: officialAmount.trim() === '' ? undefined : officialAmount,
-      officialPotentialReturn:
-        officialPotentialReturn.trim() === '' ? undefined : officialPotentialReturn,
-      placedAt: new Date(placedAt).toISOString(),
-      placedTimeKnown,
-      reason: reason.trim() === '' ? undefined : reason,
-      selections: toSelectionInputs(selections),
-      ticketId: ticket?.id,
-    });
-    if (!parsed.success) {
-      setError(parsed.error.issues[0]?.message ?? 'Revisa los datos ingresados.');
-      return;
-    }
-    setSubmitting(true);
-    try {
-      await betsApi.create(project.id, parsed.data);
-      onDone('Se registró la apuesta.');
-    } catch (caught) {
-      setError(describeApiError(caught));
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <form
-      onSubmit={(event) => void onSubmit(event)}
-      className="flex flex-col gap-3 rounded border border-slate-200 p-3"
-      aria-label="Registrar apuesta"
-      noValidate
-    >
-      <div className="grid gap-3 sm:grid-cols-3">
-        <HouseSelect houses={houses} value={houseId} onChange={setHouseId} />
-        <label className="flex flex-col gap-1 text-sm font-medium">
-          Stake
-          <input
-            value={stake}
-            onChange={(event) => setStake(event.target.value)}
-            className={inputClass}
-            placeholder="1.00"
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-sm font-medium">
-          Cuota total visible
-          <input
-            value={visibleTotalOdds}
-            onChange={(event) => setVisibleTotalOdds(event.target.value)}
-            className={inputClass}
-            placeholder="1.95"
-          />
-        </label>
-      </div>
-      <div className="grid gap-3 sm:grid-cols-3">
-        <div className="flex flex-col gap-1">
-          <label className="flex flex-col gap-1 text-sm font-medium">
-            Fecha y hora de colocación
-            <input
-              type="datetime-local"
-              value={placedAt}
-              onChange={(event) => setPlacedAt(event.target.value)}
-              className={inputClass}
-              aria-describedby="placed-at-help"
-            />
-          </label>
-          <label className="flex items-center gap-2 text-xs text-slate-600" id="placed-at-help">
-            <input
-              type="checkbox"
-              checked={!placedTimeKnown}
-              onChange={(event) => setPlacedTimeKnown(!event.target.checked)}
-            />
-            No conozco la hora exacta
-          </label>
-        </div>
-        <label className="flex flex-col gap-1 text-sm font-medium">
-          Monto oficial (opcional)
-          <input
-            value={officialAmount}
-            onChange={(event) => setOfficialAmount(event.target.value)}
-            className={inputClass}
-            placeholder="Si tienes el ticket"
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-sm font-medium">
-          Retorno potencial (opcional)
-          <input
-            value={officialPotentialReturn}
-            onChange={(event) => setOfficialPotentialReturn(event.target.value)}
-            className={inputClass}
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-sm font-medium">
-          Motivo / observaciones (opcional)
-          <input
-            value={reason}
-            onChange={(event) => setReason(event.target.value)}
-            className={inputClass}
-          />
-        </label>
-      </div>
-
-      <SelectionsEditor selections={selections} onChange={setSelections} />
-
-      {(can('tickets.upload') || ticket) && (
-        <TicketPanel
-          projectId={project.id}
-          tickets={ticket ? [ticket] : []}
-          onUploaded={setTicket}
-          onApplyField={applyField}
-          canUpload={can('tickets.upload') && !ticket}
-          canAnalyze={can('tickets.analyze')}
-        />
-      )}
-
-      {error && <Notice tone="error">{error}</Notice>}
-      <div className="flex gap-2">
-        <button type="submit" disabled={submitting} className={btnPrimary}>
-          {submitting ? 'Registrando…' : 'Registrar apuesta'}
-        </button>
-        <button type="button" className={btn} onClick={onCancel} disabled={submitting}>
-          Cancelar
-        </button>
-      </div>
-    </form>
   );
 }
 
@@ -496,8 +333,11 @@ function BetRow({
   const [mode, setMode] = useState<
     'view' | 'edit' | 'settle' | 'move' | 'confirm' | 'correct' | 'reopen' | 'trash' | 'restore'
   >('view');
-  const [showTickets, setShowTickets] = useState(false);
+  // Panel de tickets: `view` = solo ver ("Ver ticket"); `manage` = adjuntar/analizar (menú ⋮).
+  const [tickets, setTickets] = useState<'none' | 'view' | 'manage'>('none');
   const [showLedger, setShowLedger] = useState(false);
+  // Resultado elegido en el selector de estado: abre el panel de siempre con ese resultado.
+  const [chosenResult, setChosenResult] = useState<SettledStatus>('WON');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -546,111 +386,258 @@ function BetRow({
     }
   }
 
+  // Selector de estado: no liquida nada por sí mismo, abre el panel existente con el resultado
+  // elegido (mismas reglas y permisos que sus botones de siempre).
+  // - Pendiente → un resultado: "Liquidar" (`bets.settle`).
+  // - Liquidada → otro resultado: "Corregir liquidación"; → Pendiente: "Reabrir" (`bets.correct`).
+  const statusItems: DropdownItem[] =
+    showTrashed || mode !== 'view'
+      ? []
+      : !settled
+        ? canSettle
+          ? SETTLED_STATUSES.map((result) => ({
+              label: BET_STATUS_LABELS[result],
+              icon: betStatusIcon(result, 'h-4 w-4'),
+              onSelect: () => {
+                setChosenResult(result);
+                setMode('settle');
+              },
+            }))
+          : []
+        : canCorrect
+          ? [
+              ...SETTLED_STATUSES.filter((result) => result !== bet.status).map((result) => ({
+                label: BET_STATUS_LABELS[result],
+                icon: betStatusIcon(result, 'h-4 w-4'),
+                onSelect: () => {
+                  setChosenResult(result);
+                  setMode('correct');
+                },
+              })),
+              {
+                label: `${BET_STATUS_LABELS.PENDING} (reabrir)`,
+                icon: betStatusIcon('PENDING', 'h-4 w-4'),
+                onSelect: () => setMode('reopen'),
+              },
+            ]
+          : [];
+
+  // Acciones secundarias: las mismas de siempre, con los mismos permisos, agrupadas en ⋮.
+  const menuItems: DropdownItem[] = [];
+  if (mode === 'view') {
+    if (canConfirmReturn) {
+      menuItems.push({
+        label: 'Confirmar retorno oficial',
+        icon: <CheckCircleIcon className="h-4 w-4" />,
+        onSelect: () => setMode('confirm'),
+      });
+    }
+    if (canCorrect) {
+      menuItems.push({
+        label: 'Corregir liquidación',
+        icon: <PencilIcon className="h-4 w-4" />,
+        onSelect: () => setMode('correct'),
+      });
+      menuItems.push({
+        label: 'Reabrir',
+        icon: <ClockIcon className="h-4 w-4" />,
+        onSelect: () => setMode('reopen'),
+      });
+    }
+    if (can('bets.move_stage')) {
+      menuItems.push({
+        label: 'Mover de etapa',
+        icon: <LayersIcon className="h-4 w-4" />,
+        onSelect: () => setMode('move'),
+      });
+    }
+  }
+  if (can('tickets.upload') || can('tickets.analyze')) {
+    menuItems.push({
+      label: 'Adjuntar o analizar ticket',
+      icon: <FileIcon className="h-4 w-4" />,
+      onSelect: () => setTickets((current) => (current === 'manage' ? 'none' : 'manage')),
+    });
+  }
+  if (settled) {
+    menuItems.push({
+      label: showLedger ? 'Ocultar historial financiero' : 'Historial financiero',
+      icon: <ChartIcon className="h-4 w-4" />,
+      onSelect: () => setShowLedger((value) => !value),
+    });
+  }
+
+  const statusLabel = BET_STATUS_LABELS[bet.status];
+  const statusClass = `inline-flex min-h-9 items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500 ${BET_STATUS_STYLE[bet.status]}`;
+  const title = (bet.events ?? []).length > 0 ? bet.events.join(' + ') : 'Sin partido';
+  const iconButton = `${btn} w-10 px-0`;
+  // `bet.effectiveOdds` lo calcula la API con `deriveEffectiveOdds` (retorno ÷ importe, nunca
+  // desde el NUMERIC(12,6) crudo de la columna): nunca trae relleno de ceros y se muestra exacto
+  // a propósito (Fase 10.9, §5, §7) — es la cifra diagnóstica para que `retorno ÷ importe` sea
+  // reproducible, no la cuota "de presentación" (esa es `bet.visibleTotalOdds`, abajo).
+  const oddsNote =
+    bet.returnSource === 'OFFICIAL' &&
+    bet.effectiveOdds !== null &&
+    Number(bet.effectiveOdds) !== Number(bet.visibleTotalOdds)
+      ? `Cuota efectiva ${bet.effectiveOdds}`
+      : undefined;
+
   return (
-    <li className="rounded border border-slate-200 p-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <p className="font-medium">
-            {BET_TYPE_LABELS[bet.betType]} · {bet.houseName}{' '}
-            <Badge tone={BADGE_TONE[bet.status]}>{BET_STATUS_LABELS[bet.status]}</Badge>
-            {bet.returnSource === 'CALCULATED' && (
-              <Badge tone="amber">Retorno calculado, sin confirmar</Badge>
-            )}
+    <li
+      data-bet-row
+      className="rounded-2xl border border-slate-200 bg-surface p-4 transition-colors hover:border-slate-300"
+    >
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-semibold text-slate-900" title={title}>
+            {title}
           </p>
-          <p className="text-sm text-slate-600">
-            Stake {bet.stake} · Monto {formatPEN(bet.effectiveAmount)}
-            {bet.amountSource === 'CALCULATED' && ' (calculado)'} · Cuota {bet.visibleTotalOdds}
-            {bet.effectiveReturn && (
-              <>
-                {' '}
-                · Retorno {formatPEN(bet.effectiveReturn)}{' '}
-                {bet.returnSource === 'CALCULATED' ? '(calculado)' : '(oficial)'}
-              </>
-            )}
-            {bet.profitLoss !== null && (
-              <>
-                {' '}
-                ·{' '}
-                <span
-                  className={bet.profitLoss.startsWith('-') ? 'text-red-700' : 'text-green-700'}
-                >
-                  P/L {formatPEN(bet.profitLoss)}
-                </span>
-              </>
-            )}
-          </p>
-          <p className="text-xs text-slate-500">
-            Colocada el {formatDateTime(bet.placedAt)} por {bet.createdBy.name}
-            {bet.reason && ` · ${bet.reason}`}
+          <p className="mt-0.5 text-xs text-slate-500">
+            {formatMoment(bet.placedAt, bet.placedTimeKnown)} · {bet.houseName} ·{' '}
+            {BET_TYPE_LABELS[bet.betType]} · {bet.stageName}
+            {(bet.sports ?? []).length > 0 && ` · ${bet.sports.join(', ')}`}
           </p>
         </div>
-        {!showTrashed && (
-          <div className="flex flex-wrap gap-2">
-            {can('tickets.view') && (
-              <button type="button" className={btn} onClick={() => setShowTickets((v) => !v)}>
-                {showTickets ? 'Ocultar tickets' : 'Tickets'}
-              </button>
-            )}
-            {canEdit && mode === 'view' && (
-              <button type="button" className={btn} onClick={() => setMode('edit')}>
-                Editar
-              </button>
-            )}
-            {canSettle && bet.status === 'PENDING' && mode === 'view' && (
-              <button type="button" className={btnPrimary} onClick={() => setMode('settle')}>
-                Liquidar
-              </button>
-            )}
-            {canConfirmReturn && mode === 'view' && (
-              <button type="button" className={btnPrimary} onClick={() => setMode('confirm')}>
-                Confirmar retorno oficial
-              </button>
-            )}
-            {canCorrect && mode === 'view' && (
-              <>
-                <button type="button" className={btn} onClick={() => setMode('correct')}>
-                  Corregir liquidación
-                </button>
-                <button type="button" className={btn} onClick={() => setMode('reopen')}>
-                  Reabrir
-                </button>
-              </>
-            )}
-            {settled && (
-              <button type="button" className={btn} onClick={() => setShowLedger((v) => !v)}>
-                {showLedger ? 'Ocultar historial financiero' : 'Historial financiero'}
-              </button>
-            )}
-            {can('bets.move_stage') && mode === 'view' && (
-              <button type="button" className={btn} onClick={() => setMode('move')}>
-                Mover de etapa
-              </button>
-            )}
-            {canTrash && mode === 'view' && (
+
+        <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+          {can('tickets.view') &&
+            ((bet.ticketCount ?? 0) > 0 ? (
               <button
                 type="button"
-                className={btnDanger}
-                disabled={busy}
-                onClick={() => (settled ? setMode('trash') : void trash())}
+                className={btn}
+                aria-pressed={tickets === 'view'}
+                onClick={() => setTickets((current) => (current === 'view' ? 'none' : 'view'))}
               >
-                Papelera
+                <FileIcon className="h-4 w-4" />
+                {tickets === 'view' ? 'Ocultar ticket' : 'Ver ticket'}
               </button>
-            )}
-          </div>
-        )}
-        {showTrashed && canRestoreBet && mode === 'view' && (
-          <button
-            type="button"
-            className={btnPrimary}
-            disabled={busy}
-            onClick={() => void restore()}
-          >
-            Restaurar
-          </button>
+            ) : (
+              <button
+                type="button"
+                className={`${btn} hidden text-slate-400 sm:inline-flex`}
+                disabled
+                title="Esta apuesta no tiene ningún ticket adjunto."
+              >
+                Sin ticket
+              </button>
+            ))}
+          {statusItems.length > 0 ? (
+            <DropdownMenu
+              label={`Estado: ${statusLabel}`}
+              buttonClassName={statusClass}
+              buttonContent={
+                <>
+                  {betStatusIcon(bet.status, 'h-4 w-4')}
+                  {statusLabel}
+                  <ChevronDownIcon className="h-3.5 w-3.5 opacity-80" />
+                </>
+              }
+              items={statusItems}
+            />
+          ) : (
+            <span className={statusClass} aria-label={`Estado: ${statusLabel}`}>
+              {betStatusIcon(bet.status, 'h-4 w-4')}
+              {statusLabel}
+            </span>
+          )}
+          {!showTrashed && canEdit && mode === 'view' && (
+            <button
+              type="button"
+              className={iconButton}
+              aria-label="Editar"
+              title="Editar la apuesta"
+              onClick={() => setMode('edit')}
+            >
+              <PencilIcon className="h-[18px] w-[18px]" />
+            </button>
+          )}
+          {!showTrashed && canTrash && mode === 'view' && (
+            <button
+              type="button"
+              className={`${iconButton} text-red-700 hover:border-red-300 hover:bg-red-50`}
+              aria-label="Eliminar"
+              title="Eliminar (enviar a la papelera)"
+              disabled={busy}
+              onClick={() => setMode('trash')}
+            >
+              <TrashIcon className="h-[18px] w-[18px]" />
+            </button>
+          )}
+          {!showTrashed && menuItems.length > 0 && (
+            <DropdownMenu
+              label="Más acciones"
+              buttonClassName={iconButton}
+              buttonContent={<DotsIcon className="h-[18px] w-[18px]" />}
+              items={menuItems}
+              disabled={busy}
+            />
+          )}
+          {showTrashed && canRestoreBet && mode === 'view' && (
+            <button
+              type="button"
+              className={btnPrimary}
+              disabled={busy}
+              onClick={() => void restore()}
+            >
+              Restaurar
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Jerarquía visual (Fase 11, §9): Importe y Ganancia son los datos que de verdad importan
+          de un vistazo, un poco más grandes; Stake, Cuota y A+G son de apoyo, no compiten con ellos. */}
+      <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 rounded-xl bg-slate-50 p-3 text-sm sm:grid-cols-5">
+        <Figure label="Stake">{formatStake(bet.stake)}</Figure>
+        <Figure
+          label="Importe"
+          note={bet.amountSource === 'CALCULATED' ? '(calculado)' : '(oficial)'}
+          valueClass="text-base font-semibold text-slate-900"
+        >
+          {formatPEN(bet.effectiveAmount)}
+        </Figure>
+        <Figure label="Cuota" note={oddsNote}>
+          {formatOdds(bet.visibleTotalOdds)}
+        </Figure>
+        <Figure
+          label="A+G"
+          note={
+            bet.effectiveReturn
+              ? bet.returnSource === 'CALCULATED'
+                ? '(calculado)'
+                : '(oficial)'
+              : bet.status === 'PENDING'
+                ? 'al liquidar'
+                : undefined
+          }
+        >
+          {bet.effectiveReturn
+            ? formatPEN(bet.effectiveReturn)
+            : bet.status === 'LOST'
+              ? formatPEN('0.00')
+              : '-'}
+        </Figure>
+        <Figure
+          label="Ganancia"
+          valueClass={`text-base font-semibold ${moneyTone(bet.profitLoss)}`}
+        >
+          {bet.profitLoss === null ? '-' : signedPEN(bet.profitLoss)}
+        </Figure>
+      </dl>
+
+      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
+        <span>
+          Registrada por {bet.createdBy.name}
+          {bet.reason && ` · ${bet.reason}`}
+        </span>
+        {bet.returnSource === 'CALCULATED' && (
+          <Badge tone="amber" icon={<ClockIcon className="h-3.5 w-3.5" />}>
+            Retorno calculado, sin confirmar
+          </Badge>
         )}
       </div>
 
-      {showTickets && <BetTicketsSection betId={bet.id} />}
+      {tickets !== 'none' && <BetTicketsSection betId={bet.id} readOnly={tickets === 'view'} />}
       {showLedger && settled && <BetLedgerPanel betId={bet.id} />}
 
       {mode === 'edit' && (
@@ -667,6 +654,7 @@ function BetRow({
       {mode === 'settle' && (
         <SettleBetForm
           bet={bet}
+          initialStatus={chosenResult}
           onDone={(message) => {
             setMode('view');
             onChanged(message);
@@ -697,6 +685,7 @@ function BetRow({
       {mode === 'correct' && (
         <CorrectSettlementPanel
           bet={bet}
+          initialStatus={bet.status === chosenResult ? undefined : chosenResult}
           onDone={(message) => {
             setMode('view');
             onChanged(message);
@@ -714,7 +703,33 @@ function BetRow({
           onCancel={() => setMode('view')}
         />
       )}
-      {mode === 'trash' && (
+      {mode === 'trash' && !settled && (
+        <div
+          role="group"
+          aria-label="Confirmar eliminación"
+          className="mt-3 flex flex-col gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900"
+        >
+          <p>
+            <strong>¿Eliminar esta apuesta pendiente?</strong> Va a la papelera y deja de reservar
+            sus {formatPEN(bet.effectiveAmount)} en {bet.houseName}. Quien tenga permiso puede
+            restaurarla desde la papelera.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className={btnDanger}
+              disabled={busy}
+              onClick={() => void trash()}
+            >
+              {busy ? 'Eliminando…' : 'Eliminar apuesta'}
+            </button>
+            <button type="button" className={btn} disabled={busy} onClick={() => setMode('view')}>
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+      {mode === 'trash' && settled && (
         <SettledTrashPanel
           action="trash"
           label={`la apuesta de ${bet.houseName}`}
@@ -749,7 +764,7 @@ function BetRow({
  * propuesta de IA (D-T5) reutiliza `PATCH .../bets/:id`, el mismo endpoint de edición de
  * siempre — nunca un camino de escritura propio para tickets/IA (§110.3).
  */
-function BetTicketsSection({ betId }: { betId: string }) {
+function BetTicketsSection({ betId, readOnly = false }: { betId: string; readOnly?: boolean }) {
   const { project, can } = useProject();
   const detail = useLoad(`bet-detail:${betId}`, () => betsApi.detail(project.id, betId));
   const [error, setError] = useState<string | null>(null);
@@ -796,6 +811,7 @@ function BetTicketsSection({ betId }: { betId: string }) {
         onApplyField={(formField, value) => void applyField(formField, value)}
         canUpload={can('tickets.upload')}
         canAnalyze={can('tickets.analyze')}
+        readOnly={readOnly}
       />
     </div>
   );
@@ -814,7 +830,11 @@ function EditBetForm({
 }) {
   const { project } = useProject();
   const isPending = bet.status === 'PENDING';
+  const stages = useLoad(`stages:${project.id}`, () => stagesApi.list(project.id));
   const [houseId, setHouseId] = useState(bet.houseId);
+  // Edición: la fecha y la hora son las guardadas, nunca la hora actual (convención Fase 10.3).
+  const [placed, setPlaced] = useState(() => toDateTimeParts(bet.placedAt));
+  const [placedTimeKnown, setPlacedTimeKnown] = useState(bet.placedTimeKnown);
   const [stake, setStake] = useState(bet.stake);
   const [visibleTotalOdds, setVisibleTotalOdds] = useState(bet.visibleTotalOdds);
   const [officialAmount, setOfficialAmount] = useState(bet.officialAmount ?? '');
@@ -825,12 +845,33 @@ function EditBetForm({
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  const unitStake = stages.data?.find((stage) => stage.id === bet.stageId)?.unitStake ?? null;
+  const { amount } = betDraftFigures({
+    stake,
+    unitStake,
+    officialAmount,
+    visibleTotalOdds,
+    status: 'PENDING',
+    profitOverride: '',
+  });
+
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
+    const placedAt = fromDateTimeParts(placed);
+    if (isPending && placedAt === null) {
+      setError('Indica la fecha y la hora de colocación.');
+      return;
+    }
+    // Solo se envía la fecha si cambió: reescribirla igual obligaría a revalidar su línea de tiempo.
+    const placedChanged =
+      placedAt !== null &&
+      (new Date(placedAt).getTime() !== new Date(bet.placedAt).getTime() ||
+        placedTimeKnown !== bet.placedTimeKnown);
     const input = isPending
       ? {
           houseId,
+          ...(placedChanged ? { placedAt, placedTimeKnown } : {}),
           stake,
           visibleTotalOdds,
           officialAmount: officialAmount.trim() === '' ? undefined : officialAmount,
@@ -858,19 +899,49 @@ function EditBetForm({
   return (
     <form
       onSubmit={(event) => void onSubmit(event)}
-      className="mt-3 flex flex-col gap-3 rounded border border-slate-200 bg-slate-50 p-3"
+      className="mt-3 flex flex-col gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4"
       aria-label={`Editar apuesta de ${bet.houseName}`}
       noValidate
     >
-      {!isPending && (
-        <p className="text-xs text-slate-500">
-          Esta apuesta ya está liquidada: solo se puede corregir el motivo.
+      <div>
+        <h4 className="font-semibold text-slate-900">Editar apuesta</h4>
+        <p className="text-sm text-slate-500">
+          {isPending
+            ? 'Corrige los datos tal como figuran en la casa. El importe se recalcula con el stake.'
+            : 'Esta apuesta ya está liquidada: solo se puede corregir el motivo. Para cambiar su resultado usa "Corregir liquidación".'}
         </p>
-      )}
+      </div>
       {isPending && (
         <div className="grid gap-3 sm:grid-cols-3">
+          <label className="flex flex-col gap-1.5 text-sm font-medium">
+            Fecha
+            <input
+              type="date"
+              value={placed.date}
+              onChange={(event) => setPlaced({ ...placed, date: event.target.value })}
+              className={inputClass}
+            />
+          </label>
+          <label className="flex flex-col gap-1.5 text-sm font-medium">
+            Hora
+            <input
+              type="time"
+              value={placed.time}
+              onChange={(event) => setPlaced({ ...placed, time: event.target.value })}
+              className={inputClass}
+            />
+          </label>
+          <label className="flex items-center gap-2 self-end pb-2 text-sm text-slate-600">
+            <input
+              type="checkbox"
+              className="h-4 w-4 accent-violet-600"
+              checked={!placedTimeKnown}
+              onChange={(event) => setPlacedTimeKnown(!event.target.checked)}
+            />
+            No conozco la hora exacta
+          </label>
           <HouseSelect houses={houses} value={houseId} onChange={setHouseId} />
-          <label className="flex flex-col gap-1 text-sm font-medium">
+          <label className="flex flex-col gap-1.5 text-sm font-medium">
             Stake
             <input
               value={stake}
@@ -878,7 +949,7 @@ function EditBetForm({
               className={inputClass}
             />
           </label>
-          <label className="flex flex-col gap-1 text-sm font-medium">
+          <label className="flex flex-col gap-1.5 text-sm font-medium">
             Cuota total visible
             <input
               value={visibleTotalOdds}
@@ -886,7 +957,7 @@ function EditBetForm({
               className={inputClass}
             />
           </label>
-          <label className="flex flex-col gap-1 text-sm font-medium">
+          <label className="flex flex-col gap-1.5 text-sm font-medium">
             Monto oficial (opcional)
             <input
               value={officialAmount}
@@ -894,7 +965,7 @@ function EditBetForm({
               className={inputClass}
             />
           </label>
-          <label className="flex flex-col gap-1 text-sm font-medium sm:col-span-2">
+          <label className="flex flex-col gap-1.5 text-sm font-medium sm:col-span-2">
             Retorno potencial (opcional)
             <input
               value={officialPotentialReturn}
@@ -902,9 +973,27 @@ function EditBetForm({
               className={inputClass}
             />
           </label>
+          <div className="rounded-xl bg-violet-50 p-3 text-sm ring-1 ring-violet-200 ring-inset">
+            <span className="flex items-center gap-1 text-xs font-medium text-slate-500">
+              Importe apostado <Help term="amount" />
+            </span>
+            <span
+              className="block text-lg font-semibold tabular-nums"
+              aria-label="Monto apostado calculado"
+            >
+              {amount === null ? '-' : formatPEN(amount)}
+            </span>
+            <span className="text-xs text-slate-500">
+              {officialAmount.trim() !== ''
+                ? 'Monto oficial indicado.'
+                : unitStake !== null && amount !== null
+                  ? `${formatStake(stake.trim())} × ${formatPEN(unitStake)} (stake × unidad)`
+                  : 'Stake × unidad de stake.'}
+            </span>
+          </div>
         </div>
       )}
-      <label className="flex flex-col gap-1 text-sm font-medium">
+      <label className="flex flex-col gap-1.5 text-sm font-medium">
         Motivo / observaciones
         <input
           value={reason}
@@ -915,7 +1004,7 @@ function EditBetForm({
       {error && <Notice tone="error">{error}</Notice>}
       <div className="flex gap-2">
         <button type="submit" disabled={submitting} className={btnPrimary}>
-          Guardar
+          {submitting ? 'Guardando…' : 'Guardar'}
         </button>
         <button type="button" className={btn} onClick={onCancel} disabled={submitting}>
           Cancelar
@@ -925,33 +1014,61 @@ function EditBetForm({
   );
 }
 
+/** Resultados con los que se liquida una pendiente (§21, §78). */
+const SETTLE_OPTIONS: DraftStatus[] = ['WON', 'LOST', 'VOID', 'CASHOUT'];
+
+/**
+ * Liquida una pendiente (H-14, Fase 10.3): la misma sección de resultado que el alta, con las mismas
+ * cifras (`bet-draft.ts`). El monto es el de la apuesta (`effectiveAmount`) y la cuota, su cuota
+ * visible guardada. Sin tocar la ganancia, una ganada se liquida con el retorno calculado
+ * (provisional, que luego se confirma con "Confirmar retorno oficial"); escribiéndola, con el
+ * retorno oficial de la casa.
+ */
 function SettleBetForm({
   bet,
+  initialStatus = 'WON',
   onDone,
   onCancel,
 }: {
   bet: BetSummary;
+  /** Resultado con el que se abre (p. ej. el elegido en el selector de estado de la lista). */
+  initialStatus?: DraftStatus;
   onDone: (message: string) => void;
   onCancel: () => void;
 }) {
   const { project } = useProject();
-  const [status, setStatus] = useState<'WON' | 'LOST' | 'VOID' | 'CASHOUT'>('WON');
-  const [officialRealizedReturn, setOfficialRealizedReturn] = useState('');
-  const [settledAt, setSettledAt] = useState('');
+  const [status, setStatus] = useState<DraftStatus>(initialStatus);
+  // Operación que ocurre ahora: el momento actual por defecto, editable (convención Fase 10.3).
+  const [settled, setSettled] = useState(nowDateTimeParts);
+  const [profitOverride, setProfitOverride] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  const figures = betDraftFigures({
+    stake: bet.stake,
+    unitStake: null,
+    officialAmount: bet.effectiveAmount,
+    visibleTotalOdds: bet.visibleTotalOdds,
+    status,
+    profitOverride: allowsProfitOverride(status) ? (profitOverride ?? '') : '',
+  });
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
-    if (settledAt === '') {
-      setError('Indica la fecha de liquidación.');
+    const settledAt = fromDateTimeParts(settled);
+    if (settledAt === null) {
+      setError('Indica la fecha y la hora de liquidación.');
+      return;
+    }
+    if (figures.profitOverrideInvalid) {
+      setError('Ingresa una ganancia válida, con hasta 2 decimales.');
       return;
     }
     const parsed = settleBetSchema.safeParse({
       status,
-      officialRealizedReturn: status === 'LOST' ? undefined : officialRealizedReturn,
-      settledAt: new Date(settledAt).toISOString(),
+      officialRealizedReturn: figures.officialRealizedReturn,
+      settledAt,
       version: bet.version,
     });
     if (!parsed.success) {
@@ -971,49 +1088,33 @@ function SettleBetForm({
   return (
     <form
       onSubmit={(event) => void onSubmit(event)}
-      className="mt-3 flex flex-col gap-3 rounded border border-slate-200 bg-slate-50 p-3"
+      className="mt-3 flex flex-col gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4"
       aria-label={`Liquidar apuesta de ${bet.houseName}`}
       noValidate
     >
-      <div className="grid gap-3 sm:grid-cols-3">
-        <label className="flex flex-col gap-1 text-sm font-medium">
-          Resultado
-          <select
-            value={status}
-            onChange={(event) => setStatus(event.target.value as typeof status)}
-            className={inputClass}
-          >
-            <option value="WON">Ganada</option>
-            <option value="LOST">Perdida</option>
-            <option value="VOID">Anulada</option>
-            <option value="CASHOUT">Cash Out</option>
-          </select>
-        </label>
-        {status !== 'LOST' && (
-          <label className="flex flex-col gap-1 text-sm font-medium">
-            Retorno oficial
-            <input
-              value={officialRealizedReturn}
-              onChange={(event) => setOfficialRealizedReturn(event.target.value)}
-              className={inputClass}
-              placeholder={status === 'VOID' ? bet.effectiveAmount : '0.00'}
-            />
-          </label>
-        )}
-        <label className="flex flex-col gap-1 text-sm font-medium">
-          Fecha y hora de liquidación
-          <input
-            type="datetime-local"
-            value={settledAt}
-            onChange={(event) => setSettledAt(event.target.value)}
-            className={inputClass}
-          />
-        </label>
+      <div>
+        <h4 className="font-semibold text-slate-900">Liquidar apuesta</h4>
+        <p className="text-sm text-slate-600">
+          Monto apostado <strong>{formatPEN(bet.effectiveAmount)}</strong> · cuota visible{' '}
+          <strong>{formatOdds(bet.visibleTotalOdds)}</strong> · {bet.houseName}. Al confirmar se
+          registra el resultado y se libera el importe reservado.
+        </p>
       </div>
+      <SettlementSection
+        options={SETTLE_OPTIONS}
+        status={status}
+        onStatus={setStatus}
+        settled={settled}
+        onSettled={setSettled}
+        figures={figures}
+        profitOverride={profitOverride}
+        onProfitOverride={setProfitOverride}
+        visibleTotalOdds={bet.visibleTotalOdds}
+      />
       {error && <Notice tone="error">{error}</Notice>}
       <div className="flex gap-2">
         <button type="submit" disabled={submitting} className={btnPrimary}>
-          Confirmar liquidación
+          {submitting ? 'Liquidando…' : 'Confirmar liquidación'}
         </button>
         <button type="button" className={btn} onClick={onCancel} disabled={submitting}>
           Cancelar
@@ -1061,11 +1162,18 @@ function MoveBetStageForm({
   return (
     <form
       onSubmit={(event) => void onSubmit(event)}
-      className="mt-3 flex flex-col gap-3 rounded border border-slate-200 bg-slate-50 p-3"
+      className="mt-3 flex flex-col gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4"
       aria-label={`Mover de etapa la apuesta de ${bet.houseName}`}
       noValidate
     >
-      <label className="flex flex-col gap-1 text-sm font-medium">
+      <div>
+        <h4 className="font-semibold text-slate-900">Mover de etapa</h4>
+        <p className="text-sm text-slate-500">
+          Ahora está en {bet.stageName}. Cambiarla afecta los reportes por etapa; queda auditado y
+          puede pedirte la contraseña.
+        </p>
+      </div>
+      <label className="flex flex-col gap-1.5 text-sm font-medium">
         Nueva etapa
         <select
           value={stageId}
@@ -1087,7 +1195,7 @@ function MoveBetStageForm({
       {error && <Notice tone="error">{error}</Notice>}
       <div className="flex gap-2">
         <button type="submit" disabled={submitting} className={btnPrimary}>
-          Mover
+          {submitting ? 'Moviendo…' : 'Mover'}
         </button>
         <button type="button" className={btn} onClick={onCancel} disabled={submitting}>
           Cancelar

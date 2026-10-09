@@ -12,6 +12,8 @@ import {
   stubApi,
   type Handler,
   type StubResponse,
+  openRowAction,
+  rowActionNames,
 } from '../../test-utils.js';
 
 afterEach(() => {
@@ -146,8 +148,8 @@ describe('confirmar el retorno oficial (§77, §112.2, D-A12)', () => {
     open(provisional());
     renderApp(BETS_URL);
     expect(await screen.findByText('Retorno calculado, sin confirmar')).toBeTruthy();
-    expect(screen.getByText(/Retorno S\/ 39\.00 \(calculado\)/)).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Confirmar retorno oficial' })).toBeTruthy();
+    expect(screen.getByText('A+G').nextElementSibling!.textContent).toBe('S/ 39.00 (calculado)');
+    expect(rowActionNames()).toContain('Confirmar retorno oficial');
     cleanup();
     vi.unstubAllGlobals();
 
@@ -159,9 +161,10 @@ describe('confirmar el retorno oficial (§77, §112.2, D-A12)', () => {
     );
     renderApp(BETS_URL);
     await screen.findByText('Retorno calculado, sin confirmar');
-    expect(screen.queryByRole('button', { name: 'Confirmar retorno oficial' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Corregir liquidación' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Reabrir' })).toBeNull();
+    const actions = rowActionNames();
+    expect(actions).not.toContain('Confirmar retorno oficial');
+    expect(actions).not.toContain('Corregir liquidación');
+    expect(actions).not.toContain('Reabrir');
   });
 
   it('si coincide con el calculado, solo se confirma: sin diferencia ni confirmación explícita', async () => {
@@ -169,7 +172,7 @@ describe('confirmar el retorno oficial (§77, §112.2, D-A12)', () => {
       [`POST ${BETS_URL}/${BET_ID}/confirm-return`]: { status: 200, body: officialWin() },
     });
     renderApp(BETS_URL);
-    fireEvent.click(await screen.findByRole('button', { name: 'Confirmar retorno oficial' }));
+    await openRowAction('Confirmar retorno oficial');
     const form = formNamed('Confirmar retorno oficial de la apuesta de Betano');
     fireEvent.change(within(form).getByLabelText('Retorno oficial'), {
       target: { value: '39.00' },
@@ -198,7 +201,7 @@ describe('confirmar el retorno oficial (§77, §112.2, D-A12)', () => {
       },
     });
     renderApp(BETS_URL);
-    fireEvent.click(await screen.findByRole('button', { name: 'Confirmar retorno oficial' }));
+    await openRowAction('Confirmar retorno oficial');
     const form = formNamed('Confirmar retorno oficial de la apuesta de Betano');
     fireEvent.change(within(form).getByLabelText('Retorno oficial'), {
       target: { value: '38.50' },
@@ -242,7 +245,7 @@ describe('confirmar el retorno oficial (§77, §112.2, D-A12)', () => {
       },
     });
     renderApp(BETS_URL);
-    fireEvent.click(await screen.findByRole('button', { name: 'Confirmar retorno oficial' }));
+    await openRowAction('Confirmar retorno oficial');
     const form = formNamed('Confirmar retorno oficial de la apuesta de Betano');
     // La web compara con 38.99 y cree que coincide; la API dice otra cosa.
     fireEvent.change(within(form).getByLabelText('Retorno oficial'), {
@@ -285,7 +288,7 @@ describe('corregir la liquidación (§112.3, D-A8)', () => {
       },
     });
     renderApp(BETS_URL);
-    fireEvent.click(await screen.findByRole('button', { name: 'Corregir liquidación' }));
+    await openRowAction('Corregir liquidación');
     const form = formNamed('Corregir liquidación de la apuesta de Betano');
     fireEvent.change(within(form).getByLabelText('Resultado'), { target: { value: 'LOST' } });
 
@@ -363,7 +366,7 @@ describe('corregir la liquidación (§112.3, D-A8)', () => {
       },
     });
     renderApp(BETS_URL);
-    fireEvent.click(await screen.findByRole('button', { name: 'Corregir liquidación' }));
+    await openRowAction('Corregir liquidación');
     const form = formNamed('Corregir liquidación de la apuesta de Betano');
     fireEvent.change(within(form).getByLabelText('Resultado'), { target: { value: 'LOST' } });
     fireEvent.change(within(form).getByLabelText(/Motivo de la corrección/), {
@@ -383,7 +386,7 @@ describe('corregir la liquidación (§112.3, D-A8)', () => {
   it('exige al menos un cambio antes de calcular el impacto', async () => {
     const { calls } = open(officialWin());
     renderApp(BETS_URL);
-    fireEvent.click(await screen.findByRole('button', { name: 'Corregir liquidación' }));
+    await openRowAction('Corregir liquidación');
     const form = formNamed('Corregir liquidación de la apuesta de Betano');
     fireEvent.change(within(form).getByLabelText(/Motivo de la corrección/), {
       target: { value: 'x' },
@@ -391,6 +394,24 @@ describe('corregir la liquidación (§112.3, D-A8)', () => {
     fireEvent.click(within(form).getByRole('button', { name: 'Ver impacto' }));
     expect(await within(form).findByText(/Indica al menos un cambio/)).toBeTruthy();
     expect(calls.some((c) => c.method === 'POST')).toBe(false);
+  });
+
+  it('es una edición: muestra las fechas guardadas de la apuesta, no el momento actual (Fase 10.3)', async () => {
+    open(officialWin());
+    renderApp(BETS_URL);
+    await openRowAction('Corregir liquidación');
+    const form = formNamed('Corregir liquidación de la apuesta de Betano');
+    const local = (iso: string) => {
+      const d = new Date(iso);
+      const pad = (n: number) => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    };
+    expect(within(form).getByLabelText<HTMLInputElement>('Fecha de liquidación').value).toBe(
+      local('2026-06-01T22:00:00.000Z'),
+    );
+    expect(within(form).getByLabelText<HTMLInputElement>('Fecha de colocación').value).toBe(
+      local('2026-06-01T20:00:00.000Z'),
+    );
   });
 });
 
@@ -412,7 +433,7 @@ describe('reabrir (D-A4)', () => {
       },
     });
     renderApp(BETS_URL);
-    fireEvent.click(await screen.findByRole('button', { name: 'Reabrir' }));
+    await openRowAction('Reabrir');
     const form = formNamed('Reabrir la apuesta de Betano');
     expect(
       within(form).getByText(/Reabrir revierte los efectos financieros de esta apuesta/),
@@ -441,7 +462,7 @@ describe('papelera y restauración de una liquidada (D-A7, D-A11)', () => {
       [`POST ${BETS_URL}/${BET_ID}/trash`]: { status: 200, body: { id: BET_ID } },
     });
     renderApp(BETS_URL);
-    fireEvent.click(await screen.findByRole('button', { name: 'Papelera' }));
+    await openRowAction('Eliminar');
     const form = formNamed('Enviar a la papelera la apuesta de Betano');
     expect(within(form).getByText(/revierte todo su efecto en el ledger/)).toBeTruthy();
     fireEvent.click(within(form).getByRole('button', { name: 'Enviar a la papelera' }));
@@ -466,7 +487,7 @@ describe('papelera y restauración de una liquidada (D-A7, D-A11)', () => {
     );
     renderApp(BETS_URL);
     await screen.findByText('Ganada');
-    expect(screen.queryByRole('button', { name: 'Papelera' })).toBeNull();
+    expect(rowActionNames()).not.toContain('Eliminar');
   });
 
   it('restaurar una liquidada desde la papelera exige motivo y avisa que vuelve a registrar el ledger', async () => {
@@ -553,7 +574,7 @@ describe('historial financiero de la apuesta (§112.1)', () => {
       },
     });
     renderApp(BETS_URL);
-    fireEvent.click(await screen.findByRole('button', { name: 'Historial financiero' }));
+    await openRowAction('Historial financiero');
     const table = await screen.findByRole('table', { name: 'Movimientos de la apuesta' });
     expect(within(table).getByText('Vigente')).toBeTruthy();
     expect(within(table).getByText('Anulada')).toBeTruthy();

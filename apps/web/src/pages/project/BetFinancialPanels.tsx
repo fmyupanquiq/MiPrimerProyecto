@@ -25,17 +25,10 @@ import {
   MOVEMENT_TYPE_LABELS,
 } from '../../labels.js';
 import { Badge, btn, btnDanger, btnPrimary, inputClass, Notice } from '../../ui.js';
+import { fromLocalInput, toLocalInput } from '../../date-inputs.js';
 import { useProject } from './ProjectContext.js';
 
-const panelClass = 'mt-3 flex flex-col gap-3 rounded border border-slate-200 bg-slate-50 p-3';
-
-/** `datetime-local` (hora local) a partir de un instante ISO. */
-export function toLocalInput(iso: string | null): string {
-  if (!iso) return '';
-  const date = new Date(iso);
-  const pad = (value: number) => String(value).padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
+const panelClass = 'mt-3 flex flex-col gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4';
 
 const money = (value: string | null) => (value === null ? '—' : formatPEN(value));
 
@@ -81,7 +74,7 @@ export function ImpactPreview({ preview }: { preview: CorrectionPreview }) {
             aria-label="Filas del ledger que se registrarían"
           >
             <thead>
-              <tr className="border-b border-slate-200 text-slate-600">
+              <tr className="border-b border-slate-200 text-xs text-slate-500">
                 <th className="py-1 pr-3 font-medium">Movimiento</th>
                 <th className="py-1 pr-3 font-medium">Casa</th>
                 <th className="py-1 pr-3 font-medium">Sentido</th>
@@ -111,7 +104,7 @@ export function ImpactPreview({ preview }: { preview: CorrectionPreview }) {
       <div className="overflow-x-auto">
         <table className="w-full text-left text-sm" aria-label="Saldo antes y después">
           <thead>
-            <tr className="border-b border-slate-200 text-slate-600">
+            <tr className="border-b border-slate-200 text-xs text-slate-500">
               <th className="py-1 pr-3 font-medium">Casa</th>
               <th className="py-1 pr-3 font-medium">Saldo antes</th>
               <th className="py-1 pr-3 font-medium">Saldo después</th>
@@ -242,7 +235,7 @@ export function ConfirmReturnPanel({
         Esta apuesta se liquidó con un retorno <strong>calculado</strong> ({formatPEN(calculated)}
         ). Indica el retorno oficial que muestra la casa.
       </p>
-      <label className="flex flex-col gap-1 text-sm font-medium">
+      <label className="flex flex-col gap-1.5 text-sm font-medium">
         Retorno oficial
         <input
           value={official}
@@ -258,7 +251,7 @@ export function ConfirmReturnPanel({
       </label>
 
       {shown && (
-        <div className="flex flex-col gap-2 rounded border border-amber-300 bg-amber-50 p-3">
+        <div className="flex flex-col gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
           <dl className="grid gap-1 text-sm sm:grid-cols-3">
             <div>
               <dt className="text-slate-600">Retorno calculado</dt>
@@ -298,7 +291,7 @@ export function ConfirmReturnPanel({
         </p>
       )}
 
-      <label className="flex flex-col gap-1 text-sm font-medium">
+      <label className="flex flex-col gap-1.5 text-sm font-medium">
         Motivo (opcional)
         <input
           value={reason}
@@ -331,10 +324,13 @@ export function ConfirmReturnPanel({
  */
 export function CorrectSettlementPanel({
   bet,
+  initialStatus,
   onDone,
   onCancel,
 }: {
   bet: BetSummary;
+  /** Resultado con el que se abre (p. ej. el elegido en el selector de estado de la lista). */
+  initialStatus?: 'WON' | 'LOST' | 'VOID' | 'CASHOUT';
   onDone: (message: string) => void;
   onCancel: () => void;
 }) {
@@ -347,7 +343,7 @@ export function CorrectSettlementPanel({
     placedAt: toLocalInput(bet.placedAt),
   };
   const [status, setStatus] = useState<'WON' | 'LOST' | 'VOID' | 'CASHOUT'>(
-    bet.status === 'PENDING' ? 'WON' : bet.status,
+    initialStatus ?? (bet.status === 'PENDING' ? 'WON' : bet.status),
   );
   const [official, setOfficial] = useState(initial.official);
   const [amount, setAmount] = useState('');
@@ -371,10 +367,10 @@ export function CorrectSettlementPanel({
     }
     if (amount.trim() !== '') draft.officialAmount = amount.trim();
     if (settledAt !== initial.settledAt && settledAt !== '') {
-      draft.settledAt = new Date(settledAt).toISOString();
+      draft.settledAt = fromLocalInput(settledAt) ?? settledAt;
     }
     if (placedAt !== initial.placedAt && placedAt !== '') {
-      draft.placedAt = new Date(placedAt).toISOString();
+      draft.placedAt = fromLocalInput(placedAt) ?? placedAt;
     }
     const result = correctSettlementSchema.safeParse(draft);
     if (!result.success) {
@@ -430,7 +426,7 @@ export function CorrectSettlementPanel({
         reversiones y filas nuevas. Exige un motivo, revisar el impacto y tu contraseña.
       </Notice>
       <div className="grid gap-3 sm:grid-cols-3">
-        <label className="flex flex-col gap-1 text-sm font-medium">
+        <label className="flex flex-col gap-1.5 text-sm font-medium">
           Resultado
           <select
             value={status}
@@ -445,7 +441,7 @@ export function CorrectSettlementPanel({
           </select>
         </label>
         {status !== 'LOST' && (
-          <label className="flex flex-col gap-1 text-sm font-medium">
+          <label className="flex flex-col gap-1.5 text-sm font-medium">
             Retorno oficial
             <input
               value={official}
@@ -455,7 +451,7 @@ export function CorrectSettlementPanel({
             />
           </label>
         )}
-        <label className="flex flex-col gap-1 text-sm font-medium">
+        <label className="flex flex-col gap-1.5 text-sm font-medium">
           Monto oficial (opcional)
           <input
             value={amount}
@@ -465,7 +461,7 @@ export function CorrectSettlementPanel({
             inputMode="decimal"
           />
         </label>
-        <label className="flex flex-col gap-1 text-sm font-medium">
+        <label className="flex flex-col gap-1.5 text-sm font-medium">
           Fecha de liquidación
           <input
             type="datetime-local"
@@ -474,7 +470,7 @@ export function CorrectSettlementPanel({
             className={inputClass}
           />
         </label>
-        <label className="flex flex-col gap-1 text-sm font-medium">
+        <label className="flex flex-col gap-1.5 text-sm font-medium">
           Fecha de colocación
           <input
             type="datetime-local"
@@ -484,7 +480,7 @@ export function CorrectSettlementPanel({
           />
         </label>
       </div>
-      <label className="flex flex-col gap-1 text-sm font-medium">
+      <label className="flex flex-col gap-1.5 text-sm font-medium">
         Motivo de la corrección (obligatorio)
         <textarea
           value={reason}
@@ -588,7 +584,7 @@ export function ReopenPanel({
         monto. Los valores anteriores (retorno calculado y oficial) quedan en el historial. Exige un
         motivo y tu contraseña.
       </Notice>
-      <label className="flex flex-col gap-1 text-sm font-medium">
+      <label className="flex flex-col gap-1.5 text-sm font-medium">
         Motivo de la reapertura (obligatorio)
         <textarea
           value={reason}
@@ -668,7 +664,7 @@ export function SettledTrashPanel({
       aria-label={`${action === 'trash' ? 'Enviar a la papelera' : 'Restaurar'} ${label}`}
       noValidate
     >
-      <Notice tone="info">
+      <Notice tone="warning">
         {action === 'trash' ? (
           <>
             <strong>Esta apuesta ya está liquidada.</strong> Enviarla a la papelera revierte todo su
@@ -684,7 +680,7 @@ export function SettledTrashPanel({
         )}{' '}
         Exige un motivo y tu contraseña.
       </Notice>
-      <label className="flex flex-col gap-1 text-sm font-medium">
+      <label className="flex flex-col gap-1.5 text-sm font-medium">
         Motivo (obligatorio)
         <input
           value={reason}
@@ -764,14 +760,14 @@ export function BetLedgerPanel({ betId }: { betId: string }) {
 
   return (
     <div className="mt-3 flex flex-col gap-3" aria-label="Historial financiero">
-      <h3 className="text-sm font-medium">Historial financiero</h3>
+      <h3 className="text-sm font-semibold">Historial financiero</h3>
       {movements.length === 0 ? (
         <p className="text-sm text-slate-600">Esta apuesta todavía no tiene efecto en el ledger.</p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm" aria-label="Movimientos de la apuesta">
             <thead>
-              <tr className="border-b border-slate-200 text-slate-600">
+              <tr className="border-b border-slate-200 text-xs text-slate-500">
                 <th className="py-1 pr-3 font-medium">Movimiento</th>
                 <th className="py-1 pr-3 font-medium">Casa</th>
                 <th className="py-1 pr-3 font-medium">Monto</th>
@@ -809,7 +805,7 @@ export function BetLedgerPanel({ betId }: { betId: string }) {
           {corrections.map((correction) => {
             const changes = changesOf(correction.before, correction.after);
             return (
-              <li key={correction.id} className="rounded border border-slate-200 p-2 text-sm">
+              <li key={correction.id} className="rounded-xl border border-slate-200 p-2 text-sm">
                 <p className="font-medium">
                   {BET_CORRECTION_KIND_LABELS[correction.kind]}{' '}
                   <span className="font-normal text-slate-500">
