@@ -12,7 +12,16 @@ import {
   roleLabel,
   USER_STATUS_LABELS,
 } from '../../labels.js';
-import { Badge, btn, btnDanger, btnPrimary, inputClass, Notice, Section } from '../../ui.js';
+import {
+  Badge,
+  btn,
+  btnDanger,
+  btnPrimary,
+  inputClass,
+  LoadingBlock,
+  Notice,
+  Section,
+} from '../../ui.js';
 import { USER_STATUS_TONES } from './AdminUsersPage.js';
 
 /** Ficha de un usuario (§111.3): datos, proyectos que posee, sesiones y acciones de estado. */
@@ -30,7 +39,7 @@ export function AdminUserDetailPage() {
   if (!can('system.users.view')) {
     return <Notice tone="info">No tienes permiso para ver los usuarios.</Notice>;
   }
-  if (detail.loading && !detail.data) return <p>Cargando usuario…</p>;
+  if (detail.loading && !detail.data) return <LoadingBlock lines={2} label="Cargando usuario…" />;
   if (!detail.data) {
     return (
       <>

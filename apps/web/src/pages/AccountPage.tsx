@@ -5,7 +5,7 @@ import { authApi } from '../api/auth.js';
 import { describeApiError } from '../api/errors.js';
 import { useLoad } from '../hooks/useLoad.js';
 import { ACCOUNT_DELETION_STATUS_LABELS, formatDateTime } from '../labels.js';
-import { Badge, btn, btnDanger, inputClass, Notice, Section } from '../ui.js';
+import { Badge, btn, btnDanger, inputClass, LoadingBlock, Notice, Section } from '../ui.js';
 
 /** Mi cuenta: la persona gestiona su propia cuenta (§8, §111.3, §111.5). */
 export function AccountPage() {
@@ -66,12 +66,12 @@ function SessionsSection() {
       {notice && <Notice tone="success">{notice}</Notice>}
       {error && <Notice tone="error">{error}</Notice>}
       {list.error && <Notice tone="error">{list.error}</Notice>}
-      {list.loading && !list.data && <p>Cargando sesiones…</p>}
+      {list.loading && !list.data && <LoadingBlock lines={2} label="Cargando sesiones…" />}
       <ul className="flex flex-col gap-2" aria-label="Sesiones abiertas">
         {sessions.map((session) => (
           <li
             key={session.id}
-            className="flex flex-wrap items-center justify-between gap-3 rounded border border-slate-200 bg-white p-3 text-sm"
+            className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-surface p-3 text-sm"
           >
             <div className="flex flex-col gap-1">
               <p className="flex flex-wrap items-center gap-2 font-medium">
@@ -158,7 +158,7 @@ function DeletionSection() {
     <Section title="Eliminar mi cuenta">
       {error && <Notice tone="error">{error}</Notice>}
       {state.error && <Notice tone="error">{state.error}</Notice>}
-      {state.loading && !state.data && <p>Cargando…</p>}
+      {state.loading && !state.data && <LoadingBlock lines={2} label="Cargando…" />}
 
       {request?.status === 'PENDING' ? (
         <>

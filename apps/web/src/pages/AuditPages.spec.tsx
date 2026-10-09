@@ -110,7 +110,8 @@ describe('auditoría del proyecto (§111.1)', () => {
       target: { value: 'member.' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Filtrar' }));
-    expect(await screen.findByText('No hay registros de auditoría con esos filtros.')).toBeTruthy();
+    expect(await screen.findByText('Sin registros de auditoría')).toBeTruthy();
+    expect(screen.getByText(/No hay registros que coincidan con esos filtros/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Limpiar' }));
     expect(await screen.findByText('bet.created')).toBeTruthy();
     expect(calls.filter((call) => call.path === `${URL}/audit-logs`).length).toBe(2);

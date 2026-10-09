@@ -11,7 +11,16 @@ import { useAuth } from '../../auth/AuthContext.js';
 import { isReauthCancelled, useReauth } from '../../auth/ReauthContext.js';
 import { useLoad } from '../../hooks/useLoad.js';
 import { ACCOUNT_DELETION_STATUS_LABELS, formatDateTime } from '../../labels.js';
-import { Badge, btn, btnDanger, btnPrimary, inputClass, Notice, Section } from '../../ui.js';
+import {
+  Badge,
+  btn,
+  btnDanger,
+  btnPrimary,
+  inputClass,
+  LoadingBlock,
+  Notice,
+  Section,
+} from '../../ui.js';
 
 type Decision = { id: string; kind: 'approve' | 'reject' };
 
@@ -86,7 +95,9 @@ export function AdminAccountDeletionsPage() {
       {notice && <Notice tone="success">{notice}</Notice>}
       {error && <Notice tone="error">{error}</Notice>}
       {requests.error && <Notice tone="error">{requests.error}</Notice>}
-      {requests.loading && !requests.data && <p>Cargando solicitudes…</p>}
+      {requests.loading && !requests.data && (
+        <LoadingBlock lines={2} label="Cargando solicitudes…" />
+      )}
       {requests.data && requests.data.length === 0 && (
         <Notice tone="info">No hay solicitudes con ese estado.</Notice>
       )}
@@ -95,7 +106,7 @@ export function AdminAccountDeletionsPage() {
         {requests.data?.map((request) => (
           <li
             key={request.id}
-            className="flex flex-col gap-2 rounded border border-slate-200 bg-white p-4"
+            className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-surface p-4"
           >
             <p className="flex flex-wrap items-center gap-2 font-medium">
               <Link to={`/admin/users/${request.userId}`} className="underline">

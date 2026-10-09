@@ -99,7 +99,7 @@ function MaintenanceSection() {
       {history.data && history.data.length > 0 && (
         <ul className="flex flex-col gap-2" aria-label="Historial de mantenimiento">
           {history.data.map((item: MaintenanceRunSummary) => (
-            <li key={item.id} className="rounded border border-slate-200 p-3 text-sm">
+            <li key={item.id} className="rounded-xl border border-slate-200 p-3 text-sm">
               <p className="flex flex-wrap items-center gap-2 font-medium">
                 <Badge tone={item.status === 'COMPLETED' ? 'green' : 'red'}>
                   {MAINTENANCE_STATUS_LABELS[item.status]}
@@ -161,7 +161,7 @@ function GlobalIntegritySection() {
       {history.data && history.data.length > 0 && (
         <ul className="flex flex-col gap-3">
           {history.data.map((run: IntegrityCheckRunSummary) => (
-            <li key={run.id} className="rounded border border-slate-200 p-3 text-sm">
+            <li key={run.id} className="rounded-xl border border-slate-200 p-3 text-sm">
               <p className="flex items-center gap-2 font-medium">
                 <Badge tone={run.status === 'OK' ? 'green' : 'red'}>
                   {INTEGRITY_CHECK_STATUS_LABELS[run.status]}
@@ -254,7 +254,7 @@ function BackupsSection() {
       {list.data && list.data.length > 0 && (
         <ul className="flex flex-col gap-3">
           {list.data.map((generation: BackupGeneration) => (
-            <li key={generation.id} className="rounded border border-slate-200 p-3 text-sm">
+            <li key={generation.id} className="rounded-xl border border-slate-200 p-3 text-sm">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <p className="font-medium">

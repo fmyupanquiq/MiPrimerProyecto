@@ -6,7 +6,15 @@ import { useAuth } from '../../auth/AuthContext.js';
 import { isReauthCancelled, useReauth } from '../../auth/ReauthContext.js';
 import { useLoad } from '../../hooks/useLoad.js';
 import { formatDate, roleLabel } from '../../labels.js';
-import { btn, btnPrimary, inputClass, Notice, ProjectStatusBadge, Section } from '../../ui.js';
+import {
+  btn,
+  btnPrimary,
+  inputClass,
+  LoadingBlock,
+  Notice,
+  ProjectStatusBadge,
+  Section,
+} from '../../ui.js';
 
 /**
  * Todos los proyectos del sistema (§5, §6, §87, §111.5): el Administrador Global consulta su
@@ -34,7 +42,7 @@ export function AdminProjectsPage() {
       </p>
       {notice && <Notice tone="success">{notice}</Notice>}
       {projects.error && <Notice tone="error">{projects.error}</Notice>}
-      {projects.loading && !projects.data && <p>Cargando proyectos…</p>}
+      {projects.loading && !projects.data && <LoadingBlock lines={2} label="Cargando proyectos…" />}
       {projects.data && projects.data.length === 0 && (
         <Notice tone="info">No hay proyectos.</Notice>
       )}
@@ -42,7 +50,7 @@ export function AdminProjectsPage() {
         {projects.data?.map((project) => (
           <li
             key={project.id}
-            className="flex flex-col gap-3 rounded border border-slate-200 bg-white p-4"
+            className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-surface p-4"
           >
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>

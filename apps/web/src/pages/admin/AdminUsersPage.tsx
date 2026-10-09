@@ -5,7 +5,7 @@ import { adminUsersApi } from '../../api/admin.js';
 import { useAuth } from '../../auth/AuthContext.js';
 import { useLoad } from '../../hooks/useLoad.js';
 import { formatDate, roleLabel, USER_STATUS_LABELS } from '../../labels.js';
-import { Badge, btn, btnPrimary, inputClass, Notice, Section } from '../../ui.js';
+import { Badge, btn, btnPrimary, inputClass, LoadingBlock, Notice, Section } from '../../ui.js';
 
 const PAGE_SIZE = 25;
 
@@ -84,7 +84,7 @@ export function AdminUsersPage() {
       </form>
 
       {users.error && <Notice tone="error">{users.error}</Notice>}
-      {users.loading && !users.data && <p>Cargando usuarios…</p>}
+      {users.loading && !users.data && <LoadingBlock lines={2} label="Cargando usuarios…" />}
       {users.data && users.data.items.length === 0 && (
         <Notice tone="info">No hay usuarios con esos filtros.</Notice>
       )}
@@ -126,7 +126,7 @@ export function AdminUsersPage() {
 
 function UserRow({ user }: { user: AdminUserSummary }) {
   return (
-    <li className="flex flex-wrap items-center justify-between gap-3 rounded border border-slate-200 bg-white p-3">
+    <li className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-surface p-3">
       <div className="flex flex-col gap-1">
         <p className="flex flex-wrap items-center gap-2 font-medium">
           <Link to={`/admin/users/${user.id}`} className="underline">

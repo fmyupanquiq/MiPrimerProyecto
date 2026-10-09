@@ -3,8 +3,10 @@ import { type FormEvent, useState } from 'react';
 import type { AuditQuery } from '../api/audit.js';
 import { describeApiError } from '../api/errors.js';
 import { useLoad } from '../hooks/useLoad.js';
+import { ShieldIcon } from '../icons.js';
 import { formatDateTime } from '../labels.js';
-import { btn, btnPrimary, inputClass, Notice } from '../ui.js';
+import { btn, btnPrimary, EmptyState, inputClass, LoadingBlock, Notice } from '../ui.js';
+import { endOfDayInstant, startOfDayInstant } from '../date-inputs.js';
 
 interface Filters {
   action: string;
@@ -15,11 +17,10 @@ interface Filters {
 
 const NO_FILTERS: Filters = { action: '', entityType: '', from: '', to: '' };
 
-/** Convierte una fecha de calendario local en el inicio o el fin de ese día (ISO 8601). */
+/** Inicio o fin del día de calendario `date`, en la zona del proyecto (§93) o del navegador. */
 function dayBoundary(date: string, edge: 'start' | 'end'): string | undefined {
   if (!date) return undefined;
-  const local = new Date(`${date}T${edge === 'start' ? '00:00:00.000' : '23:59:59.999'}`);
-  return Number.isNaN(local.getTime()) ? undefined : local.toISOString();
+  return edge === 'start' ? startOfDayInstant(date) : endOfDayInstant(date);
 }
 
 function toQuery(filters: Filters): AuditQuery {
@@ -45,7 +46,7 @@ function JsonBlock({ label, value }: { label: string; value: Record<string, unkn
 
 function AuditRow({ entry, showProject }: { entry: AuditLogEntry; showProject: boolean }) {
   return (
-    <li className="rounded border border-slate-200 bg-white p-3">
+    <li className="rounded-xl border border-slate-200 bg-surface p-3">
       <details>
         <summary className="flex cursor-pointer flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
           <span className="text-slate-500">{formatDateTime(entry.occurredAt)}</span>
@@ -173,16 +174,29 @@ export function AuditLogList({
       </form>
 
       {error && <Notice tone="error">{error}</Notice>}
+      {loading && items.length === 0 && (
+        <LoadingBlock lines={4} label="Cargando los registros de auditoría…" />
+      )}
       {!error && !loading && items.length === 0 && (
-        <Notice tone="info">No hay registros de auditoría con esos filtros.</Notice>
+        <EmptyState
+          icon={<ShieldIcon />}
+          title="Sin registros de auditoría"
+          text={
+            JSON.stringify(applied) === JSON.stringify(NO_FILTERS)
+              ? 'Aquí verás cada acción relevante a medida que ocurra.'
+              : 'No hay registros que coincidan con esos filtros. Prueba a ampliarlos o a limpiarlos.'
+          }
+        />
       )}
 
-      <ul className="flex flex-col gap-2" aria-label="Registros de auditoría">
-        {items.map((entry) => (
-          <AuditRow key={entry.id} entry={entry} showProject={showProject} />
-        ))}
-      </ul>
-      {loading && <p className="text-sm text-slate-500">Cargando…</p>}
+      {items.length > 0 && (
+        <ul className="flex flex-col gap-2" aria-label="Registros de auditoría">
+          {items.map((entry) => (
+            <AuditRow key={entry.id} entry={entry} showProject={showProject} />
+          ))}
+        </ul>
+      )}
+      {loading && items.length > 0 && <p className="text-sm text-slate-500">Cargando más…</p>}
       {nextCursor && !loading && (
         <div>
           <button type="button" className={btn} onClick={() => void loadMore()}>
