@@ -4,7 +4,7 @@ import { describeApiError } from '../api/errors.js';
 import { isReauthCancelled, useReauth } from '../auth/ReauthContext.js';
 import { useLoad } from '../hooks/useLoad.js';
 import { formatDate, PROJECT_STATUS_LABELS } from '../labels.js';
-import { Badge, btnPrimary, Notice } from '../ui.js';
+import { Badge, btnPrimary, LoadingBlock, Notice, PageHeader } from '../ui.js';
 
 /**
  * Papelera de proyectos (§9, §105.5): los propios (o todos, para el Administrador Global). Un
@@ -34,15 +34,16 @@ export function TrashPage() {
 
   return (
     <>
-      <h1 className="text-2xl font-semibold">Papelera</h1>
-      <p className="text-sm text-slate-600">
-        Los proyectos enviados a la papelera se conservan al menos 90 días y se pueden restaurar.
-        Pasado ese plazo quedan elegibles para purga, pero no se eliminan automáticamente.
-      </p>
+      {/* "Proyectos eliminados" (Fase 11, §35): distinto de "Eliminados" dentro de un proyecto
+          (esa es la papelera de apuestas y etapas; esta es de proyectos completos). */}
+      <PageHeader
+        title="Proyectos eliminados"
+        description="Se conservan al menos 90 días y se pueden restaurar."
+      />
       {error && <Notice tone="error">{error}</Notice>}
       {restored && <Notice tone="success">«{restored}» se restauró correctamente.</Notice>}
       {trash.error && <Notice tone="error">{trash.error}</Notice>}
-      {trash.loading && !trash.data && <p>Cargando papelera…</p>}
+      {trash.loading && !trash.data && <LoadingBlock lines={2} label="Cargando papelera…" />}
       {trash.data && trash.data.length === 0 && (
         <Notice tone="info">La papelera está vacía.</Notice>
       )}
@@ -50,7 +51,7 @@ export function TrashPage() {
         {trash.data?.map((project) => (
           <li
             key={project.id}
-            className="flex flex-wrap items-center justify-between gap-3 rounded border border-slate-200 bg-white p-4"
+            className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-surface p-4"
           >
             <div>
               <p className="flex flex-wrap items-center gap-2 font-medium">

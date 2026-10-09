@@ -17,6 +17,7 @@ import {
   btnPrimary,
   inputClass,
   InvitationStatusBadge,
+  LoadingBlock,
   Notice,
   Section,
 } from '../../ui.js';
@@ -64,7 +65,9 @@ export function InvitationsPanel({ roles }: { roles: AssignableRole[] }) {
 
       {error && <Notice tone="error">{error}</Notice>}
       {invitations.error && <Notice tone="error">{invitations.error}</Notice>}
-      {invitations.loading && !invitations.data && <p>Cargando invitaciones…</p>}
+      {invitations.loading && !invitations.data && (
+        <LoadingBlock lines={2} label="Cargando invitaciones…" />
+      )}
       {invitations.data && invitations.data.length === 0 && (
         <Notice tone="info">Todavía no hay invitaciones.</Notice>
       )}
@@ -102,7 +105,12 @@ export function InvitationsPanel({ roles }: { roles: AssignableRole[] }) {
                       ? formatDateTime(invitation.expiresAt)
                       : 'Sin vencimiento'}
                   </td>
-                  <td className="py-2 pr-3">{invitation.restrictedEmail ?? 'Cualquiera'}</td>
+                  {/* Mismo cuidado que en MembersPage: un correo no tiene espacios donde
+                      partir la línea, así que necesita `break-words` para no ensanchar la
+                      tabla (y la página) más allá del viewport. */}
+                  <td className="py-2 pr-3 break-words">
+                    {invitation.restrictedEmail ?? 'Cualquiera'}
+                  </td>
                   <td className="py-2 pr-3">
                     {invitation.createdBy.name}
                     <br />
@@ -211,7 +219,7 @@ function NewInvitationForm({
   return (
     <form
       onSubmit={(event) => void onSubmit(event)}
-      className="flex flex-col gap-3 rounded border border-slate-200 p-3"
+      className="flex flex-col gap-3 rounded-xl border border-slate-200 p-3"
       aria-label="Nueva invitación"
       noValidate
     >
@@ -302,7 +310,7 @@ function CreatedLink({
   return (
     <section
       aria-label="Enlace de invitación"
-      className="flex flex-col gap-2 rounded border border-amber-300 bg-amber-50 p-3"
+      className="flex flex-col gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3"
     >
       <p className="font-medium">Invitación creada</p>
       <p className="text-sm">

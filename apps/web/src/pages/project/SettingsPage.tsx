@@ -22,7 +22,16 @@ import {
   INTEGRITY_CHECK_STATUS_LABELS,
   timeZones,
 } from '../../labels.js';
-import { Badge, btn, btnDanger, btnPrimary, inputClass, Notice, Section } from '../../ui.js';
+import {
+  Badge,
+  btn,
+  btnDanger,
+  btnPrimary,
+  inputClass,
+  Notice,
+  PageHeader,
+  Section,
+} from '../../ui.js';
 import { useProject } from './ProjectContext.js';
 
 /** Configuración del proyecto (§105.6) y acciones sobre su ciclo de vida (§105.5). */
@@ -32,6 +41,14 @@ export function SettingsPage() {
 
   return (
     <>
+      <PageHeader
+        title="Configuración del proyecto"
+        description="Datos del proyecto, integridad de las cifras y su ciclo de vida."
+        help={{
+          label: 'Configuración del proyecto',
+          text: 'Nombre, zona horaria y formato de fecha; la verificación de integridad de las cifras; y el estado del proyecto (cerrar, reabrir o enviar a la papelera).',
+        }}
+      />
       {notice && <Notice tone="success">{notice}</Notice>}
       <Section title="Datos del proyecto">
         {can('project.update') ? (
@@ -100,7 +117,7 @@ function IntegritySection() {
       {history.data && history.data.length > 0 && (
         <ul className="flex flex-col gap-3">
           {history.data.map((run: IntegrityCheckRunSummary) => (
-            <li key={run.id} className="rounded border border-slate-200 p-3 text-sm">
+            <li key={run.id} className="rounded-xl border border-slate-200 p-3 text-sm">
               <p className="flex items-center gap-2 font-medium">
                 <Badge tone={run.status === 'OK' ? 'green' : 'red'}>
                   {INTEGRITY_CHECK_STATUS_LABELS[run.status]}
@@ -344,7 +361,7 @@ function LifecycleSection({ onNotice }: { onNotice: (message: string | null) => 
       {error && <Notice tone="error">{error}</Notice>}
       <ul className="flex flex-col gap-3">
         {available.map((action) => (
-          <li key={action} className="rounded border border-slate-200 p-3">
+          <li key={action} className="rounded-xl border border-slate-200 p-3">
             <p className="font-medium">{ACTION_TEXT[action].title}</p>
             <p className="text-sm text-slate-600">{ACTION_TEXT[action].description}</p>
             {pending === action ? (

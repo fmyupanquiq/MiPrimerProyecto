@@ -5,7 +5,7 @@ import { membersApi } from '../../api/projects.js';
 import { useAuth } from '../../auth/AuthContext.js';
 import { useLoad } from '../../hooks/useLoad.js';
 import { formatDate, MEMBER_STATUS_LABELS, roleLabel, USER_STATUS_LABELS } from '../../labels.js';
-import { Badge, btn, btnDanger, inputClass, Notice, Section } from '../../ui.js';
+import { Badge, btn, btnDanger, inputClass, LoadingBlock, Notice, Section } from '../../ui.js';
 import { InvitationsPanel } from './InvitationsPanel.js';
 import { useProject } from './ProjectContext.js';
 
@@ -95,20 +95,28 @@ export function MembersPage() {
         {error && <Notice tone="error">{error}</Notice>}
         {notice && <Notice tone="success">{notice}</Notice>}
         {members.error && <Notice tone="error">{members.error}</Notice>}
-        {members.loading && !members.data && <p>Cargando miembros…</p>}
+        {members.loading && !members.data && <LoadingBlock lines={2} label="Cargando miembros…" />}
         {members.data && members.data.length === 0 && (
           <Notice tone="info">No hay miembros en esta lista.</Notice>
         )}
         {members.data && members.data.length > 0 && (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
+          <div className="w-full min-w-0 overflow-x-auto">
+            {/* QA de humo (Fase 11): con 5 columnas (una de ellas un correo, sin espacios donde
+                partir la línea, y "Administrador de proyecto" como rol más largo), el ancho
+                `auto` de la tabla ensanchaba la PÁGINA entera por debajo de 640px en vez de
+                quedarse dentro de `overflow-x-auto` — ni siquiera con `break-words` en las
+                celdas (el algoritmo `auto` no cede). Por debajo de ese ancho: columnas con
+                proporciones fijas (así no hay sorpresas) y "Estado" se oculta (ya se ve el rol y
+                es el dato menos importante para un vistazo rápido en el móvil); de 640px en
+                adelante, la tabla vuelve a su ancho natural de siempre. */}
+            <table className="w-full table-auto text-left text-sm max-sm:table-fixed">
               <thead>
                 <tr className="border-b border-slate-200 text-slate-500">
-                  <th className="py-2 pr-3 font-medium">Nombre</th>
-                  {showEmail && <th className="py-2 pr-3 font-medium">Correo</th>}
-                  <th className="py-2 pr-3 font-medium">Rol</th>
-                  <th className="py-2 pr-3 font-medium">Estado</th>
-                  <th className="py-2 font-medium">
+                  <th className="py-2 pr-3 font-medium max-sm:w-[26%]">Nombre</th>
+                  {showEmail && <th className="py-2 pr-3 font-medium max-sm:w-[30%]">Correo</th>}
+                  <th className="py-2 pr-3 font-medium max-sm:w-[24%]">Rol</th>
+                  <th className="py-2 pr-3 font-medium max-sm:hidden">Estado</th>
+                  <th className="py-2 font-medium max-sm:w-[20%]">
                     <span className="sr-only">Acciones</span>
                   </th>
                 </tr>
@@ -120,13 +128,13 @@ export function MembersPage() {
                   const editable = canManage && member.status === 'ACTIVE' && !member.isOwner;
                   return (
                     <tr key={member.userId} className="border-b border-slate-100 align-top">
-                      <td className="py-2 pr-3">
+                      <td className="py-2 pr-3 break-words">
                         {name}
                         {isMe && <span className="text-slate-500"> (tú)</span>}{' '}
                         {member.isOwner && <Badge tone="blue">Propietario</Badge>}
                       </td>
-                      {showEmail && <td className="py-2 pr-3">{member.email}</td>}
-                      <td className="py-2 pr-3">
+                      {showEmail && <td className="py-2 pr-3 break-words">{member.email}</td>}
+                      <td className="py-2 pr-3 break-words">
                         {editable ? (
                           <RoleSelect
                             member={member}
@@ -139,7 +147,7 @@ export function MembersPage() {
                           roleLabel(member.roleKey, member.roleName)
                         )}
                       </td>
-                      <td className="py-2 pr-3">
+                      <td className="py-2 pr-3 max-sm:hidden">
                         {MEMBER_STATUS_LABELS[member.status]}
                         {member.accountStatus !== 'ACTIVE' &&
                           ` · cuenta ${USER_STATUS_LABELS[member.accountStatus].toLowerCase()}`}
@@ -242,7 +250,7 @@ function RoleSelect({
       value={member.roleId}
       disabled={disabled}
       onChange={(event) => onChange(event.target.value)}
-      className="rounded border border-slate-300 px-2 py-1"
+      className="rounded-xl border border-slate-300 px-2 py-1"
     >
       {!known && (
         <option value={member.roleId} disabled>

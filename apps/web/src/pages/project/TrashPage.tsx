@@ -6,7 +6,7 @@ import { stagesApi } from '../../api/finance.js';
 import { trashApi } from '../../api/trash.js';
 import { useLoad } from '../../hooks/useLoad.js';
 import { formatDate } from '../../labels.js';
-import { Badge, btnPrimary, Notice, Section } from '../../ui.js';
+import { Badge, btnPrimary, LoadingBlock, Notice, Section } from '../../ui.js';
 import { SettledTrashPanel } from './BetFinancialPanels.js';
 import { useProject } from './ProjectContext.js';
 
@@ -59,15 +59,16 @@ export function ProjectTrashPage() {
       : can('stages.restore');
 
   return (
-    <Section title="Papelera del proyecto">
-      <p className="text-sm text-slate-600">
-        Las apuestas y etapas eliminadas se conservan al menos 90 días y se pueden restaurar. Pasado
-        ese plazo quedan elegibles para purga, pero no se eliminan automáticamente.
-      </p>
+    // "Eliminados" (Fase 11, §35): apuestas y etapas de ESTE proyecto, para distinguirla sin
+    // ambigüedad de "Proyectos eliminados" (la papelera global, proyectos completos).
+    <Section
+      title="Eliminados"
+      description="Apuestas y etapas eliminadas de este proyecto: se conservan al menos 90 días y se pueden restaurar."
+    >
       {error && <Notice tone="error">{error}</Notice>}
       {restored && <Notice tone="success">«{restored}» se restauró correctamente.</Notice>}
       {items.error && <Notice tone="error">{items.error}</Notice>}
-      {items.loading && !items.data && <p>Cargando papelera…</p>}
+      {items.loading && !items.data && <LoadingBlock lines={2} label="Cargando papelera…" />}
       {items.data && items.data.length === 0 && (
         <Notice tone="info">La papelera está vacía.</Notice>
       )}
@@ -75,7 +76,7 @@ export function ProjectTrashPage() {
         {items.data?.map((item) => (
           <li
             key={`${item.kind}:${item.id}`}
-            className="flex flex-wrap items-center justify-between gap-3 rounded border border-slate-200 bg-white p-4"
+            className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-surface p-4"
           >
             <div className="flex flex-col gap-1">
               <p className="flex flex-wrap items-center gap-2 font-medium">

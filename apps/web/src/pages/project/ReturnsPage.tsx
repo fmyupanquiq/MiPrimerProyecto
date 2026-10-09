@@ -1,9 +1,9 @@
-import { formatPEN } from '@letfer/shared';
+import { formatOdds, formatPEN } from '@letfer/shared';
 import { Link } from 'react-router';
 import { betsApi } from '../../api/bets.js';
 import { useLoad } from '../../hooks/useLoad.js';
 import { BET_TYPE_LABELS, formatDateTime } from '../../labels.js';
-import { Notice, Section } from '../../ui.js';
+import { LoadingBlock, Notice, PageHeader, Section } from '../../ui.js';
 import { useProject } from './ProjectContext.js';
 
 const deltaClass = (value: string) => (value.startsWith('-') ? 'text-red-700' : 'text-green-700');
@@ -24,6 +24,14 @@ export function ReturnsPage() {
 
   return (
     <>
+      <PageHeader
+        title="Retornos"
+        description="Confirma lo que calculó LetFer contra lo que de verdad pagó la casa."
+        help={{
+          label: 'Retornos',
+          text: 'Cuando una apuesta gana, LetFer calcula cuánto devuelve la casa (importe × cuota). Ese retorno calculado es provisional hasta que confirmas el retorno oficial que muestra la casa: si difieren, manda el oficial.',
+        }}
+      />
       <Section title="Retornos por confirmar">
         <p className="text-sm text-slate-600">
           Ganadas liquidadas con un retorno <strong>calculado</strong> (monto × cuota visible). Ya
@@ -35,7 +43,7 @@ export function ReturnsPage() {
           .
         </p>
         {pending.error && <Notice tone="error">{pending.error}</Notice>}
-        {pending.loading && !pending.data && <p>Cargando…</p>}
+        {pending.loading && !pending.data && <LoadingBlock lines={2} label="Cargando…" />}
         {pending.data && pending.data.length === 0 && (
           <Notice tone="success">No hay retornos pendientes de confirmar.</Notice>
         )}
@@ -78,7 +86,7 @@ export function ReturnsPage() {
           tickets reales); esta pantalla no cambia ningún dato.
         </p>
         {differences.error && <Notice tone="error">{differences.error}</Notice>}
-        {differences.loading && !differences.data && <p>Cargando…</p>}
+        {differences.loading && !differences.data && <LoadingBlock lines={2} label="Cargando…" />}
         {differences.data && differences.data.compared === 0 && (
           <Notice tone="info">Todavía no hay ganadas con retorno calculado y oficial.</Notice>
         )}
@@ -146,7 +154,7 @@ export function ReturnsPage() {
                         <td className="py-1 pr-3">{item.houseName}</td>
                         <td className="py-1 pr-3">{BET_TYPE_LABELS[item.betType]}</td>
                         <td className="py-1 pr-3">{formatPEN(item.effectiveAmount)}</td>
-                        <td className="py-1 pr-3">{item.visibleTotalOdds}</td>
+                        <td className="py-1 pr-3">{formatOdds(item.visibleTotalOdds)}</td>
                         <td className="py-1 pr-3">{formatPEN(item.calculatedRealizedReturn)}</td>
                         <td className="py-1 pr-3">{formatPEN(item.officialRealizedReturn)}</td>
                         <td className={`py-1 ${deltaClass(item.delta)}`}>

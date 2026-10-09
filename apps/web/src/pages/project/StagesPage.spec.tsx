@@ -54,7 +54,8 @@ describe('etapas del proyecto (§11, §12, §86)', () => {
     renderApp(STAGES_URL);
     expect(await screen.findByText('Etapa 1')).toBeTruthy();
     expect(screen.getByText('Activa')).toBeTruthy();
-    expect(screen.getByText('Unidad: S/ 10.00')).toBeTruthy();
+    expect(screen.getByText('S/ 10.00')).toBeTruthy();
+    expect(screen.getByText('Unidad de stake')).toBeTruthy();
   });
 
   it('sin permiso de escritura, solo se consulta', async () => {
@@ -206,7 +207,7 @@ describe('etapas del proyecto (§11, §12, §86)', () => {
       fireEvent.click(await screen.findByRole('button', { name: 'Enviar a la papelera' }));
       expect(calls.some((c) => c.method === 'POST')).toBe(false);
       const group = screen.getByRole('group', { name: 'Enviar Etapa 1 a la papelera' });
-      fireEvent.click(within(group).getByRole('button', { name: 'Confirmar' }));
+      fireEvent.click(within(group).getByRole('button', { name: 'Enviar a la papelera' }));
 
       expect(await screen.findByText(/se envió a la papelera/)).toBeTruthy();
     });

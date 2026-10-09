@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
   apiError,
   AUTH_STATE,
@@ -11,6 +11,12 @@ import {
   type Handler,
   type StubResponse,
 } from '../../test-utils.js';
+
+// Las páginas con gráficos se cargan de forma diferida (`lazy`): se precargan para que la primera
+// prueba no dependa del tiempo de transformación del módulo.
+beforeAll(async () => {
+  await import('./DashboardPage.js');
+});
 
 afterEach(() => {
   cleanup();
@@ -51,7 +57,7 @@ describe('diseño del proyecto', () => {
     expect(screen.getByText('Etapa: Etapa 1')).toBeTruthy();
     expect(screen.getByText('Activo')).toBeTruthy();
     const nav = screen.getByRole('navigation', { name: 'Proyecto' });
-    expect(within(nav).getByRole('link', { name: 'Resumen' }).getAttribute('href')).toBe(URL);
+    expect(within(nav).getByRole('link', { name: 'Dashboard' }).getAttribute('href')).toBe(URL);
     expect(within(nav).getByRole('link', { name: 'Miembros' }).getAttribute('href')).toBe(
       `${URL}/members`,
     );
@@ -76,8 +82,8 @@ describe('diseño del proyecto', () => {
     renderApp(URL);
 
     await screen.findByRole('heading', { name: 'Grupo Norte' });
-    expect(await screen.findByRole('heading', { name: 'Estado financiero actual' })).toBeTruthy();
-    expect(screen.getByRole('heading', { name: 'Análisis filtrado' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Dashboard' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Evolución del capital' })).toBeTruthy();
     expect(screen.queryByText(/se configuran? en la fase/)).toBeNull();
     expect(screen.queryByText(/etapas, la banca, las casas/)).toBeNull();
   });
@@ -102,7 +108,7 @@ describe('diseño del proyecto', () => {
   it('un fallo del servidor muestra el error genérico', async () => {
     open(URL, apiError(500, 'INTERNAL_ERROR'));
     renderApp(URL);
-    expect((await screen.findByRole('alert')).textContent).toMatch(/No se pudo completar/);
+    expect((await screen.findByRole('alert')).textContent).toMatch(/Ocurrió un error inesperado/);
   });
 
   it('desde Mis proyectos se entra al proyecto y se navega entre sus pestañas', async () => {
@@ -402,7 +408,7 @@ describe('configuración: estado del proyecto (F3)', () => {
     });
     fireEvent.click(within(group).getByRole('button', { name: 'Confirmar' }));
 
-    expect(await screen.findByRole('heading', { name: 'Papelera' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Proyectos eliminados' })).toBeTruthy();
     expect(calls.find((c) => c.path === `${URL}/trash`)!.body).toEqual({
       reason: 'Ya no lo usamos',
     });
@@ -415,7 +421,7 @@ describe('configuración: estado del proyecto (F3)', () => {
     renderApp(settings);
     fireEvent.click(await screen.findByRole('button', { name: 'Enviar a la papelera' }));
     fireEvent.click(within(await confirm()).getByRole('button', { name: 'Confirmar' }));
-    await screen.findByRole('heading', { name: 'Papelera' });
+    await screen.findByRole('heading', { name: 'Proyectos eliminados' });
     expect(calls.find((c) => c.path === `${URL}/trash`)!.body).toEqual({});
   });
 

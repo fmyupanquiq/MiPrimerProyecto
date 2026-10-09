@@ -142,4 +142,30 @@ describe('configuración inicial del proyecto (D1)', () => {
       ),
     );
   });
+
+  it('la banca inicial se suma en decimal (sin errores de coma flotante) y avisa de montos no válidos', async () => {
+    stubApi({
+      'GET /auth/me': AUTH_STATE,
+      'GET /projects': { status: 200, body: [] },
+      [`GET ${URL}`]: {
+        status: 200,
+        body: projectDetail({ setupComplete: false, activeStage: null }),
+      },
+    });
+    renderApp(`${URL}/setup`);
+    await screen.findByRole('form', { name: 'Configuración inicial' });
+    fireEvent.change(screen.getByLabelText('Monto inicial de la casa 1'), {
+      target: { value: '0.10' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Añadir casa' }));
+    fireEvent.change(screen.getByLabelText('Monto inicial de la casa 2'), {
+      target: { value: '0.20' },
+    });
+    expect(screen.getByText('S/ 0.30')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Monto inicial de la casa 2'), {
+      target: { value: '1,5' },
+    });
+    expect(screen.getByText('S/ 0.10')).toBeTruthy();
+    expect(screen.getByText(/montos con un formato no válido/)).toBeTruthy();
+  });
 });

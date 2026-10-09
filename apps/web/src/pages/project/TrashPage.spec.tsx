@@ -59,7 +59,7 @@ describe('papelera del proyecto (§36, §111.2)', () => {
       [`GET ${TRASH_URL}`]: { status: 200, body: [STAGE, BET] },
     });
     renderApp(TRASH_URL);
-    expect(await screen.findByRole('heading', { name: 'Papelera del proyecto' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Eliminados' })).toBeTruthy();
     expect(await screen.findByText('Real vs. Barça — Real gana')).toBeTruthy();
     expect(screen.getByText('Etapa vieja')).toBeTruthy();
     expect(screen.getByText(/por Olga Pérez/)).toBeTruthy();

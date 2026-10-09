@@ -1,4 +1,10 @@
-import { createStageSchema, formatPEN, type StageStatus, type StageSummary } from '@letfer/shared';
+import {
+  createStageSchema,
+  formatPEN,
+  multiplyMoney,
+  type StageStatus,
+  type StageSummary,
+} from '@letfer/shared';
 import { type FormEvent, useState } from 'react';
 import { Link } from 'react-router';
 import { describeApiError } from '../../api/errors.js';
@@ -6,7 +12,19 @@ import { stagesApi } from '../../api/finance.js';
 import { isReauthCancelled, useReauth } from '../../auth/ReauthContext.js';
 import { useLoad } from '../../hooks/useLoad.js';
 import { formatDate, STAGE_STATUS_LABELS } from '../../labels.js';
-import { Badge, btn, btnDanger, btnPrimary, inputClass, Notice, Section } from '../../ui.js';
+import { Help } from '../../glossary.js';
+import { PlusIcon } from '../../icons.js';
+import {
+  Badge,
+  btn,
+  btnDanger,
+  btnPrimary,
+  inputClass,
+  LoadingBlock,
+  Notice,
+  PageHeader,
+  Section,
+} from '../../ui.js';
 import { useProject } from './ProjectContext.js';
 
 const TONE: Record<StageStatus, 'green' | 'slate' | 'red'> = {
@@ -28,38 +46,57 @@ export function StagesPage() {
 
   if (!project.setupComplete) {
     return (
-      <Notice tone="info">
-        Completa primero la{' '}
-        <Link to={`/projects/${project.id}/setup`} className="underline">
-          configuración inicial del proyecto
-        </Link>
-        .
-      </Notice>
+      <>
+        <PageHeader title="Etapas" />
+        <Notice tone="info">
+          Completa primero la{' '}
+          <Link to={`/projects/${project.id}/setup`} className="font-medium underline">
+            configuración inicial del proyecto
+          </Link>
+          .
+        </Notice>
+      </>
     );
   }
 
   return (
     <>
+      <PageHeader
+        title="Etapas"
+        description="Cada etapa tiene su propia unidad de stake; solo una está activa."
+        help={{
+          label: 'Etapas',
+          text: 'Una etapa es un periodo de trabajo con su propia unidad de stake: el valor en soles de un stake 1. Solo una está activa; al empezar otra, la banca continúa (no se reinicia).',
+        }}
+        actions={
+          can('stages.create') &&
+          !showForm &&
+          !showTrashed && (
+            <button type="button" className={btnPrimary} onClick={() => setShowForm(true)}>
+              <PlusIcon className="h-4 w-4" />
+              Nueva etapa
+            </button>
+          )
+        }
+      />
       {notice && <Notice tone="success">{notice}</Notice>}
-      <Section title="Etapas">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          {canSeeTrashed && (
-            <label className="flex items-center gap-2 text-sm">
+      <Section
+        title="Etapas del proyecto"
+        description="Ejemplo: con unidad S/ 10, una apuesta de stake 3 son S/ 30."
+        action={
+          canSeeTrashed && (
+            <label className="flex items-center gap-2 text-sm text-slate-600">
               <input
                 type="checkbox"
                 checked={showTrashed}
                 onChange={(event) => setShowTrashed(event.target.checked)}
+                className="h-4 w-4 accent-violet-600"
               />
               Ver la papelera
             </label>
-          )}
-          {can('stages.create') && !showForm && (
-            <button type="button" className={btnPrimary} onClick={() => setShowForm(true)}>
-              Nueva etapa
-            </button>
-          )}
-        </div>
-
+          )
+        }
+      >
         {showForm && (
           <NewStageForm
             onDone={(message) => {
@@ -72,7 +109,7 @@ export function StagesPage() {
         )}
 
         {stages.error && <Notice tone="error">{stages.error}</Notice>}
-        {stages.loading && !stages.data && <p>Cargando etapas…</p>}
+        {stages.loading && !stages.data && <LoadingBlock lines={2} label="Cargando etapas…" />}
         {stages.data && stages.data.length === 0 && (
           <Notice tone="info">{showTrashed ? 'La papelera está vacía.' : 'No hay etapas.'}</Notice>
         )}
@@ -131,15 +168,19 @@ function NewStageForm({
   return (
     <form
       onSubmit={(event) => void onSubmit(event)}
-      className="flex flex-col gap-3 rounded border border-slate-200 p-3"
+      className="flex flex-col gap-3 rounded-xl border border-violet-200 bg-slate-50 p-4"
       aria-label="Nueva etapa"
       noValidate
     >
-      <p className="text-sm text-slate-600">
-        Crear una etapa nueva cierra la etapa activa actual y activa esta.
-      </p>
+      <div>
+        <h3 className="font-semibold">Nueva etapa</h3>
+        <p className="text-sm text-slate-600">
+          Al crearla se cierra la etapa activa actual y esta pasa a ser la activa. Las apuestas
+          nuevas usarán su unidad; las anteriores conservan la suya.
+        </p>
+      </div>
       <div className="grid gap-3 sm:grid-cols-2">
-        <label className="flex flex-col gap-1 text-sm font-medium">
+        <label className="flex flex-col gap-1.5 text-sm font-medium">
           Nombre (opcional)
           <input
             value={name}
@@ -148,13 +189,13 @@ function NewStageForm({
             placeholder="Se autogenera si lo dejas vacío"
           />
         </label>
-        <label className="flex flex-col gap-1 text-sm font-medium">
+        <label className="flex flex-col gap-1.5 text-sm font-medium">
           Unidad de stake
           <input
             value={unitStake}
             onChange={(event) => setUnitStake(event.target.value)}
             className={inputClass}
-            placeholder="10.00"
+            placeholder="10.00 (soles por stake 1)"
           />
         </label>
       </div>
@@ -215,17 +256,35 @@ function StageRow({
   }
 
   return (
-    <li className="rounded border border-slate-200 p-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <p className="font-medium">
-            {stage.name}{' '}
-            <Badge tone={TONE[stage.status]}>{STAGE_STATUS_LABELS[stage.status]}</Badge>
-          </p>
-          <p className="text-sm text-slate-600">Unidad: {formatPEN(stage.unitStake)}</p>
-          <p className="text-xs text-slate-500">Creada el {formatDate(stage.createdAt)}</p>
+    <li
+      className={`rounded-xl border p-4 ${
+        stage.status === 'ACTIVE'
+          ? 'border-violet-300 bg-violet-50/40 ring-1 ring-violet-200 ring-inset'
+          : 'border-slate-200'
+      }`}
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-4">
+          <div className="min-w-0">
+            <p className="flex flex-wrap items-center gap-2 font-semibold">
+              {stage.name}
+              <Badge tone={TONE[stage.status]}>{STAGE_STATUS_LABELS[stage.status]}</Badge>
+            </p>
+            <p className="text-xs text-slate-500">Creada el {formatDate(stage.createdAt)}</p>
+          </div>
+          <div className="border-l border-slate-200 pl-4">
+            <p className="flex items-center gap-1 text-xs text-slate-500">
+              Unidad de stake <Help term="unit" />
+            </p>
+            <p className="font-semibold tabular-nums">{formatPEN(stage.unitStake)}</p>
+            {/* Ejemplo educativo (Fase 11, §13): hace tangible qué significa la unidad, sin
+                convertir la tarjeta en una calculadora. */}
+            <p className="text-xs text-slate-500 tabular-nums">
+              10 stakes = {formatPEN(multiplyMoney(stage.unitStake, '10'))}
+            </p>
+          </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {!showTrashed && stage.status !== 'TRASHED' && can('stages.correct_unit') && (
             <button type="button" className={btn} onClick={() => setCorrecting((v) => !v)}>
               Corregir unidad
@@ -251,13 +310,15 @@ function StageRow({
 
       {confirmingTrash && (
         <div
-          className="mt-2 flex items-center gap-2"
+          className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-900"
           role="group"
           aria-label={`Enviar ${stage.name} a la papelera`}
         >
-          <p className="text-sm">¿Enviar «{stage.name}» a la papelera?</p>
+          <p className="w-full">
+            ¿Enviar «{stage.name}» a la papelera? Se podrá restaurar desde la papelera.
+          </p>
           <button type="button" className={btnDanger} disabled={busy} onClick={() => void trash()}>
-            Confirmar
+            {busy ? 'Enviando…' : 'Enviar a la papelera'}
           </button>
           <button type="button" className={btn} onClick={() => setConfirmingTrash(false)}>
             Cancelar
@@ -334,14 +395,17 @@ function CorrectUnitForm({
   }
 
   return (
-    <div className="mt-3 flex flex-col gap-3 rounded border border-slate-200 bg-slate-50 p-3">
+    <div className="mt-3 flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
       {!preview ? (
         <form
           onSubmit={(event) => void onPreview(event)}
           className="flex flex-wrap items-end gap-2"
           noValidate
         >
-          <label className="flex flex-col gap-1 text-sm font-medium">
+          <p className="w-full text-sm text-slate-600">
+            Corrige la unidad si se configuró mal. Antes de aplicar verás cuántas apuestas cambian.
+          </p>
+          <label className="flex flex-col gap-1.5 text-sm font-medium">
             Nueva unidad
             <input
               value={unitStake}

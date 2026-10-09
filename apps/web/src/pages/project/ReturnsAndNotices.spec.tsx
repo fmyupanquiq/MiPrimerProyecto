@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, screen, within } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   AUTH_STATE,
   OWNER_PERMISSIONS,
@@ -9,6 +9,12 @@ import {
   stubApi,
   type Handler,
 } from '../../test-utils.js';
+
+// Las páginas con gráficos se cargan de forma diferida (`lazy`): se precargan para que la primera
+// prueba no dependa del tiempo de transformación del módulo.
+beforeAll(async () => {
+  await import('./DashboardPage.js');
+});
 
 beforeEach(() => {
   // jsdom no implementa ResizeObserver; Recharts lo usa para medir el contenedor responsivo.
@@ -74,6 +80,7 @@ function openDashboard(
     [`GET ${URL}/dashboard/analysis`]: { status: 200, body: analysis(unconfirmed) },
     [`GET ${URL}/dashboard/bankroll-chart`]: { status: 200, body: emptyChart },
     [`GET ${URL}/dashboard/performance-chart`]: { status: 200, body: emptyPerformance },
+    [`GET ${URL}/bets`]: { status: 200, body: [] },
   });
 }
 
@@ -103,7 +110,7 @@ describe('aviso de retornos no confirmados en el dashboard (D-A6, §112.6)', () 
   it('sin retornos provisionales no muestra ningún aviso', async () => {
     openDashboard(0, { count: 0, profitLoss: '0.00' });
     renderApp(URL);
-    await screen.findByText('Estado financiero actual');
+    await screen.findByLabelText('Ganancia total');
     expect(screen.queryByText(/con retorno calculado/)).toBeNull();
   });
 });
@@ -167,7 +174,9 @@ describe('retornos calculados y oficiales (§77, §112.2)', () => {
     expect(within(byHouse).getByText('Betano')).toBeTruthy();
     const items = screen.getByRole('table', { name: 'Apuestas con diferencia' });
     expect(within(items).getByText('S/ 38.50')).toBeTruthy();
-    expect(within(items).getByText('1.950000')).toBeTruthy();
+    // La cuota visible llega de la API con el relleno de NUMERIC(12,6) ("1.950000"); la interfaz
+    // la presenta con el formatter centralizado, nunca más de 2 decimales (Fase 10.9, §7-§8).
+    expect(within(items).getByText('1.95')).toBeTruthy();
     expect(screen.getByText(/no cambia ningún dato/)).toBeTruthy();
   });
 
