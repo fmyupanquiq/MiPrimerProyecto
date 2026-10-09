@@ -26,6 +26,7 @@ import type {
   UserStatus,
   WithdrawalStatus,
 } from '@letfer/shared';
+import { getDisplayTimeZone } from './time-zone.js';
 
 /** Nombres visibles de los roles de sistema (los personalizados usan su propio nombre). */
 const ROLE_LABELS: Record<string, string> = {
@@ -222,6 +223,7 @@ export const TICKET_FIELD_LABELS: Record<keyof TicketExtraction, string> = {
   placedTime: 'Hora de colocación',
   betType: 'Tipo de apuesta',
   selections: 'Selecciones',
+  stake: 'Stake',
   officialTotalOdds: 'Cuota total',
   officialAmount: 'Monto apostado',
   officialPotentialReturn: 'Retorno potencial',
@@ -235,13 +237,37 @@ export const DATE_FORMAT_LABELS = {
   'YYYY-MM-DD': 'AAAA-MM-DD',
 } as const;
 
-/** Fecha y hora legibles en el idioma de la persona usuaria. */
+/** Fecha y hora legibles, en la zona del proyecto (§93; fuera de un proyecto, la del navegador). */
 export function formatDateTime(iso: string): string {
-  return new Date(iso).toLocaleString('es-PE', { dateStyle: 'medium', timeStyle: 'short' });
+  return new Date(iso).toLocaleString('es-PE', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+    timeZone: getDisplayTimeZone(),
+  });
 }
 
 export function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('es-PE', { dateStyle: 'medium' });
+  return new Date(iso).toLocaleDateString('es-PE', {
+    dateStyle: 'medium',
+    timeZone: getDisplayTimeZone(),
+  });
+}
+
+/**
+ * Momento de una apuesta: con hora si se conoce; si no, solo la fecha (§93: no se inventa una
+ * hora como si fuese oficial, p. ej. las 12:00 técnicas de una importación, §113.4).
+ */
+export function formatMoment(iso: string, timeKnown: boolean): string {
+  return timeKnown ? formatDateTime(iso) : `${formatDate(iso)} (hora desconocida)`;
+}
+
+/** Fecha corta (día y mes) para los ejes de los gráficos. */
+export function formatShortDate(iso: string, month: 'short' | '2-digit' = 'short'): string {
+  return new Date(iso).toLocaleDateString('es-PE', {
+    day: '2-digit',
+    month,
+    timeZone: getDisplayTimeZone(),
+  });
 }
 
 /** Zonas horarias IANA disponibles en el navegador (con la de Lima siempre presente). */
