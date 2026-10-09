@@ -14,7 +14,16 @@ import { describeApiError } from '../api/errors.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { useLoad } from '../hooks/useLoad.js';
 import { DATE_FORMAT_LABELS, roleLabel, timeZones } from '../labels.js';
-import { btn, btnPrimary, inputClass, Notice, ProjectStatusBadge } from '../ui.js';
+import { FolderIcon, PlusIcon } from '../icons.js';
+import {
+  btn,
+  btnPrimary,
+  EmptyState,
+  inputClass,
+  LoadingBlock,
+  Notice,
+  ProjectStatusBadge,
+} from '../ui.js';
 
 /** "Mis proyectos": los proyectos en los que participa la persona y el alta de uno nuevo (§105.1). */
 export function ProjectsPage() {
@@ -26,10 +35,17 @@ export function ProjectsPage() {
 
   return (
     <>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold">Mis proyectos</h1>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="max-w-3xl">
+          <h1 className="text-2xl font-semibold tracking-tight">Mis proyectos</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Un proyecto agrupa una banca de apuestas: sus casas, sus etapas y todas sus apuestas.
+            Puedes trabajar en varios y compartirlos con otras personas.
+          </p>
+        </div>
         {can('projects.create') && !showForm && (
           <button type="button" className={btnPrimary} onClick={() => setShowForm(true)}>
+            <PlusIcon className="h-4 w-4" />
             Nuevo proyecto
           </button>
         )}
@@ -38,24 +54,52 @@ export function ProjectsPage() {
       {showForm && <NewProjectForm onCancel={() => setShowForm(false)} />}
 
       {can('projects.list_all') && (
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={all} onChange={(event) => setAll(event.target.checked)} />
+        <label className="flex items-center gap-2 text-sm text-slate-600">
+          <input
+            type="checkbox"
+            checked={all}
+            onChange={(event) => setAll(event.target.checked)}
+            className="h-4 w-4 accent-violet-600"
+          />
           Ver todos los proyectos del sistema
         </label>
       )}
 
       {projects.error && <Notice tone="error">{projects.error}</Notice>}
-      {projects.loading && !projects.data && <p>Cargando proyectos…</p>}
+      {projects.loading && !projects.data && <LoadingBlock lines={2} label="Cargando proyectos…" />}
       {projects.data && projects.data.length === 0 && (
-        <Notice tone="info">
-          Todavía no participas en ningún proyecto. Crea uno nuevo o acepta una invitación.
-        </Notice>
+        <div role="status">
+          <EmptyState
+            icon={<FolderIcon />}
+            title="Todavía no participas en ningún proyecto."
+            text={
+              <>
+                Crea uno nuevo o acepta una invitación. Después configurarás la unidad de stake, tus
+                casas y la banca inicial, y ya podrás registrar apuestas.
+              </>
+            }
+            action={
+              can('projects.create') &&
+              !showForm && (
+                <button type="button" className={btnPrimary} onClick={() => setShowForm(true)}>
+                  Crear mi primer proyecto
+                </button>
+              )
+            }
+          />
+        </div>
       )}
       <ul className="grid gap-3 sm:grid-cols-2">
         {projects.data?.map((project) => (
-          <li key={project.id} className="rounded border border-slate-200 bg-white p-4">
+          <li
+            key={project.id}
+            className="rounded-2xl border border-slate-200 bg-surface p-5 shadow-sm transition-colors hover:border-violet-300"
+          >
             <div className="flex items-start justify-between gap-2">
-              <Link to={`/projects/${project.id}`} className="text-lg font-medium underline">
+              <Link
+                to={`/projects/${project.id}`}
+                className="text-lg font-semibold text-slate-900 hover:text-violet-700 hover:underline"
+              >
                 {project.name}
               </Link>
               <ProjectStatusBadge status={project.status} />
@@ -104,7 +148,7 @@ function NewProjectForm({ onCancel }: { onCancel: () => void }) {
   return (
     <form
       onSubmit={(event) => void onSubmit(event)}
-      className="flex flex-col gap-3 rounded border border-slate-200 bg-white p-4"
+      className="flex flex-col gap-3 rounded-2xl border border-violet-200 bg-surface p-5 shadow-sm"
       aria-label="Nuevo proyecto"
       noValidate
     >
@@ -113,7 +157,7 @@ function NewProjectForm({ onCancel }: { onCancel: () => void }) {
         Serás el propietario y Administrador del proyecto. La etapa, la unidad, la banca y las casas
         se configuran después.
       </p>
-      <label className="flex flex-col gap-1 text-sm font-medium">
+      <label className="flex flex-col gap-1.5 text-sm font-medium">
         Nombre
         <input
           value={name}
@@ -122,7 +166,7 @@ function NewProjectForm({ onCancel }: { onCancel: () => void }) {
           className={inputClass}
         />
       </label>
-      <label className="flex flex-col gap-1 text-sm font-medium">
+      <label className="flex flex-col gap-1.5 text-sm font-medium">
         Descripción (opcional)
         <textarea
           value={description}
@@ -133,7 +177,7 @@ function NewProjectForm({ onCancel }: { onCancel: () => void }) {
         />
       </label>
       <div className="grid gap-3 sm:grid-cols-2">
-        <label className="flex flex-col gap-1 text-sm font-medium">
+        <label className="flex flex-col gap-1.5 text-sm font-medium">
           Zona horaria
           <input
             list="time-zones"
@@ -147,7 +191,7 @@ function NewProjectForm({ onCancel }: { onCancel: () => void }) {
             ))}
           </datalist>
         </label>
-        <label className="flex flex-col gap-1 text-sm font-medium">
+        <label className="flex flex-col gap-1.5 text-sm font-medium">
           Formato de fecha
           <select
             value={dateFormat}

@@ -60,18 +60,18 @@ describe('Mis proyectos', () => {
   it('muestra un error si no se pueden cargar', async () => {
     stubApi({ 'GET /auth/me': AUTH_STATE, 'GET /projects': apiError(500, 'INTERNAL_ERROR') });
     renderApp('/');
-    expect((await screen.findByRole('alert')).textContent).toMatch(/No se pudo completar/);
+    expect((await screen.findByRole('alert')).textContent).toMatch(/Ocurrió un error inesperado/);
   });
 
-  it('el enlace "Papelera" lleva a la papelera', async () => {
+  it('el enlace "Proyectos eliminados" lleva a la papelera de proyectos', async () => {
     stubApi({
       'GET /auth/me': AUTH_STATE,
       'GET /projects': { status: 200, body: [] },
       'GET /projects/trash': { status: 200, body: [] },
     });
     renderApp('/');
-    fireEvent.click(await screen.findByRole('link', { name: 'Papelera' }));
-    expect(await screen.findByRole('heading', { name: 'Papelera' })).toBeTruthy();
+    fireEvent.click(await screen.findByRole('link', { name: 'Proyectos eliminados' }));
+    expect(await screen.findByRole('heading', { name: 'Proyectos eliminados' })).toBeTruthy();
   });
 
   describe('crear un proyecto (F1: cualquier usuario con rol USER)', () => {
@@ -217,7 +217,7 @@ describe('Mis proyectos', () => {
   });
 });
 
-describe('Papelera de proyectos', () => {
+describe('Proyectos eliminados (papelera)', () => {
   const trashed = projectSummary({
     name: 'Grupo viejo',
     status: 'TRASHED',
@@ -426,7 +426,7 @@ describe('volver a la página pedida tras iniciar sesión', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'Entrar' }));
 
-    expect(await screen.findByRole('heading', { name: 'Papelera' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Proyectos eliminados' })).toBeTruthy();
   });
 
   it('safeNextPath solo admite rutas internas', () => {

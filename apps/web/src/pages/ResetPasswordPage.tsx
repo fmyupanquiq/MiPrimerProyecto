@@ -69,7 +69,7 @@ export function ResetPasswordPage() {
   if (done) {
     return (
       <AuthLayout title="Contraseña actualizada">
-        <p role="status" className="rounded border border-slate-300 bg-slate-50 p-3 text-sm">
+        <p role="status" className="rounded-xl border border-slate-300 bg-slate-50 p-3 text-sm">
           Tu contraseña se restableció y se cerraron tus sesiones abiertas. Ya puedes iniciar
           sesión.
         </p>

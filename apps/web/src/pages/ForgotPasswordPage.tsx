@@ -36,7 +36,7 @@ export function ForgotPasswordPage() {
     <AuthLayout title="Recuperar contraseña">
       {sent ? (
         // El mensaje es el mismo exista o no el correo: la API tampoco lo revela (§104.4).
-        <p role="status" className="rounded border border-slate-300 bg-slate-50 p-3 text-sm">
+        <p role="status" className="rounded-xl border border-slate-300 bg-slate-50 p-3 text-sm">
           Si el correo está registrado, recibirás un enlace para restablecer tu contraseña. El
           enlace es válido durante 1 hora.
         </p>

@@ -12,7 +12,7 @@ import {
 import { authApi } from '../api/auth.js';
 import { ApiError } from '../api/client.js';
 import { describeApiError } from '../api/errors.js';
-import { buttonClass, FormError, inputClass } from '../pages/AuthLayout.js';
+import { buttonClass, FormError, inputClass, secondaryButtonClass } from '../pages/AuthLayout.js';
 
 /** La persona canceló la confirmación de contraseña: no es un error que deba mostrarse. */
 export class ReauthCancelledError extends Error {
@@ -123,13 +123,13 @@ function ReauthDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
       <form
         role="dialog"
         aria-modal="true"
         aria-labelledby="reauth-title"
         onSubmit={(event) => void onSubmit(event)}
-        className="flex w-full max-w-sm flex-col gap-4 rounded bg-white p-6 shadow-lg"
+        className="flex w-full max-w-sm flex-col gap-4 rounded-2xl border border-slate-200 bg-surface p-6 shadow-xl"
         noValidate
       >
         <h2 id="reauth-title" className="text-lg font-semibold">
@@ -158,7 +158,7 @@ function ReauthDialog({
             type="button"
             onClick={onCancel}
             disabled={submitting}
-            className="w-full rounded border border-slate-300 px-4 py-2"
+            className={secondaryButtonClass}
           >
             Cancelar
           </button>

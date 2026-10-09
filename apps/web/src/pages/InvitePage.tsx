@@ -7,9 +7,17 @@ import { invitationsApi } from '../api/projects.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { useLoad } from '../hooks/useLoad.js';
 import { formatDateTime, roleLabel } from '../labels.js';
-import { AuthLayout, buttonClass, FormError, inputClass, linkClass } from './AuthLayout.js';
+import { chipClass } from '../ui.js';
+import {
+  AuthLayout,
+  buttonClass,
+  FormError,
+  inputClass,
+  linkClass,
+  secondaryButtonClass,
+} from './AuthLayout.js';
 
-const secondaryButton = 'w-full rounded border border-slate-300 px-4 py-2 disabled:opacity-50';
+const secondaryButton = secondaryButtonClass;
 
 /**
  * Página de una invitación (§84, §105.7). Quien recibe el enlace ve a qué proyecto y con qué rol lo
@@ -73,7 +81,7 @@ function InvitationCard({ token, preview }: { token: string; preview: Invitation
     <AuthLayout title="Invitación a un proyecto">
       <section
         aria-label="Invitación"
-        className="flex flex-col gap-1 rounded border border-slate-200 bg-white p-4"
+        className="flex flex-col gap-1 rounded-xl border border-slate-200 bg-surface p-4"
       >
         <p>
           <strong>{preview.invitedBy}</strong> te invitó al proyecto{' '}
@@ -148,7 +156,7 @@ function Decision({ token, justRegistered }: { token: string; justRegistered: bo
   if (rejected) {
     return (
       <>
-        <p role="status" className="rounded border border-slate-300 bg-slate-50 p-3 text-sm">
+        <p role="status" className="rounded-xl border border-slate-300 bg-slate-50 p-3 text-sm">
           Rechazaste la invitación. Si cambias de opinión, el enlace seguirá funcionando mientras
           esté vigente.
         </p>
@@ -166,7 +174,7 @@ function Decision({ token, justRegistered }: { token: string; justRegistered: bo
       {justRegistered && (
         <p
           role="status"
-          className="rounded border border-green-300 bg-green-50 p-3 text-sm text-green-800"
+          className="rounded-xl border border-green-200 bg-green-50 p-3 text-sm text-green-800"
         >
           Tu cuenta se creó. Para entrar al proyecto, acepta la invitación.
         </p>
@@ -223,7 +231,7 @@ function SignInOrRegister({
           type="button"
           aria-pressed={mode === 'register'}
           onClick={() => setMode('register')}
-          className={`rounded border px-3 py-2 text-sm ${mode === 'register' ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300'}`}
+          className={chipClass(mode === 'register')}
         >
           Crear cuenta
         </button>
@@ -231,7 +239,7 @@ function SignInOrRegister({
           type="button"
           aria-pressed={mode === 'login'}
           onClick={() => setMode('login')}
-          className={`rounded border px-3 py-2 text-sm ${mode === 'login' ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300'}`}
+          className={chipClass(mode === 'login')}
         >
           Ya tengo cuenta
         </button>
