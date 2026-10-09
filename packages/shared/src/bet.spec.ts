@@ -63,6 +63,39 @@ describe('createBetSchema', () => {
     const result = createBetSchema.safeParse({ ...validBet, officialAmount: '0.00' });
     expect(result.success).toBe(false);
   });
+
+  // Fase 10.6: una Creada puede mostrar varias selecciones con solo la cuota total (§90). El
+  // esquema admite que falte `visibleOdds`; qué tipos la exigen de verdad lo decide la API
+  // (`BetsService.assertSelectionOddsRequired`, según `betType` derivado de la estructura real).
+  describe('visibleOdds de una selección (Fase 10.6, Creada sin cuotas individuales)', () => {
+    it('la cuota individual es opcional: puede faltar sin invalidar la apuesta', () => {
+      const withoutOdds = {
+        eventGroup: validSelection.eventGroup,
+        position: validSelection.position,
+        event: validSelection.event,
+        selection: validSelection.selection,
+      };
+      const result = createBetSchema.safeParse({ ...validBet, selections: [withoutOdds] });
+      expect(result.success).toBe(true);
+      expect(result.success && result.data.selections[0]!.visibleOdds).toBeUndefined();
+    });
+
+    it('si se indica, sigue debiendo ser una cuota válida (no se acepta cualquier texto)', () => {
+      const result = createBetSchema.safeParse({
+        ...validBet,
+        selections: [{ ...validSelection, visibleOdds: 'no es una cuota' }],
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it('una cadena vacía no equivale a "ausente": sigue siendo inválida', () => {
+      const result = createBetSchema.safeParse({
+        ...validBet,
+        selections: [{ ...validSelection, visibleOdds: '' }],
+      });
+      expect(result.success).toBe(false);
+    });
+  });
 });
 
 describe('updateBetSchema', () => {

@@ -23,7 +23,7 @@ export interface HouseSummary {
   status: HouseStatus;
   /** Reconstruido desde el ledger en cada consulta (D3): nunca es una segunda fuente de verdad. */
   balance: MoneyString;
-  /** Comprometido en retiros pendientes de esta casa (§17, §92; los de apuestas llegan en la Fase 4). */
+  /** Comprometido en apuestas pendientes y retiros por aprobar de esta casa (§17, §92). */
   committed: MoneyString;
   /** `balance - committed`; nunca negativo (§17). */
   available: MoneyString;

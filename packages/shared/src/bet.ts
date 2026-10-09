@@ -57,7 +57,12 @@ const selectionInputSchema = z.object({
   event: z.string().trim().min(1).max(TEXT_MAX_LENGTH),
   market: z.string().trim().max(TEXT_MAX_LENGTH).optional(),
   selection: z.string().trim().min(1).max(TEXT_MAX_LENGTH),
-  visibleOdds: oddsInputSchema(),
+  /**
+   * Cuota individual de la selección. Opcional: una casa puede mostrar una apuesta Creada con
+   * varias selecciones y solo la cuota total (§90, Fase 10.6); el backend exige esta cuota en
+   * Simple y Múltiple, nunca la inventa ni la distribuye cuando falta.
+   */
+  visibleOdds: oddsInputSchema().optional(),
 });
 export type BetSelectionInput = z.infer<typeof selectionInputSchema>;
 
@@ -68,6 +73,46 @@ const dateTimeSchema = z.iso.datetime({ offset: true });
  * del proyecto (§93). El backend deriva/valida `betType` a partir de la estructura real de
  * `selections` (§90); no se confía en lo que declare el cliente.
  */
+/** Campos de una liquidación, comunes a `settleBetSchema` y al alta con resultado (§21, §77). */
+const betSettlementFields = z.object({
+  status: z.enum(['WON', 'LOST', 'VOID', 'CASHOUT']),
+  officialRealizedReturn: moneyInputSchema().optional(),
+  settledAt: dateTimeSchema,
+  settledTimeKnown: z.boolean().default(true),
+});
+
+/** El retorno según el estado: una perdida no lleva; un cash out lo exige. */
+function refineSettlementReturn(
+  value: { status: string; officialRealizedReturn?: string | undefined },
+  ctx: z.RefinementCtx,
+): void {
+  if (value.status === 'LOST') {
+    if (value.officialRealizedReturn !== undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['officialRealizedReturn'],
+        message: 'Una apuesta perdida no tiene retorno: no indiques un monto.',
+      });
+    }
+    return;
+  }
+  if (value.status === 'CASHOUT' && value.officialRealizedReturn === undefined) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['officialRealizedReturn'],
+      message: 'Un cash out exige el retorno oficial realizado.',
+    });
+  }
+}
+
+/**
+ * Resultado indicado al registrar (Fase 10.3): la API registra y liquida la apuesta en una sola
+ * transacción, con las mismas reglas que `settleBetSchema` (el monto es el del propio alta). Exige
+ * además el permiso de liquidar.
+ */
+export const betCreationSettlementSchema = betSettlementFields.superRefine(refineSettlementReturn);
+export type BetCreationSettlementInput = z.infer<typeof betCreationSettlementSchema>;
+
 export const createBetSchema = z.object({
   houseId: z.uuid(),
   stageId: z.uuid().optional(),
@@ -87,6 +132,8 @@ export const createBetSchema = z.object({
    * segundo flujo de escritura para tickets/IA (§51).
    */
   ticketId: z.uuid().optional(),
+  /** Si se indica, la apuesta se registra ya liquidada (Fase 10.3); sin él, queda `PENDING`. */
+  settlement: betCreationSettlementSchema.optional(),
 });
 export type CreateBetInput = z.infer<typeof createBetSchema>;
 
@@ -95,6 +142,7 @@ export type CreateBetInput = z.infer<typeof createBetSchema>;
  * apuesta `PENDING` admite todo; una ya liquidada, solo los campos no financieros (§107.9).
  */
 export const updateBetSchema = createBetSchema
+  .omit({ settlement: true })
   .partial()
   .extend({ version: z.number().int().positive() });
 export type UpdateBetInput = z.infer<typeof updateBetSchema>;
@@ -108,34 +156,12 @@ export type UpdateBetInput = z.infer<typeof updateBetSchema>;
  * - `LOST`: no lleva retorno (D-B2: se determina por su ausencia).
  * `officialAmount` confirma el monto en el mismo paso si aún no era oficial (§76).
  */
-export const settleBetSchema = z
-  .object({
-    status: z.enum(['WON', 'LOST', 'VOID', 'CASHOUT']),
-    officialRealizedReturn: moneyInputSchema().optional(),
+export const settleBetSchema = betSettlementFields
+  .extend({
     officialAmount: moneyInputSchema({ positive: true }).optional(),
-    settledAt: dateTimeSchema,
-    settledTimeKnown: z.boolean().default(true),
     version: z.number().int().positive(),
   })
-  .superRefine((value, ctx) => {
-    if (value.status === 'LOST') {
-      if (value.officialRealizedReturn !== undefined) {
-        ctx.addIssue({
-          code: 'custom',
-          path: ['officialRealizedReturn'],
-          message: 'Una apuesta perdida no tiene retorno: no indiques un monto.',
-        });
-      }
-      return;
-    }
-    if (value.status === 'CASHOUT' && value.officialRealizedReturn === undefined) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['officialRealizedReturn'],
-        message: 'Un cash out exige el retorno oficial realizado.',
-      });
-    }
-  });
+  .superRefine(refineSettlementReturn);
 export type SettleBetInput = z.infer<typeof settleBetSchema>;
 
 /**
@@ -310,6 +336,12 @@ export interface BetSummary {
   deletedAt: string | null;
   purgeEligibleAt: string | null;
   version: number;
+  /** Partidos/eventos de sus selecciones, sin repetir y en orden (para leerla en la lista). */
+  events: string[];
+  /** Deportes de sus selecciones, sin repetir y en orden; vacío si ninguna lo indica. */
+  sports: string[];
+  /** Tickets vinculados (§110): la lista sabe si hay uno que ver sin cargar el detalle. */
+  ticketCount: number;
 }
 
 export interface BetDetail extends BetSummary {
