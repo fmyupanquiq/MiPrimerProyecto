@@ -1,7 +1,8 @@
-import type {
-  TicketReader,
-  TicketReaderInput,
-  TicketReaderResult,
+import {
+  TicketReaderUnavailableError,
+  type TicketReader,
+  type TicketReaderInput,
+  type TicketReaderResult,
 } from '../../src/ai/ticket-reader.js';
 
 /**
@@ -12,6 +13,7 @@ import type {
 export class FakeTicketReader implements TicketReader {
   private queue: TicketReaderResult[] = [];
   private nextError: string | undefined;
+  private nextUnavailable = false;
   calls: TicketReaderInput[] = [];
 
   /** La próxima llamada a `analyze()` devolverá este resultado (o uno por defecto si no hay ninguno). */
@@ -30,8 +32,19 @@ export class FakeTicketReader implements TicketReader {
     this.nextError = message;
   }
 
+  /** La próxima llamada lanzará "IA no disponible" (desactivada o sin clave), sin tocar proveedor. */
+  unavailableNext(): void {
+    this.nextUnavailable = true;
+  }
+
   analyze(input: TicketReaderInput): Promise<TicketReaderResult> {
     this.calls.push(input);
+    if (this.nextUnavailable) {
+      this.nextUnavailable = false;
+      return Promise.reject(
+        new TicketReaderUnavailableError('ANTHROPIC_API_KEY no está configurada: detalle interno'),
+      );
+    }
     if (this.nextError) {
       const message = this.nextError;
       this.nextError = undefined;

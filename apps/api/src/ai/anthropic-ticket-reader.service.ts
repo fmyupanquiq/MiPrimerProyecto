@@ -2,7 +2,12 @@ import Anthropic from '@anthropic-ai/sdk';
 import { Inject, Injectable } from '@nestjs/common';
 import type { TicketConfidenceByField, TicketExtraction } from '@letfer/shared';
 import { APP_CONFIG, type AppConfig } from '../config/app-config.js';
-import type { TicketReader, TicketReaderInput, TicketReaderResult } from './ticket-reader.js';
+import {
+  TicketReaderUnavailableError,
+  type TicketReader,
+  type TicketReaderInput,
+  type TicketReaderResult,
+} from './ticket-reader.js';
 
 const TOOL_NAME = 'record_ticket_extraction';
 
@@ -222,12 +227,20 @@ export class AnthropicTicketReader implements TicketReader {
    */
   private clientOrThrow(): Anthropic {
     if (!this.config.tickets.aiEnabled) {
-      throw new Error('El análisis de tickets por IA está desactivado en este entorno.');
+      throw new TicketReaderUnavailableError(
+        'El análisis de tickets por IA está desactivado en este entorno.',
+      );
     }
     if (!this.config.tickets.anthropicApiKey) {
-      throw new Error('ANTHROPIC_API_KEY no está configurada: no se puede analizar el ticket.');
+      throw new TicketReaderUnavailableError(
+        'ANTHROPIC_API_KEY no está configurada: no se puede analizar el ticket.',
+      );
     }
-    this.client ??= new Anthropic({ apiKey: this.config.tickets.anthropicApiKey });
+    this.client ??= new Anthropic({
+      apiKey: this.config.tickets.anthropicApiKey,
+      timeout: this.config.tickets.aiTimeoutMs,
+      maxRetries: this.config.tickets.aiMaxRetries,
+    });
     return this.client;
   }
 }

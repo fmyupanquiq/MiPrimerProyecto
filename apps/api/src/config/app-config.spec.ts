@@ -36,6 +36,8 @@ describe('loadConfig', () => {
       aiEnabled: true,
       maxAnalysesPerTicket: 5,
       maxAnalysesPerProjectDay: 50,
+      aiTimeoutMs: 60_000,
+      aiMaxRetries: 1,
     });
   });
 
@@ -86,7 +88,11 @@ describe('loadConfig', () => {
   });
 
   it('en producción exige HTTPS y cookie Secure (§41)', () => {
-    const production = { ...baseEnv, NODE_ENV: 'production', ANTHROPIC_API_KEY: 'sk-ant-test' };
+    const production = {
+      ...baseEnv,
+      NODE_ENV: 'production',
+      ANTHROPIC_API_KEY: 'sk-ant-test',
+    };
     expect(() => loadConfig({ ...production, APP_BASE_URL: 'http://letfer.example' })).toThrow(
       /HTTPS/,
     );
@@ -98,15 +104,104 @@ describe('loadConfig', () => {
     expect(ok.cookieSecure).toBe(true);
   });
 
-  it('en producción exige ANTHROPIC_API_KEY para analizar tickets (D-T1)', () => {
+  describe('IA de tickets en producción: la clave depende de AI_TICKETS_ENABLED (D-T1)', () => {
     const production = {
       ...baseEnv,
       NODE_ENV: 'production',
       APP_BASE_URL: 'https://letfer.example',
     };
-    expect(() => loadConfig(production)).toThrow(/ANTHROPIC_API_KEY/);
-    expect(
-      loadConfig({ ...production, ANTHROPIC_API_KEY: 'sk-ant-test' }).tickets.anthropicApiKey,
-    ).toBe('sk-ant-test');
+
+    it('IA desactivada y sin clave: la configuración es válida', () => {
+      const config = loadConfig({ ...production, AI_TICKETS_ENABLED: 'false' });
+      expect(config.tickets.aiEnabled).toBe(false);
+      expect(config.tickets.anthropicApiKey).toBeUndefined();
+    });
+
+    it('IA activada con clave: la configuración es válida', () => {
+      const config = loadConfig({
+        ...production,
+        AI_TICKETS_ENABLED: 'true',
+        ANTHROPIC_API_KEY: 'sk-ant-test',
+      });
+      expect(config.tickets.aiEnabled).toBe(true);
+      expect(config.tickets.anthropicApiKey).toBe('sk-ant-test');
+    });
+
+    it('IA activada explícitamente y sin clave: error que no revela valores', () => {
+      const env = { ...production, AI_TICKETS_ENABLED: 'true' };
+      expect(() => loadConfig(env)).toThrow(/ANTHROPIC_API_KEY/);
+      expect(() => loadConfig(env)).toThrow(ConfigError);
+      try {
+        loadConfig(env);
+      } catch (error) {
+        expect(String((error as Error).message)).not.toContain('secret-pass');
+      }
+    });
+
+    it('AI_TICKETS_ENABLED ausente: en producción la IA queda desactivada y no pide clave', () => {
+      const config = loadConfig(production);
+      expect(config.tickets.aiEnabled).toBe(false);
+      expect(config.tickets.anthropicApiKey).toBeUndefined();
+    });
+
+    it('AI_TICKETS_ENABLED ausente: en desarrollo y pruebas la IA sigue activa', () => {
+      expect(loadConfig(baseEnv).tickets.aiEnabled).toBe(true);
+      expect(loadConfig({ ...baseEnv, NODE_ENV: 'test' }).tickets.aiEnabled).toBe(true);
+      expect(loadConfig({ ...baseEnv, NODE_ENV: 'development' }).tickets.aiEnabled).toBe(true);
+    });
+
+    it('una clave presente no activa la IA en producción si no se pide explícitamente', () => {
+      const config = loadConfig({ ...production, ANTHROPIC_API_KEY: 'sk-ant-test' });
+      expect(config.tickets.aiEnabled).toBe(false);
+    });
+
+    it('fuera de producción la clave sigue siendo opcional', () => {
+      expect(() => loadConfig(baseEnv)).not.toThrow();
+      expect(() => loadConfig({ ...baseEnv, AI_TICKETS_ENABLED: 'true' })).not.toThrow();
+    });
+
+    it('timeout y reintentos de Anthropic son configurables y están acotados', () => {
+      const config = loadConfig({ ...baseEnv, AI_TIMEOUT_SECONDS: '30', AI_MAX_RETRIES: '0' });
+      expect(config.tickets.aiTimeoutMs).toBe(30_000);
+      expect(config.tickets.aiMaxRetries).toBe(0);
+      expect(() => loadConfig({ ...baseEnv, AI_MAX_RETRIES: '4' })).toThrow(/AI_MAX_RETRIES/);
+      expect(() => loadConfig({ ...baseEnv, AI_TIMEOUT_SECONDS: '0' })).toThrow(
+        /AI_TIMEOUT_SECONDS/,
+      );
+    });
+  });
+
+  describe('producción: nunca una base de desarrollo, pruebas o ensayo', () => {
+    const production = {
+      NODE_ENV: 'production',
+      APP_BASE_URL: 'https://letfer.example',
+      AI_TICKETS_ENABLED: 'false',
+    };
+    const url = (database: string) => ({
+      DATABASE_URL: `postgresql://user:secret-pass@localhost:5432/${database}`,
+    });
+
+    it.each(['letfer_dev', 'letfer_test', 'letfer_trial'])('rechaza %s', (database) => {
+      const attempt = () => loadConfig({ ...production, ...url(database) });
+      expect(attempt).toThrow(ConfigError);
+      expect(attempt).toThrow(new RegExp(database));
+      try {
+        attempt();
+      } catch (error) {
+        expect((error as Error).message).not.toContain('secret-pass');
+      }
+    });
+
+    it('permite una base de producción, incluso si el nombre contiene esas palabras', () => {
+      for (const database of ['letfer_prod', 'letfer', 'letfer_trial_archivo', 'prod_letfer_dev']) {
+        expect(loadConfig({ ...production, ...url(database) }).databaseUrl).toContain(database);
+      }
+    });
+
+    it('fuera de producción permite letfer_trial, letfer_dev y letfer_test', () => {
+      for (const database of ['letfer_trial', 'letfer_dev', 'letfer_test']) {
+        expect(() => loadConfig(url(database))).not.toThrow();
+      }
+    });
   });
 });

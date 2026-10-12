@@ -158,7 +158,7 @@ siguen intactos):
 
 - **Modelo actualizado.** `ANTHROPIC_MODEL` por defecto pasa de `claude-sonnet-5` (no verificado
   como identificador real) a `claude-sonnet-5-5`. Se añade `AI_TICKETS_ENABLED` (por defecto
-  activado): un interruptor manual independiente de si hay `ANTHROPIC_API_KEY`, por si se quiere
+  activado): un interruptor manual independiente de si hay `ANTHROPIC_API_KEY` (Fase 12: sin definir la variable, la IA está activa en desarrollo y desactivada en producción; en producción la clave solo es obligatoria con `AI_TICKETS_ENABLED=true`; con `false` la API arranca sin ella y el análisis responde 409 `INVALID_STATE` sin registrar intento; `AI_TIMEOUT_SECONDS=60` y `AI_MAX_RETRIES=1` acotan la llamada a Anthropic; en producción `DATABASE_URL` no puede ser `letfer_dev`, `letfer_test` ni `letfer_trial`), por si se quiere
   desactivar el análisis sin quitar la clave.
 - **Cuota individual nula también en una Creada manual (decisión del usuario, no solo D-X15).**
   Una casa puede mostrar una apuesta Creada (varias selecciones del mismo evento) con una sola

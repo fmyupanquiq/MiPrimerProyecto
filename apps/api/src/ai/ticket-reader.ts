@@ -20,6 +20,18 @@ export interface TicketReaderResult {
   confidenceByField: TicketConfidenceByField | null;
 }
 
+/**
+ * La IA no se puede usar en este entorno (desactivada o sin clave): no es un fallo del proveedor,
+ * así que quien llama no lo registra como intento de análisis ni gasta el límite. El mensaje es
+ * seguro para mostrarlo tal cual.
+ */
+export class TicketReaderUnavailableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'TicketReaderUnavailableError';
+  }
+}
+
 export interface TicketReader {
   /**
    * Analiza un ticket ya validado (tipo/tamaño, §97) y devuelve una propuesta. Nunca escribe

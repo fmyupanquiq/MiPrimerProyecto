@@ -249,6 +249,22 @@ describe('tickets e IA (e2e, PostgreSQL real, §28-§31, §110)', () => {
       expect(history[0]!.errorMessage).toContain('proveedor caído');
     });
 
+    it('con la IA desactivada o sin clave responde de forma controlada, sin registrar intento', async () => {
+      const uploaded = bodyOf(
+        await upload('collab', JPEG_BYTES, 'ticket.jpg'),
+      ) as unknown as TicketBody;
+      ctx.ticketReader.unavailableNext();
+      const res = await analyze('collab', uploaded.id);
+      expect(res.status).toBe(409);
+      const { message } = res.body as { message: string };
+      expect(message).toContain('no está disponible');
+      expect(message).not.toContain('ANTHROPIC_API_KEY');
+      const history = bodyOf(
+        await analyses('collab', uploaded.id).expect(200),
+      ) as unknown as AnalysisBody[];
+      expect(history).toHaveLength(0);
+    });
+
     // §9, §28, §29: el detalle técnico del proveedor (SDK de Anthropic, red) nunca llega al
     // cliente; solo queda en `ticket_analyses.errorMessage` (arriba) y en el log del servidor.
     it('el error que ve el cliente es genérico, sin el detalle técnico del proveedor', async () => {

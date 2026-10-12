@@ -17,7 +17,11 @@ import { assertFinanceReady, financeNotFound } from '../finance/finance-errors.j
 import { APP_CONFIG, type AppConfig } from '../config/app-config.js';
 import { FILE_STORAGE, type FileStorage } from './file-storage.js';
 import { mimeForExtension, sniffMimeType } from './mime-sniff.js';
-import { TICKET_READER, type TicketReader } from '../ai/ticket-reader.js';
+import {
+  TICKET_READER,
+  TicketReaderUnavailableError,
+  type TicketReader,
+} from '../ai/ticket-reader.js';
 import { analysesOfTicket } from './ticket-queries.js';
 
 export interface UploadedFile {
@@ -136,6 +140,15 @@ export class TicketsService {
       const buffer = await this.storage.read(ticket.storageKey);
       result = await this.reader.analyze({ buffer, mimeType: ticket.mimeType });
     } catch (error) {
+      // IA desactivada o sin clave: respuesta controlada, sin registrar un intento fallido ni
+      // contarlo contra el límite (no se llamó a ningún proveedor).
+      if (error instanceof TicketReaderUnavailableError) {
+        throw new AppError(
+          409,
+          ErrorCode.INVALID_STATE,
+          'La lectura de tickets con IA no está disponible en este momento.',
+        );
+      }
       errorMessage = error instanceof Error ? error.message : String(error);
     }
 

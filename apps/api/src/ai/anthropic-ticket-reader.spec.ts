@@ -12,6 +12,8 @@ const config = (overrides: Partial<AppConfig['tickets']> = {}): AppConfig =>
       aiEnabled: true,
       maxAnalysesPerTicket: 5,
       maxAnalysesPerProjectDay: 50,
+      aiTimeoutMs: 60_000,
+      aiMaxRetries: 1,
       ...overrides,
     },
   }) as AppConfig;

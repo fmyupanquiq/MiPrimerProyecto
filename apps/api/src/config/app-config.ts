@@ -95,11 +95,23 @@ const envSchema = z.object({
   ANTHROPIC_API_KEY: z.string().min(1).optional(),
   ANTHROPIC_MODEL: z.string().min(1).default('claude-sonnet-5-5'),
   // Interruptor explícito, independiente de si hay clave configurada (por si se quiere
-  // desactivar el análisis temporalmente sin quitarla); por defecto activado.
-  AI_TICKETS_ENABLED: booleanFlag(true),
+  // desactivar el análisis temporalmente sin quitarla).
+  // Sin definir: activado en desarrollo/pruebas y DESACTIVADO en producción (una instalación nueva
+  // no debe depender de Anthropic por olvidar una variable); se resuelve en `loadConfig`.
+  AI_TICKETS_ENABLED: z.enum(['true', 'false']).optional(),
   AI_MAX_ANALYSES_PER_TICKET: positiveInt(5),
   AI_MAX_ANALYSES_PER_PROJECT_DAY: positiveInt(50),
+  // Resiliencia de la llamada a Anthropic: sin esto el SDK espera hasta 10 minutos y reintenta 2
+  // veces. Un reintento vuelve a enviar (y a facturar) la imagen, por eso el máximo es bajo.
+  AI_TIMEOUT_SECONDS: positiveInt(60),
+  AI_MAX_RETRIES: z.coerce.number().int().min(0).max(3).default(1),
 });
+
+/**
+ * Bases de datos de desarrollo, pruebas y ensayo: una instancia de producción nunca debe usarlas
+ * (comparación por nombre exacto, no por subcadena).
+ */
+const NON_PRODUCTION_DATABASES = ['letfer_dev', 'letfer_test', 'letfer_trial'] as const;
 
 export interface AppConfig {
   nodeEnv: 'development' | 'test' | 'production';
@@ -155,6 +167,10 @@ export interface AppConfig {
     /** D-T6/§110.4: límites de análisis IA, contados sobre `ticket_analyses` (sin tabla aparte). */
     maxAnalysesPerTicket: number;
     maxAnalysesPerProjectDay: number;
+    /** Tiempo máximo de espera de cada intento hacia Anthropic. */
+    aiTimeoutMs: number;
+    /** Reintentos del SDK tras el primer intento (0 = ninguno). */
+    aiMaxRetries: number;
   };
 }
 
@@ -164,6 +180,10 @@ export class ConfigError extends Error {
     super(message);
     this.name = 'ConfigError';
   }
+}
+
+function invalid(problem: string): ConfigError {
+  return new ConfigError(`Configuración inválida. Revisa el archivo .env:\n  - ${problem}`);
 }
 
 /** Valida y convierte las variables de entorno. Falla de forma clara y sin revelar valores. */
@@ -180,25 +200,32 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const appOrigin = new URL(values.APP_BASE_URL).origin;
 
   if (isProduction && !appOrigin.startsWith('https://')) {
-    throw new ConfigError(
-      'Configuración inválida. Revisa el archivo .env:\n' +
-        '  - APP_BASE_URL: en producción debe usar HTTPS (§41)',
-    );
+    throw invalid('APP_BASE_URL: en producción debe usar HTTPS (§41)');
   }
   const cookieSecure = values.COOKIE_SECURE ? values.COOKIE_SECURE === 'true' : isProduction;
   if (isProduction && !cookieSecure) {
-    throw new ConfigError(
-      'Configuración inválida. Revisa el archivo .env:\n' +
-        '  - COOKIE_SECURE: en producción la cookie de sesión debe ser Secure (§41)',
+    throw invalid('COOKIE_SECURE: en producción la cookie de sesión debe ser Secure (§41)');
+  }
+  const aiEnabled = values.AI_TICKETS_ENABLED
+    ? values.AI_TICKETS_ENABLED === 'true'
+    : !isProduction;
+  // La clave solo hace falta en producción si la IA se activó explícitamente; con la IA
+  // desactivada (o sin definir la variable) la API arranca sin ella.
+  if (isProduction && aiEnabled && !values.ANTHROPIC_API_KEY) {
+    throw invalid(
+      'ANTHROPIC_API_KEY: obligatoria en producción si AI_TICKETS_ENABLED=true (D-T1); ' +
+        'define AI_TICKETS_ENABLED=false para arrancar sin IA',
     );
   }
-  if (isProduction && !values.ANTHROPIC_API_KEY) {
-    throw new ConfigError(
-      'Configuración inválida. Revisa el archivo .env:\n' +
-        '  - ANTHROPIC_API_KEY: obligatoria en producción para analizar tickets (D-T1)',
-    );
+  if (isProduction) {
+    // Solo el nombre de la base: la URL completa lleva la contraseña y nunca se cita.
+    const databaseName = decodeURIComponent(new URL(values.DATABASE_URL).pathname.slice(1));
+    if ((NON_PRODUCTION_DATABASES as readonly string[]).includes(databaseName)) {
+      throw invalid(
+        `DATABASE_URL: en producción no puede apuntar a la base de desarrollo, pruebas o ensayo "${databaseName}"`,
+      );
+    }
   }
-
   return {
     nodeEnv: values.NODE_ENV,
     port: values.PORT,
@@ -257,9 +284,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       dir: values.TICKETS_DIR,
       anthropicApiKey: values.ANTHROPIC_API_KEY,
       anthropicModel: values.ANTHROPIC_MODEL,
-      aiEnabled: values.AI_TICKETS_ENABLED,
+      aiEnabled,
       maxAnalysesPerTicket: values.AI_MAX_ANALYSES_PER_TICKET,
       maxAnalysesPerProjectDay: values.AI_MAX_ANALYSES_PER_PROJECT_DAY,
+      aiTimeoutMs: values.AI_TIMEOUT_SECONDS * 1000,
+      aiMaxRetries: values.AI_MAX_RETRIES,
     },
   };
 }
