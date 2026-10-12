@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { isAbsolute, resolve } from 'node:path';
 import { z } from 'zod';
 
 /** Token de inyección de la configuración tipada de la aplicación. */
@@ -63,6 +63,14 @@ const envSchema = z.object({
 
   // Correo: en desarrollo los mensajes se escriben como archivos en esta carpeta.
   MAIL_OUTBOX_DIR: z.string().min(1).default('.data/outbox'),
+  // Correo real por SMTP (§84, ADR 0021): si hay SMTP_HOST se envía de verdad; obligatorio en
+  // producción. SMTP_SECURE=true es TLS directo (puerto 465); si no, STARTTLS obligatorio.
+  SMTP_HOST: z.string().min(1).optional(),
+  SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(587),
+  SMTP_SECURE: booleanFlag(false),
+  SMTP_USER: z.string().min(1).optional(),
+  SMTP_PASSWORD: z.string().min(1).optional(),
+  MAIL_FROM: z.string().min(1).optional(),
 
   // Backups (§37, §82, §109.3, D-B1 a D-B4): disparados desde dentro de la propia API, sin
   // depender de un cron del sistema operativo ni de un proveedor concreto.
@@ -140,7 +148,7 @@ export interface AppConfig {
     authLimit: number;
     authTtlMs: number;
   };
-  mail: { outboxDir: string };
+  mail: { outboxDir: string; smtp: SmtpConfig | null };
   backup: {
     dir: string;
     retentionCount: number;
@@ -172,6 +180,16 @@ export interface AppConfig {
     /** Reintentos del SDK tras el primer intento (0 = ninguno). */
     aiMaxRetries: number;
   };
+}
+
+export interface SmtpConfig {
+  host: string;
+  port: number;
+  /** `true`: TLS desde el inicio (465); `false`: STARTTLS obligatorio. */
+  secure: boolean;
+  user: string | undefined;
+  password: string | undefined;
+  from: string;
 }
 
 /** Error de configuración: el mensaje nombra las variables inválidas, nunca sus valores. */
@@ -226,6 +244,28 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       );
     }
   }
+  // ADR 0021: una ruta relativa depende del directorio desde el que arranca el proceso; en
+  // producción, los tickets y backups ya guardados dejarían de encontrarse al cambiarlo.
+  if (isProduction) {
+    for (const [name, dir] of [
+      ['TICKETS_DIR', values.TICKETS_DIR],
+      ['BACKUP_DIR', values.BACKUP_DIR],
+    ] as const) {
+      if (!isAbsolute(dir)) {
+        throw invalid(`${name}: en producción debe ser una ruta absoluta en un disco persistente`);
+      }
+    }
+  }
+  if (isProduction && (!values.SMTP_HOST || !values.MAIL_FROM)) {
+    throw invalid('SMTP_HOST y MAIL_FROM: obligatorias en producción para enviar correos (§84)');
+  }
+  if (values.SMTP_HOST && !values.MAIL_FROM) {
+    throw invalid('MAIL_FROM: obligatoria si se configura SMTP_HOST');
+  }
+  if (Boolean(values.SMTP_USER) !== Boolean(values.SMTP_PASSWORD)) {
+    throw invalid('SMTP_USER y SMTP_PASSWORD: se definen las dos o ninguna');
+  }
+
   return {
     nodeEnv: values.NODE_ENV,
     port: values.PORT,
@@ -263,7 +303,19 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       authLimit: values.THROTTLE_AUTH_LIMIT,
       authTtlMs: values.THROTTLE_AUTH_TTL_SECONDS * 1000,
     },
-    mail: { outboxDir: values.MAIL_OUTBOX_DIR },
+    mail: {
+      outboxDir: values.MAIL_OUTBOX_DIR,
+      smtp: values.SMTP_HOST
+        ? {
+            host: values.SMTP_HOST,
+            port: values.SMTP_PORT,
+            secure: values.SMTP_SECURE,
+            user: values.SMTP_USER,
+            password: values.SMTP_PASSWORD,
+            from: values.MAIL_FROM!,
+          }
+        : null,
+    },
     backup: {
       dir: values.BACKUP_DIR,
       retentionCount: values.BACKUP_RETENTION_COUNT,

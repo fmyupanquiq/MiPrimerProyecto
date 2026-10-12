@@ -3,6 +3,14 @@ import { ConfigError, loadConfig } from './app-config.js';
 
 const baseEnv = { DATABASE_URL: 'postgresql://user:secret-pass@localhost:5432/db' };
 
+/** Lo que producción exige además de HTTPS y la clave de Anthropic (ADR 0021). */
+const productionInfra = {
+  TICKETS_DIR: '/var/lib/letfer/tickets',
+  BACKUP_DIR: '/var/lib/letfer/backups',
+  SMTP_HOST: 'smtp.letfer.example',
+  MAIL_FROM: 'LetFer <no-reply@letfer.example>',
+};
+
 describe('loadConfig', () => {
   it('aplica los valores por defecto aprobados en la especificación (§104)', () => {
     const config = loadConfig(baseEnv);
@@ -90,6 +98,7 @@ describe('loadConfig', () => {
   it('en producción exige HTTPS y cookie Secure (§41)', () => {
     const production = {
       ...baseEnv,
+      ...productionInfra,
       NODE_ENV: 'production',
       ANTHROPIC_API_KEY: 'sk-ant-test',
     };
@@ -107,6 +116,7 @@ describe('loadConfig', () => {
   describe('IA de tickets en producción: la clave depende de AI_TICKETS_ENABLED (D-T1)', () => {
     const production = {
       ...baseEnv,
+      ...productionInfra,
       NODE_ENV: 'production',
       APP_BASE_URL: 'https://letfer.example',
     };
@@ -173,6 +183,7 @@ describe('loadConfig', () => {
 
   describe('producción: nunca una base de desarrollo, pruebas o ensayo', () => {
     const production = {
+      ...productionInfra,
       NODE_ENV: 'production',
       APP_BASE_URL: 'https://letfer.example',
       AI_TICKETS_ENABLED: 'false',
@@ -203,5 +214,64 @@ describe('loadConfig', () => {
         expect(() => loadConfig(url(database))).not.toThrow();
       }
     });
+  });
+
+  describe('producción: rutas persistentes y correo (ADR 0021)', () => {
+    const production = {
+      ...baseEnv,
+      ...productionInfra,
+      NODE_ENV: 'production',
+      APP_BASE_URL: 'https://letfer.example',
+      ANTHROPIC_API_KEY: 'sk-ant-test',
+    };
+
+    it('acepta la configuración completa de producción', () => {
+      const config = loadConfig(production);
+      expect(config.tickets.dir).toBe('/var/lib/letfer/tickets');
+      expect(config.backup.dir).toBe('/var/lib/letfer/backups');
+      expect(config.mail.smtp).toEqual({
+        host: 'smtp.letfer.example',
+        port: 587,
+        secure: false,
+        user: undefined,
+        password: undefined,
+        from: 'LetFer <no-reply@letfer.example>',
+      });
+    });
+
+    it('exige rutas absolutas para TICKETS_DIR y BACKUP_DIR', () => {
+      expect(() => loadConfig({ ...production, TICKETS_DIR: '.data/tickets' })).toThrow(
+        /TICKETS_DIR/,
+      );
+      expect(() => loadConfig({ ...production, BACKUP_DIR: 'backups' })).toThrow(/BACKUP_DIR/);
+      // Por defecto (relativas) también falla: nunca se usan en producción sin decidirlo.
+      expect(() => loadConfig({ ...production, TICKETS_DIR: undefined })).toThrow(/TICKETS_DIR/);
+    });
+
+    it('exige SMTP_HOST y MAIL_FROM', () => {
+      expect(() => loadConfig({ ...production, SMTP_HOST: undefined })).toThrow(/SMTP_HOST/);
+      expect(() => loadConfig({ ...production, MAIL_FROM: undefined })).toThrow(/MAIL_FROM/);
+    });
+
+    it('no revela la contraseña SMTP al fallar', () => {
+      const attempt = () => loadConfig({ ...production, SMTP_PASSWORD: 'smtp-secret-value' });
+      expect(attempt).toThrow(/SMTP_USER y SMTP_PASSWORD/);
+      expect(attempt).not.toThrow(/smtp-secret-value/);
+    });
+  });
+
+  it('fuera de producción el correo SMTP es opcional y coherente', () => {
+    expect(loadConfig(baseEnv).mail.smtp).toBeNull();
+    expect(() => loadConfig({ ...baseEnv, SMTP_HOST: 'smtp.local' })).toThrow(/MAIL_FROM/);
+    const config = loadConfig({
+      ...baseEnv,
+      SMTP_HOST: 'smtp.local',
+      SMTP_PORT: '465',
+      SMTP_SECURE: 'true',
+      SMTP_USER: 'letfer',
+      SMTP_PASSWORD: 'x',
+      MAIL_FROM: 'no-reply@local',
+    });
+    expect(config.mail.smtp).toMatchObject({ port: 465, secure: true, user: 'letfer' });
   });
 });
