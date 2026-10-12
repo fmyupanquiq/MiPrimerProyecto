@@ -27,7 +27,7 @@ const PROJECT_PATH = /^\/projects\/(?!trash(?:\/|$))[^/]+/;
  * existe en jsdom (mismo cuidado que `theme.tsx`): sin él, se asume que NO es angosta — en las
  * pruebas, el único `ThemeSwitcher` que se monta es el de la barra superior, igual que antes.
  */
-function useIsNarrow(breakpointPx: number): boolean {
+export function useIsNarrow(breakpointPx: number): boolean {
   const [narrow, setNarrow] = useState(() =>
     typeof window.matchMedia === 'function'
       ? window.matchMedia(`(max-width: ${breakpointPx}px)`).matches

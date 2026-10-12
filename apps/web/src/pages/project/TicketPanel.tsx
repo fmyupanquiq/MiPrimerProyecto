@@ -16,8 +16,9 @@ import { ApiError, ticketFileUrl } from '../../api/client.js';
 import { describeApiError } from '../../api/errors.js';
 import { ticketsApi } from '../../api/tickets.js';
 import { formatDateTime, TICKET_FIELD_LABELS } from '../../labels.js';
-import { CheckCircleIcon, TicketIcon } from '../../icons.js';
-import { Badge, btn, btnPrimary, Lightbox, Notice } from '../../ui.js';
+import { CheckCircleIcon, ExpandIcon, SparkleIcon, TicketIcon } from '../../icons.js';
+import { Badge, btn, btnPrimary, Lightbox, Notice, Skeleton } from '../../ui.js';
+import { ConfidenceBadge } from './BetSettlementFields.js';
 import { collectCompleteIndividualOdds } from './ticket-prefill.js';
 
 const TICKET_ACCEPT = TICKET_MIME_TYPES.join(',');
@@ -109,15 +110,12 @@ function FieldRow({
         lowConfidence ? 'bg-amber-50' : ''
       }`}
     >
-      <span>
-        <span className="font-medium">{TICKET_FIELD_LABELS[fieldKey]}:</span> {value}
-        {confidence !== null ? (
-          <span className={`ml-2 text-xs ${lowConfidence ? 'text-amber-700' : 'text-slate-500'}`}>
-            Detectado en el ticket{lowConfidence && ' — revisa este dato'}
-          </span>
-        ) : (
-          <span className="ml-2 text-xs text-slate-500">Detectado en el ticket</span>
-        )}
+      <span className="flex flex-wrap items-center gap-2">
+        <span>
+          <span className="font-medium">{TICKET_FIELD_LABELS[fieldKey]}:</span> {value}
+        </span>
+        <ConfidenceBadge tone="ai">Detectado por IA</ConfidenceBadge>
+        {lowConfidence && <span className="text-xs text-amber-700">Revisa este dato</span>}
       </span>
       {onApply && (
         <button type="button" className={btn} onClick={onApply}>
@@ -187,23 +185,108 @@ function AnalysisView({
         </div>
       )}
       {odds.effective && (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded px-2 py-1 text-sm bg-violet-50">
-          <span>
-            <span className="font-medium">{EFFECTIVE_ODDS_LABELS[odds.effective.source]}:</span>{' '}
-            {/* La cuota EFECTIVA (retorno ÷ importe) se muestra exacta, nunca a 2 decimales: p.
-                ej. "2.175" debe seguir viéndose así, no "2.18" (§5, §7 Fase 10.9) — recortar aquí
-                sería perder la cifra reproducible con el dinero real/potencial. Solo la CALCULADA
-                por producto de selecciones usa el formatter de 2 decimales (§2, §7). */}
-            {odds.effective.source === 'SELECTIONS_PRODUCT'
-              ? formatOdds(odds.effective.value)
-              : odds.effective.value}
-            <span className="ml-2 text-xs text-slate-500">
-              {EFFECTIVE_ODDS_NOTES[odds.effective.source]}
+        <div className="flex flex-col gap-1 rounded-xl px-2 py-1.5 text-sm bg-violet-50">
+          <span className="flex flex-wrap items-center gap-2">
+            <span className="font-medium">
+              {/* La cuota EFECTIVA (retorno ÷ importe) se muestra exacta, nunca a 2 decimales: p.
+                  ej. "2.175" debe seguir viéndose así, no "2.18" (§5, §7 Fase 10.9) — recortar
+                  aquí sería perder la cifra reproducible con el dinero real/potencial. Solo la
+                  CALCULADA por producto de selecciones usa el formatter de 2 decimales (§2, §7). */}
+              {odds.effective.source === 'SELECTIONS_PRODUCT'
+                ? formatOdds(odds.effective.value)
+                : odds.effective.value}
             </span>
+            <ConfidenceBadge tone="calculated">
+              {EFFECTIVE_ODDS_LABELS[odds.effective.source]}
+            </ConfidenceBadge>
+          </span>
+          <span className="text-xs text-slate-500">
+            {EFFECTIVE_ODDS_NOTES[odds.effective.source]}
           </span>
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Miniatura de un ticket con visor en grande (Fase 11, §16; Fase 11.3): la misma pieza la usa
+ * `TicketCard` (64×64, al subir/analizar) y el panel "Ticket original" del Paso 2 del asistente
+ * (más grande, de referencia) — un solo sitio que decide cómo se ve y se abre un ticket, nunca
+ * una representación inventada de su contenido. Un PDF sigue abriéndose en una pestaña nueva,
+ * porque el navegador ya lo muestra bien por su cuenta y un lightbox de imagen no sirve para
+ * varias páginas.
+ */
+export function TicketThumbnail({
+  projectId,
+  ticket,
+  className = 'h-16 w-16 object-cover',
+  fill = false,
+}: {
+  projectId: string;
+  ticket: TicketSummary;
+  /** Tamaño y ajuste de la imagen; el marco (borde, radius, fondo) se añade aquí siempre igual. */
+  className?: string;
+  /**
+   * Ocupa todo su contenedor, que debe estar posicionado (`relative`; la tarjeta "Ticket
+   * original" de "Añadir apuesta"): la imagen se ajusta sin recortarse ni deformarse (`object-contain`) y muestra la
+   * pista "Ampliar" — la vista principal de verificación, no una miniatura.
+   */
+  fill?: boolean;
+}) {
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const isImage = ticket.mimeType !== 'application/pdf';
+  const frame = fill ? 'group absolute inset-0 flex' : 'shrink-0';
+  return (
+    <>
+      {isImage ? (
+        <button
+          type="button"
+          onClick={() => setLightboxOpen(true)}
+          className={`${frame} rounded-xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500`}
+          aria-label={`Ver ${ticket.originalFileName} en grande`}
+        >
+          <img
+            src={ticketFileUrl(projectId, ticket.id)}
+            alt={ticket.originalFileName}
+            className={`rounded-xl border border-slate-200 transition-opacity hover:opacity-90 ${
+              fill ? 'h-full w-full bg-slate-50 object-contain' : className
+            }`}
+          />
+          {fill && (
+            <span
+              className="pointer-events-none absolute right-2 bottom-2 inline-flex items-center gap-1 rounded-md bg-slate-900/75 px-2 py-1 text-xs font-medium text-white opacity-80 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 dark:bg-black/70"
+              aria-hidden="true"
+            >
+              <ExpandIcon className="h-3.5 w-3.5" />
+              Ampliar
+            </span>
+          )}
+        </button>
+      ) : (
+        <a
+          href={ticketFileUrl(projectId, ticket.id)}
+          target="_blank"
+          rel="noreferrer"
+          className={fill ? 'absolute inset-0 flex' : 'shrink-0'}
+        >
+          <span
+            className={`flex items-center justify-center rounded-xl border border-slate-200 text-xs text-slate-500 ${
+              fill ? 'h-full min-h-32 w-full bg-slate-50' : className
+            }`}
+          >
+            PDF
+          </span>
+        </a>
+      )}
+      {lightboxOpen && isImage && (
+        <Lightbox
+          src={ticketFileUrl(projectId, ticket.id)}
+          alt={ticket.originalFileName}
+          onClose={() => setLightboxOpen(false)}
+        />
+      )}
+    </>
   );
 }
 
@@ -231,8 +314,6 @@ function TicketCard({
   const [analysis, setAnalysis] = useState<TicketAnalysisSummary | null>(ticket.lastAnalysis);
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [lightboxOpen, setLightboxOpen] = useState(false);
-  const isImage = ticket.mimeType !== 'application/pdf';
 
   async function analyze() {
     setAnalyzing(true);
@@ -260,34 +341,7 @@ function TicketCard({
   return (
     <div className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-surface p-3">
       <div className="flex flex-wrap items-center gap-3">
-        {/* Fase 11, §16: ver el ticket abre un visor dentro de la app (nunca una pestaña nueva
-            del navegador); un PDF sigue abriéndose aparte, porque el navegador ya lo muestra
-            bien por su cuenta y un lightbox de imagen no sirve para varias páginas. */}
-        {isImage ? (
-          <button
-            type="button"
-            onClick={() => setLightboxOpen(true)}
-            className="shrink-0 rounded-xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500"
-            aria-label={`Ver ${ticket.originalFileName} en grande`}
-          >
-            <img
-              src={ticketFileUrl(projectId, ticket.id)}
-              alt={ticket.originalFileName}
-              className="h-16 w-16 rounded-xl border border-slate-200 object-cover transition-opacity hover:opacity-90"
-            />
-          </button>
-        ) : (
-          <a
-            href={ticketFileUrl(projectId, ticket.id)}
-            target="_blank"
-            rel="noreferrer"
-            className="shrink-0"
-          >
-            <span className="flex h-16 w-16 items-center justify-center rounded-xl border border-slate-200 text-xs text-slate-500">
-              PDF
-            </span>
-          </a>
-        )}
+        <TicketThumbnail projectId={projectId} ticket={ticket} />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium" title={ticket.originalFileName}>
             {ticket.originalFileName}
@@ -295,18 +349,11 @@ function TicketCard({
           <p className="text-xs text-slate-500">
             Subido por {ticket.uploadedBy.name} · {formatDateTime(ticket.createdAt)}
           </p>
-          {analyzing ? (
-            // Nunca un spinner genérico (Fase 11, §8): el texto dice exactamente qué está
-            // pasando, sin detalles técnicos del proveedor de IA.
-            <p role="status" className="mt-0.5 flex items-center gap-1.5 text-xs text-violet-700">
-              <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-violet-600" />
-              Analizando tu ticket: identificando casa, importe, selecciones y resultado…
-            </p>
-          ) : !analysis ? (
+          {!analyzing && !analysis && (
             <p className="mt-0.5 flex items-center gap-1 text-xs text-green-700">
               <CheckCircleIcon className="h-3.5 w-3.5" /> Ticket listo
             </p>
-          ) : null}
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {canAnalyze && (
@@ -326,16 +373,29 @@ function TicketCard({
           )}
         </div>
       </div>
+      {analyzing && (
+        // Nunca un spinner genérico (Fase 11.1, §8): mientras se analiza se ve una "lectura" en
+        // marcha (bloques de carga, no un círculo girando) y un texto que dice exactamente qué
+        // está pasando, sin detalles técnicos del proveedor de IA.
+        <div
+          role="status"
+          aria-busy="true"
+          className="flex flex-col gap-2 rounded-xl border border-violet-200 bg-violet-50/50 p-3"
+        >
+          <p className="flex items-center gap-1.5 text-xs font-medium text-violet-700">
+            <SparkleIcon className="h-3.5 w-3.5 animate-pulse" aria-hidden="true" />
+            Analizando tu ticket: identificando casa, importe, selecciones y resultado…
+          </p>
+          <div className="flex flex-col gap-1.5">
+            <Skeleton className="h-3 w-3/4" />
+            <Skeleton className="h-3 w-1/2" />
+            <Skeleton className="h-3 w-2/3" />
+          </div>
+        </div>
+      )}
       {error && <Notice tone="error">⚠ {error}</Notice>}
       {analysis && (
         <AnalysisView analysis={analysis} onApplyField={onAnalyzed ? undefined : onApplyField} />
-      )}
-      {lightboxOpen && isImage && (
-        <Lightbox
-          src={ticketFileUrl(projectId, ticket.id)}
-          alt={ticket.originalFileName}
-          onClose={() => setLightboxOpen(false)}
-        />
       )}
     </div>
   );

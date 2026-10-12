@@ -5,7 +5,6 @@ import {
   updateBetSchema,
   type BetStatus,
   type BetSummary,
-  type BetType,
   type HouseSummary,
   type TicketSummary,
 } from '@letfer/shared';
@@ -90,7 +89,7 @@ export function BetsPage() {
   const [showForm, setShowForm] = useState(() => searchParams.get('nueva') === '1');
   // Ancho del panel flotante según el formato (Fase 11, §11): Simple compacto, Múltiple/Creada
   // más ancho para varias selecciones. Nunca forzado a un único ancho fijo para todos los casos.
-  const [newBetFormat, setNewBetFormat] = useState<BetType>('SIMPLE');
+  const [newBetWide, setNewBetWide] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [filter, setFilter] = useState<'ALL' | BetStatus>('ALL');
   const [query, setQuery] = useState('');
@@ -146,7 +145,7 @@ export function BetsPage() {
               type="button"
               className={btnPrimary}
               onClick={() => {
-                setNewBetFormat('SIMPLE');
+                setNewBetWide(false);
                 setShowForm(true);
               }}
             >
@@ -162,11 +161,20 @@ export function BetsPage() {
         <Modal
           onClose={() => setShowForm(false)}
           ariaLabel="Añadir apuesta"
-          widthClassName={newBetFormat === 'SIMPLE' ? 'sm:max-w-2xl' : 'sm:max-w-4xl'}
+          // Fase 11.7: con ticket o con varias selecciones, un espacio de trabajo ancho y de alto
+          // estable desde `lg:` (el ticket necesita alto para poder compararse con los datos, y
+          // el panel no "salta" de tamaño al cambiar de paso); Simple sin ticket sigue compacto.
+          // Desde `md:` (tableta) también aprovecha el alto de la pantalla. Las clases `md:`/`lg:`
+          // se aplican después de las `sm:` base de `<Modal>` y las sustituyen.
+          widthClassName={
+            newBetWide
+              ? 'sm:max-w-6xl md:max-h-[92vh] lg:h-[min(56rem,94vh)] lg:max-h-none'
+              : 'sm:max-w-2xl md:max-h-[92vh] lg:max-h-[min(52rem,92vh)]'
+          }
         >
           <NewBetForm
             houses={houses.data ?? []}
-            onFormatChange={setNewBetFormat}
+            onWideChange={setNewBetWide}
             onDone={(message) => {
               setShowForm(false);
               setNotice(message);

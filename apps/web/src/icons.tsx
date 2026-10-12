@@ -279,3 +279,16 @@ export const LogoutIcon = (p: IconProps) => (
     <path d="M10 17l-5-5 5-5M5 12h11" />
   </Icon>
 );
+/** Lectura/prellenado por IA: nunca decorativo porque sí, siempre junto al texto que explica qué detectó. */
+export const SparkleIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M12 3v4M12 17v4M3 12h4M17 12h4" />
+    <path d="M12 8a4 4 0 0 0 4 4 4 4 0 0 0-4 4 4 4 0 0 0-4-4 4 4 0 0 0 4-4Z" />
+  </Icon>
+);
+/** Ampliar una imagen (visor a pantalla casi completa). */
+export const ExpandIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+  </Icon>
+);

@@ -1,12 +1,13 @@
-import { formatOdds, formatPEN, isOddsString } from '@letfer/shared';
+import { formatOdds, formatPEN, isOddsString, type MoneyString } from '@letfer/shared';
 import type { ReactNode } from 'react';
 import type { DateTimeParts } from '../../date-inputs.js';
-import { signedPEN } from '../../format.js';
+import { formatStake, signedPEN } from '../../format.js';
 import { Help } from '../../glossary.js';
+import { ChartIcon, CheckIcon, SparkleIcon } from '../../icons.js';
 import { BET_STATUS_LABELS } from '../../labels.js';
 import { Badge, inputClass } from '../../ui.js';
 import { allowsProfitOverride, type BetDraftFigures, type DraftStatus } from './bet-draft.js';
-import { betStatusIcon } from './BetStatusBadge.js';
+import { BetStatusBadge, betStatusIcon } from './BetStatusBadge.js';
 import { getDisplayTimeZone } from '../../time-zone.js';
 
 /*
@@ -17,9 +18,16 @@ import { getDisplayTimeZone } from '../../time-zone.js';
  */
 
 export const field = inputClass;
-export const smallLabel = 'text-xs font-medium text-slate-500';
+// `whitespace-nowrap` (Fase 11.2): una etiqueta corta (p. ej. "Stake") nunca se ve afectada; una
+// más larga como "Cuota de esta selección (opcional)" ya no se parte en dos líneas por sí sola —
+// es quien la coloca (el layout de la fila) quien decide cuánto espacio darle, nunca el texto.
+export const smallLabel = 'text-xs font-medium whitespace-nowrap text-slate-500';
 export const card =
   'flex flex-col gap-3 rounded-xl border border-slate-200/70 bg-surface p-3 sm:p-4';
+// Fase 11.5: misma tarjeta, menos aire — para secciones cortas (Tipo de apuesta, Partido,
+// Selecciones) donde el acolchado grande de `card` sumaba altura sin aportar nada; el contenido
+// de cada una sigue siendo el mismo, nunca se oculta nada por compactar.
+const cardCompact = 'flex flex-col gap-1.5 rounded-xl border border-slate-200/70 bg-surface p-2';
 export const chip = (selected: boolean, tone: 'accent' | 'positive' | 'negative' = 'accent') =>
   `inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500 disabled:opacity-50 ${
     selected
@@ -37,6 +45,97 @@ export function Caption({ children }: { children: ReactNode }) {
 
 export const money = (value: string | null) => (value === null ? '-' : formatPEN(value));
 
+/**
+ * Progreso del asistente de "Añadir apuesta" (Fase 11.1, §6): tres pasos conceptuales fijos
+ * (Origen, Apuesta, Confirmar). Los pasos nunca bloquean el avance — son orientación, no una
+ * validación — para no restringir un flujo que el formulario de siempre nunca restringió (solo
+ * "Registrar apuesta" valida de verdad, al final). Un paso se marca "completo" solo como pista
+ * visual (`done`), nunca como condición para pasar al siguiente.
+ */
+export function StepIndicator({
+  labels,
+  current,
+  done,
+  onSelect,
+}: {
+  labels: readonly string[];
+  current: number;
+  /** Qué pasos (por índice) se consideran ya completos, solo para la marca visual. */
+  done: readonly boolean[];
+  onSelect: (index: number) => void;
+}) {
+  return (
+    <ol className="flex items-center" aria-label="Pasos para añadir una apuesta">
+      {labels.map((label, index) => {
+        const active = index === current;
+        const complete = done[index] === true;
+        return (
+          <li key={label} className="flex flex-1 items-center last:flex-none">
+            <button
+              type="button"
+              aria-current={active ? 'step' : undefined}
+              onClick={() => onSelect(index)}
+              className={`flex items-center gap-1.5 rounded-full py-1 pr-2.5 pl-1 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500 sm:text-sm ${
+                active
+                  ? 'bg-violet-600 text-white shadow-sm'
+                  : complete
+                    ? 'text-violet-700 hover:bg-violet-50'
+                    : 'text-slate-500 hover:bg-slate-100'
+              }`}
+            >
+              <span
+                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${
+                  active
+                    ? 'bg-white/25 text-white'
+                    : complete
+                      ? 'bg-violet-600 text-white'
+                      : 'bg-slate-200 text-slate-600'
+                }`}
+                aria-hidden="true"
+              >
+                {complete && !active ? <CheckIcon className="h-3 w-3" /> : index + 1}
+              </span>
+              {label}
+            </button>
+            {index < labels.length - 1 && (
+              <span
+                className={`mx-1 h-px flex-1 sm:mx-2 ${complete ? 'bg-violet-300' : 'bg-slate-200'}`}
+                aria-hidden="true"
+              />
+            )}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+export type ConfidenceTone = 'ai' | 'calculated' | 'official';
+
+const CONFIDENCE_STYLE: Record<ConfidenceTone, string> = {
+  ai: 'bg-violet-50 text-violet-700 ring-violet-200',
+  calculated: 'bg-violet-50 text-violet-700 ring-violet-200',
+  official: 'bg-blue-50 text-blue-700 ring-blue-200',
+};
+
+/**
+ * Distingue de un vistazo un dato propuesto por LetFer (detectado por IA o calculado) de uno
+ * oficial que de verdad mostró la casa (§9 del encargo de rediseño): nunca el mismo tratamiento
+ * visual para los dos. Sustituye al texto suelto que llevaba esta nota antes — mismo contenido,
+ * ahora con una señal visual consistente en todos los puntos donde aparece (aquí y en
+ * `TicketPanel.tsx`).
+ */
+export function ConfidenceBadge({ tone, children }: { tone: ConfidenceTone; children: ReactNode }) {
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${CONFIDENCE_STYLE[tone]}`}
+    >
+      {tone !== 'official' && <SparkleIcon className="h-3 w-3" />}
+      {children}
+    </span>
+  );
+}
+
 const statusTone = (status: DraftStatus) =>
   status === 'WON' ? 'positive' : status === 'LOST' ? 'negative' : 'accent';
 
@@ -46,35 +145,152 @@ const statusTone = (status: DraftStatus) =>
  */
 export function FormStep({
   step,
+  icon,
   title,
   hint,
   ariaLabel,
+  /** Fase 11.5: menos acolchado/espaciado vertical — mismo contenido, más denso. */
+  compact,
   children,
 }: {
   step?: number;
+  /** Icono del encabezado de sección (Fase 11.4): mismo medallón que el número de paso. */
+  icon?: ReactNode;
   title: string;
   hint?: ReactNode;
   ariaLabel?: string;
+  compact?: boolean;
   children: ReactNode;
 }) {
   return (
-    <section className={card} aria-label={ariaLabel ?? title}>
-      <div className="flex items-start gap-3">
-        {step !== undefined && (
+    <section className={compact ? cardCompact : card} aria-label={ariaLabel ?? title}>
+      <div className="flex items-center gap-2.5">
+        {(step !== undefined || icon) && (
           <span
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-violet-100 text-sm font-semibold text-violet-700"
+            className={`flex shrink-0 items-center justify-center rounded-full bg-violet-100 text-violet-700 ${
+              compact ? 'h-6 w-6 [&>svg]:h-3.5 [&>svg]:w-3.5' : 'h-8 w-8 [&>svg]:h-4 [&>svg]:w-4'
+            }`}
             aria-hidden="true"
           >
-            {step}
+            {icon ?? <span className="text-sm font-semibold">{step}</span>}
           </span>
         )}
         <div className="min-w-0">
-          <h4 className="font-semibold text-slate-900">{title}</h4>
+          <h4
+            className={
+              compact ? 'text-sm font-semibold text-slate-900' : 'font-semibold text-slate-900'
+            }
+          >
+            {title}
+          </h4>
           {hint && <p className="text-sm text-slate-500">{hint}</p>}
         </div>
       </div>
       {children}
     </section>
+  );
+}
+
+/**
+ * Resumen financiero en vivo del borrador (Fase 11.1, §13, §22): stake, cuota e importe que se va
+ * a reservar, y el retorno/ganancia **si la apuesta gana** (vista previa, siempre con la etiqueta
+ * "potencial" para no confundirla con el retorno/ganancia reales de `SettlementSection`, que
+ * siguen siendo la única fuente para una apuesta ya liquidada — nunca se duplica el mismo dato con
+ * dos aspectos distintos, solo se muestra en dos momentos del asistente). Las cifras las sigue
+ * calculando exclusivamente `bet-draft.ts`; este componente solo las presenta.
+ */
+export function FinancialSummary({
+  stake,
+  shownOdds,
+  amount,
+  amountNote,
+  potentialReturn,
+  potentialProfit,
+  status,
+}: {
+  stake: string;
+  /** Cuota ya formateada para mostrar (o "-"). */
+  shownOdds: string;
+  amount: MoneyString | null;
+  amountNote?: ReactNode;
+  potentialReturn: MoneyString | null;
+  potentialProfit: MoneyString | null;
+  /** El resultado elegido hasta ahora (§18 Fase 11.3): solo de referencia, se edita en "Confirmar". */
+  status?: DraftStatus;
+}) {
+  // Fase 11.7: panel compacto (cifras en una rejilla con divisores de 1px, no tarjetas apiladas)
+  // para que, junto al ticket original, deje a la imagen la mayor parte del alto. Mismas cifras,
+  // mismos rótulos y mismo origen (`bet-draft.ts`); solo cambia la presentación. `@container`: la
+  // rejilla pasa de 2 a 3 columnas según el ancho real del panel, no el de la ventana.
+  const cell = 'flex min-w-0 flex-col gap-0.5 bg-surface px-2.5 py-2';
+  const value = 'text-base font-semibold tabular-nums break-words';
+  return (
+    <div className="@container flex flex-col gap-2.5 rounded-xl border border-slate-200 bg-surface-2 p-3">
+      <span className="flex flex-wrap items-center justify-between gap-2">
+        <span className="flex items-center gap-2">
+          <span
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-violet-100 text-violet-700"
+            aria-hidden="true"
+          >
+            <ChartIcon className="h-3.5 w-3.5" />
+          </span>
+          <Caption>Resumen financiero</Caption>
+        </span>
+        {status && (
+          <dl className="flex items-center gap-1.5">
+            <dt className={smallLabel}>Estado</dt>
+            <dd>
+              <BetStatusBadge status={status} />
+            </dd>
+          </dl>
+        )}
+      </span>
+      <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-slate-200 bg-slate-200 @xs:grid-cols-3">
+        <div className={cell}>
+          <dt className={smallLabel}>Stake</dt>
+          <dd className={`${value} text-slate-900`}>
+            {stake.trim() === '' ? '-' : formatStake(stake.trim())}
+          </dd>
+        </div>
+        <div className={cell}>
+          <dt className={smallLabel}>Cuota</dt>
+          <dd className={`${value} text-slate-900`}>{shownOdds}</dd>
+        </div>
+        <div className={`${cell} col-span-2 @xs:col-span-1`}>
+          <dt className={`${smallLabel} flex items-center gap-1`}>
+            Apostado <Help term="amount" />
+          </dt>
+          <dd
+            className="text-lg leading-snug font-bold tracking-tight tabular-nums break-words text-slate-900"
+            aria-label="Monto apostado calculado"
+          >
+            {money(amount)}
+          </dd>
+        </div>
+        <div className={`${cell} @xs:col-span-1`}>
+          <dt className={smallLabel}>Retorno potencial</dt>
+          <dd className={`${value} text-slate-900`}>{money(potentialReturn)}</dd>
+        </div>
+        <div className={`${cell} @xs:col-span-2`}>
+          <dt className={smallLabel}>Ganancia potencial</dt>
+          <dd
+            className={`${value} ${
+              potentialProfit === null
+                ? 'text-slate-900'
+                : potentialProfit.startsWith('-')
+                  ? 'text-red-700'
+                  : 'text-green-700'
+            }`}
+          >
+            {potentialProfit === null ? '-' : signedPEN(potentialProfit)}
+          </dd>
+        </div>
+      </dl>
+      <div className="flex flex-col gap-0.5 text-xs text-slate-500">
+        {amountNote && <span>{amountNote}</span>}
+        <span>Vista previa si la apuesta gana. No es el registro final.</span>
+      </div>
+    </div>
   );
 }
 

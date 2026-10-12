@@ -451,14 +451,19 @@ export function Modal({
  */
 export function Lightbox({ src, alt, onClose }: { src: string; alt: string; onClose: () => void }) {
   useEffect(() => {
+    // Escape cierra SOLO el visor: se escucha en `window` en fase de captura (antes que el
+    // `keydown` de `document` de un `<Modal>` que lo contenga, p. ej. "Añadir apuesta") y no se
+    // propaga — si no, el mismo Escape cerraba también el formulario y se perdía lo escrito.
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
+      if (event.key !== 'Escape') return;
+      event.stopPropagation();
+      onClose();
     };
-    document.addEventListener('keydown', onKey);
+    window.addEventListener('keydown', onKey, true);
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
-      document.removeEventListener('keydown', onKey);
+      window.removeEventListener('keydown', onKey, true);
       document.body.style.overflow = previousOverflow;
     };
   }, [onClose]);
