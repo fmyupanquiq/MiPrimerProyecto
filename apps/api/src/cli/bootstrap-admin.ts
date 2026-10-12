@@ -5,6 +5,10 @@
 //   2. Ejecuta: npm run bootstrap:admin
 //   3. Borra esas variables del .env.
 //
+// En producción (sin Nest CLI ni dependencias de desarrollo): tras `npm run build`, usa
+// `npm run bootstrap:admin:built`, que ejecuta este mismo archivo ya compilado en dist/ sin
+// recompilar. Carga la configuración completa de la API, así que necesita el entorno de producción.
+//
 // Es idempotente: si ya existe un Administrador Global no cambia nada.
 import { NestFactory } from '@nestjs/core';
 import { configureSpanishValidationMessages } from '@letfer/shared';

@@ -1,0 +1,50 @@
+# LetFer en producción (ADR 0021): Caddy sirve la web compilada y reenvía /api a la API local.
+# Caddy obtiene y renueva el certificado HTTPS automáticamente (Let's Encrypt): el dominio debe
+# apuntar (registro A/AAAA) a este servidor y los puertos 80 y 443 deben estar abiertos.
+#
+# Instalar en /etc/caddy/Caddyfile y sustituir letfer.example.com por el dominio real, que debe
+# coincidir con APP_BASE_URL (sin barra final). Validar con: caddy validate --config /etc/caddy/Caddyfile
+
+letfer.example.com {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		-Server
+	}
+
+	# API: mismo origen que la web (sin CORS). Las cabeceras de seguridad de la API las pone helmet.
+	# Con un solo proxy delante, la API debe arrancar con TRUST_PROXY_HOPS=1.
+	handle /api/* {
+		reverse_proxy 127.0.0.1:3000
+	}
+
+	# Web: archivos estáticos de `npm run build`; cualquier otra ruta vuelve a index.html (rutas
+	# de React Router como /projects/:id/bets que se recargan o se abren desde un enlace).
+	handle {
+		root * /opt/letfer/app/apps/web/dist
+		header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+		# index.html nunca en caché (apunta a los assets con hash de cada versión); los assets sí.
+		@assets path /assets/*
+		header @assets Cache-Control "public, max-age=31536000, immutable"
+		@notAssets not path /assets/*
+		header @notAssets Cache-Control "no-cache"
+		try_files {path} /index.html
+		file_server
+	}
+
+	log {
+		output file /var/log/caddy/letfer-access.log
+		# /invite?token= y /reset-password?token= llevan el token en la query: nunca se registra.
+		# (Caddy ya oculta por defecto las cabeceras Cookie, Set-Cookie y Authorization.)
+		format filter {
+			request>uri query {
+				delete token
+			}
+		}
+	}
+}

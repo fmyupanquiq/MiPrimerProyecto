@@ -1,0 +1,39 @@
+# Servicio systemd de la API de LetFer (ADR 0021). Instalar en /etc/systemd/system/letfer-api.service
+# y activar con: systemctl daemon-reload && systemctl enable --now letfer-api
+#
+# Una sola instancia, siempre encendida: el límite de tasa vive en memoria y los backups y el
+# mantenimiento diarios se programan dentro del propio proceso.
+
+[Unit]
+Description=LetFer API
+After=network-online.target postgresql.service
+Wants=network-online.target
+Requires=postgresql.service
+
+[Service]
+Type=simple
+User=letfer
+Group=letfer
+WorkingDirectory=/opt/letfer/app/apps/api
+# Secretos y configuración: fuera del repositorio, legible solo por root y el grupo letfer (0640).
+EnvironmentFile=/etc/letfer/letfer.env
+ExecStart=/usr/bin/node dist/main.js
+Restart=on-failure
+RestartSec=5
+# Cierre ordenado (enableShutdownHooks): da tiempo a terminar peticiones y cerrar el pool.
+TimeoutStopSec=30
+
+# Endurecimiento: solo puede escribir en sus carpetas de datos.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/letfer
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

@@ -13,7 +13,9 @@
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "bootstrap:admin": "nest build && node dist/cli/bootstrap-admin.js"
+    "migrate": "node dist/cli/migrate.js",
+    "bootstrap:admin": "nest build && node dist/cli/bootstrap-admin.js",
+    "bootstrap:admin:built": "node dist/cli/bootstrap-admin.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.128.0",
