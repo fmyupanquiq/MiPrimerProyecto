@@ -18,7 +18,7 @@ fija la arquitectura inicial y deja explícito qué falta decidir. **No se ha de
 Un VPS Linux con tres procesos: **PostgreSQL 17**, la **API NestJS** (systemd, una sola
 instancia) y **Caddy**. Caddy termina HTTPS, sirve la web compilada (`apps/web/dist`) y reenvía
 `/api/*` a `127.0.0.1:3000`. Web y API comparten origen, por lo que no hay CORS.
-Es adecuada para un equipo pequeño. Límites asumidos: un único punto de fallo y **una sola
+La API escucha solo en `127.0.0.1` (variable `HOST`, por defecto). Es adecuada para un equipo pequeño. Límites asumidos: un único punto de fallo y **una sola
 instancia de la API** (el limitador de tasa vive en memoria y los backups y el mantenimiento
 diarios se programan dentro del propio proceso).
 
@@ -70,10 +70,14 @@ responde 409 `INVALID_STATE` sin registrar intento. Llamada a Anthropic: `AI_TIM
 
 ### Correo
 
-SMTP por nodemailer (`SMTP_HOST`, `MAIL_FROM` obligatorios en producción; STARTTLS obligatorio
-salvo `SMTP_SECURE=true`). Correos que envía LetFer: recuperación de contraseña y aviso al correo
+SMTP por nodemailer, **opcional** desde el primer lanzamiento (decisión del propietario: las cuentas
+las controla el administrador mediante invitaciones, sin correo). Con `SMTP_HOST` (y entonces
+`MAIL_FROM`) se envía de verdad, con STARTTLS obligatorio salvo `SMTP_SECURE=true`. **Sin SMTP en
+producción** el correo queda "no disponible": no se simula ningún envío (a diferencia del adaptador
+de desarrollo), la API arranca y la recuperación de contraseña responde 409 "no disponible"; no
+existe restablecimiento de contraseña por un administrador (limitación conocida). Correos que envía LetFer: recuperación de contraseña y aviso al correo
 anterior al cambiar el email. Las invitaciones no envían correo (el enlace se muestra una vez).
-**PENDIENTE:** elegir proveedor, dominio de envío y SPF/DKIM/DMARC; probar el flujo real.
+**PENDIENTE** (solo si se activa el correo): proveedor, dominio de envío y SPF/DKIM/DMARC.
 
 ### Tickets y backups
 

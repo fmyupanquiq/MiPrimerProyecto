@@ -46,6 +46,15 @@ export class PasswordResetService {
    * para que la duración de la respuesta tampoco lo delate.
    */
   async requestReset(rawEmail: string): Promise<void> {
+    // Sin correo configurado la recuperación no puede funcionar: se dice con claridad (para todos
+    // por igual, así que no revela si una cuenta existe) y no se crea ningún token.
+    if (!this.mail.available) {
+      throw new AppError(
+        409,
+        ErrorCode.INVALID_STATE,
+        'La recuperación de contraseña por correo no está disponible. Contacta al administrador.',
+      );
+    }
     const email = normalizeEmail(rawEmail);
     const user = await this.usersService.findByEmail(email);
     if (!user || user.status !== 'ACTIVE') return;

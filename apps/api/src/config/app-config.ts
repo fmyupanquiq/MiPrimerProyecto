@@ -23,6 +23,9 @@ const booleanFlag = (fallback: boolean) =>
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
+  // Interfaz en la que escucha la API. Por defecto solo el equipo local: detrás de Caddy o de un
+  // túnel nada debe poder llegar a la API sin pasar por el proxy ("0.0.0.0" la abre a la red).
+  HOST: z.string().min(1).default('127.0.0.1'),
   DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),
   // Origen público de la web: se usa en los enlaces de correo y en la validación de `Origin`.
   APP_BASE_URL: z.url().default('http://localhost:5173'),
@@ -63,8 +66,8 @@ const envSchema = z.object({
 
   // Correo: en desarrollo los mensajes se escriben como archivos en esta carpeta.
   MAIL_OUTBOX_DIR: z.string().min(1).default('.data/outbox'),
-  // Correo real por SMTP (§84, ADR 0021): si hay SMTP_HOST se envía de verdad; obligatorio en
-  // producción. SMTP_SECURE=true es TLS directo (puerto 465); si no, STARTTLS obligatorio.
+  // Correo real por SMTP (§84, ADR 0021): si hay SMTP_HOST se envía de verdad; opcional (en
+  // producción sin SMTP las funciones que envían correo responden "no disponible"). SMTP_SECURE=true es TLS directo (puerto 465); si no, STARTTLS obligatorio.
   SMTP_HOST: z.string().min(1).optional(),
   SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(587),
   SMTP_SECURE: booleanFlag(false),
@@ -124,6 +127,7 @@ const NON_PRODUCTION_DATABASES = ['letfer_dev', 'letfer_test', 'letfer_trial'] a
 export interface AppConfig {
   nodeEnv: 'development' | 'test' | 'production';
   port: number;
+  host: string;
   databaseUrl: string;
   appBaseUrl: string;
   /** Origen (esquema + host + puerto) de la web, derivado de `appBaseUrl`. */
@@ -256,9 +260,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       }
     }
   }
-  if (isProduction && (!values.SMTP_HOST || !values.MAIL_FROM)) {
-    throw invalid('SMTP_HOST y MAIL_FROM: obligatorias en producción para enviar correos (§84)');
-  }
   if (values.SMTP_HOST && !values.MAIL_FROM) {
     throw invalid('MAIL_FROM: obligatoria si se configura SMTP_HOST');
   }
@@ -269,6 +270,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   return {
     nodeEnv: values.NODE_ENV,
     port: values.PORT,
+    host: values.HOST,
     databaseUrl: values.DATABASE_URL,
     appBaseUrl: values.APP_BASE_URL,
     appOrigin,

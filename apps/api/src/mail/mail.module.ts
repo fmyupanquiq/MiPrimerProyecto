@@ -1,9 +1,12 @@
 import { Global, Module } from '@nestjs/common';
 import { APP_CONFIG, type AppConfig } from '../config/app-config.js';
-import { FileOutboxMailService, MailService } from './mail.service.js';
+import { FileOutboxMailService, MailService, UnavailableMailService } from './mail.service.js';
 import { SmtpMailService } from './smtp-mail.service.js';
 
-/** Con SMTP configurado (obligatorio en producción) se envía de verdad; si no, a la carpeta outbox. */
+/**
+ * Con SMTP configurado se envía de verdad. Sin SMTP: en desarrollo, a la carpeta outbox; en
+ * producción, el correo queda "no disponible" (nada se envía ni se simula).
+ */
 @Global()
 @Module({
   providers: [
@@ -11,7 +14,11 @@ import { SmtpMailService } from './smtp-mail.service.js';
       provide: MailService,
       inject: [APP_CONFIG],
       useFactory: (config: AppConfig): MailService =>
-        config.mail.smtp ? new SmtpMailService(config) : new FileOutboxMailService(config),
+        config.mail.smtp
+          ? new SmtpMailService(config)
+          : config.nodeEnv === 'production'
+            ? new UnavailableMailService()
+            : new FileOutboxMailService(config),
     },
   ],
   exports: [MailService],

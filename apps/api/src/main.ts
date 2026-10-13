@@ -13,4 +13,4 @@ const app = await NestFactory.create<NestExpressApplication>(AppModule);
 configureApp(app);
 app.enableShutdownHooks();
 
-await app.listen(config.port);
+await app.listen(config.port, config.host);

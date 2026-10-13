@@ -26,6 +26,7 @@ describe('loadConfig', () => {
     expect(config.passwordReset).toEqual({ ttlSeconds: 3600, maxPerHour: 3 });
     expect(config.reauthWindowSeconds).toBe(300);
     expect(config.appOrigin).toBe('http://localhost:5173');
+    expect(config.host).toBe('127.0.0.1');
     expect(config.cookieSecure).toBe(false);
     expect(config.backup).toEqual({
       dir: '.data/backups',
@@ -86,6 +87,11 @@ describe('loadConfig', () => {
         /MAINTENANCE_RETENTION_DAYS/,
       );
     }
+  });
+
+  it('HOST es configurable y por defecto solo escucha en el equipo local', () => {
+    expect(loadConfig(baseEnv).host).toBe('127.0.0.1');
+    expect(loadConfig({ ...baseEnv, HOST: '0.0.0.0' }).host).toBe('0.0.0.0');
   });
 
   it('rechaza números inválidos', () => {
@@ -248,8 +254,12 @@ describe('loadConfig', () => {
       expect(() => loadConfig({ ...production, TICKETS_DIR: undefined })).toThrow(/TICKETS_DIR/);
     });
 
-    it('exige SMTP_HOST y MAIL_FROM', () => {
-      expect(() => loadConfig({ ...production, SMTP_HOST: undefined })).toThrow(/SMTP_HOST/);
+    it('SMTP es opcional en producción: sin SMTP la configuración es válida y no hay correo', () => {
+      const config = loadConfig({ ...production, SMTP_HOST: undefined, MAIL_FROM: undefined });
+      expect(config.mail.smtp).toBeNull();
+    });
+
+    it('SMTP_HOST sin MAIL_FROM sigue siendo incoherente', () => {
       expect(() => loadConfig({ ...production, MAIL_FROM: undefined })).toThrow(/MAIL_FROM/);
     });
 

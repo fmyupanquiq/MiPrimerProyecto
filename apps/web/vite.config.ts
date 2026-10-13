@@ -8,7 +8,7 @@ export default defineConfig({
     port: 5173,
     // En desarrollo, las llamadas a /api se reenvían a la API de NestJS.
     proxy: {
-      '/api': process.env['API_URL'] ?? 'http://localhost:3000',
+      '/api': process.env['API_URL'] ?? 'http://127.0.0.1:3000',
     },
   },
   test: {

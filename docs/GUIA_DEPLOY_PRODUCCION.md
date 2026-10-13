@@ -81,7 +81,7 @@ ni restaurar en ella un backup de ensayo.
 Copiar `deploy/production.env.example` a `/etc/letfer/letfer.env`, rellenar y proteger
 (`chown root:letfer`, `chmod 0640`). Obligatorias en producción: `NODE_ENV=production`,
 `APP_BASE_URL` (HTTPS, igual al dominio del Caddyfile), `DATABASE_URL`, `TICKETS_DIR` y
-`BACKUP_DIR` (absolutas), `SMTP_HOST` y `MAIL_FROM`. `TRUST_PROXY_HOPS=1` (Caddy).
+`BACKUP_DIR` (absolutas). SMTP es opcional. `TRUST_PROXY_HOPS=1` (Caddy).
 
 **IA de tickets** (`AI_TICKETS_ENABLED`):
 
@@ -163,7 +163,9 @@ abiertos. `APP_BASE_URL` debe coincidir exactamente con el dominio (sin barra fi
 
 ## 17. SMTP
 
-`SMTP_HOST`, `SMTP_PORT` (587 por defecto), `SMTP_SECURE` (`true` solo para TLS directo, puerto
+**Opcional.** Sin SMTP la API arranca y la recuperación de contraseña por correo responde "no
+disponible"; las cuentas se crean por invitación (el enlace se muestra una vez, sin correo). Si se
+activa: `SMTP_HOST`, `SMTP_PORT` (587 por defecto), `SMTP_SECURE` (`true` solo para TLS directo, puerto
 465; si no, STARTTLS obligatorio), `SMTP_USER` y `SMTP_PASSWORD` (las dos o ninguna) y `MAIL_FROM`
 de un dominio verificado. Proveedor, dominio y SPF/DKIM/DMARC [PENDIENTE DE DEFINIR]. Probar la
 recuperación de contraseña antes de abrir al equipo. Las invitaciones no envían correo.
@@ -218,7 +220,7 @@ preventivo.
 - [ ] `/etc/letfer/letfer.env` completo, 0640, sin valores vacíos; `AI_TICKETS_ENABLED` decidido.
 - [ ] `npm ci`, `npm run build`, `npm run migrate`, bootstrap del administrador.
 - [ ] Unidad systemd activa; Caddy con el dominio real y HTTPS válido.
-- [ ] SMTP real probado con la recuperación de contraseña.
+- [ ] (Solo si se activa SMTP) recuperación de contraseña probada con correo real.
 - [ ] Ticket de prueba subido, servidor reiniciado, ticket y datos intactos.
 - [ ] Backup externo funcionando y **restauración probada** en otra base.
 - [ ] Verificación de integridad de la aplicación sin hallazgos; `/api/health` vigilado.

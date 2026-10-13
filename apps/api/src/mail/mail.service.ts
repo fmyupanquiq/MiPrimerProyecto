@@ -16,7 +16,29 @@ export interface MailMessage {
  * proveedor concreto, que se elegirá al desplegar (Fase 11).
  */
 export abstract class MailService {
+  /** `false` si no hay forma real de enviar correo (producción sin SMTP). */
+  readonly available: boolean = true;
   abstract send(message: MailMessage): Promise<void>;
+}
+
+/** El correo no está configurado en este entorno: ningún mensaje se envía ni se simula. */
+export class MailUnavailableError extends Error {
+  constructor() {
+    super('El envío de correo no está configurado en este entorno.');
+    this.name = 'MailUnavailableError';
+  }
+}
+
+/**
+ * Producción sin SMTP: no finge enviar nada (a diferencia del adaptador de desarrollo, que escribe
+ * archivos). Quien necesite enviar debe comprobar `available` o manejar `MailUnavailableError`.
+ */
+export class UnavailableMailService extends MailService {
+  override readonly available = false;
+
+  override send(): Promise<void> {
+    return Promise.reject(new MailUnavailableError());
+  }
 }
 
 /** Raíz del monorepo: el primer ancestro cuyo package.json declara `workspaces`. */
