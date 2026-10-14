@@ -20,6 +20,8 @@ export function configureSpanishValidationMessages(): void {
   z.config(z.locales.es());
 }
 export * from './bet.js';
+export * from './bet-structure.js';
+export * from './bet-draft-record.js';
 export * from './bet-correction.js';
 export * from './bet-return.js';
 export * from './dashboard.js';

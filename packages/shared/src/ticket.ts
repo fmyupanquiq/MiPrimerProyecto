@@ -19,18 +19,41 @@ export type TicketAnalysisStatus = (typeof TICKET_ANALYSIS_STATUSES)[number];
  * Contrato conceptual de lectura de ticket (§53), devuelto por `TicketReader.analyze()`. Todos
  * los campos son opcionales: la IA extrae lo que puede leer, nunca inventa lo que no ve.
  */
+/**
+ * Condición interna de un leg creado (Bet Builder / Same Game Parlay / apuestas construidas, de
+ * cualquier casa — la estructura visual, no el nombre). Sin cuota propia: la cuota es del LEG.
+ */
+export interface TicketExtractionCondition {
+  market?: string;
+  selection?: string;
+  /** Estado individual que el ticket muestra para esta condición (documental). */
+  conditionStatus?: string;
+}
+/**
+ * Un LEG del ticket (apuesta principal): lo que la casa cuenta como "una apuesta" de la
+ * combinada. Sin `conditions` es un leg normal (`market` + `selection`). Con `conditions` (2 o
+ * más) es un leg creado: `market` es solo el nombre del bloque, `selection` no se usa y la
+ * `visibleOdds` es la del leg ENTERO, una sola vez.
+ */
 export interface TicketExtractionSelection {
   sport?: string;
   event?: string;
   market?: string;
   selection?: string;
   visibleOdds?: string;
+  /** Marcador visible del evento (documental). */
+  legScore?: string;
+  /** Resultado individual visible del leg (documental): WON, LOST, VOID o PENDING. */
+  legResult?: string;
+  conditions?: TicketExtractionCondition[];
 }
 export interface TicketExtraction {
   house?: string;
   placedDate?: string;
   placedTime?: string;
   betType?: string;
+  /** Referencia/código que la casa imprime en el ticket (documental). */
+  externalReference?: string;
   selections?: TicketExtractionSelection[];
   /** Stake (nivel de apuesta) solo si el ticket lo muestra explícitamente; nunca derivado del importe. */
   stake?: string;

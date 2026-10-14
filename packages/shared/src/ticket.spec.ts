@@ -137,3 +137,17 @@ describe('resolveTicketOdds (Fase 10.8, §6-§11: cuota visible vs. efectiva, pr
     ).toEqual({ value: '5.14', source: 'REALIZED_RETURN' });
   });
 });
+
+describe('resolveTicketOdds: un bloque de condiciones es UN leg (datos sintéticos)', () => {
+  it('con el bloque en una sola entrada, la cuota de referencia es el producto de los legs reales', () => {
+    // 2.00 × 2.50 (cuota del bloque completo) × 1.20 × 1.30
+    const odds = resolveTicketOdds({ individualOdds: ['2.00', '2.50', '1.20', '1.30'] });
+    expect(odds.effective).toEqual({ value: '7.8', source: 'SELECTIONS_PRODUCT' });
+  });
+
+  it('dividir el bloque en dos entradas con una cuota inventada distorsiona la referencia', () => {
+    // La misma combinada, con el bloque partido en dos condiciones a 1.50: 7.02, no 7.8.
+    const odds = resolveTicketOdds({ individualOdds: ['2.00', '1.50', '1.50', '1.20', '1.30'] });
+    expect(odds.effective).toEqual({ value: '7.02', source: 'SELECTIONS_PRODUCT' });
+  });
+});

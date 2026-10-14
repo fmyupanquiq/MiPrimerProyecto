@@ -12,6 +12,16 @@ export const BET_TYPES = ['SIMPLE', 'CREATED', 'MULTIPLE'] as const;
 export type BetType = (typeof BET_TYPES)[number];
 
 /**
+ * Procedencia de `visibleTotalOdds` (ADR 0023). El valor es uno solo; esto dice qué es:
+ * - `OFFICIAL`: la cuota total que la casa/ticket muestra y una persona confirmó.
+ * - `CALCULATED`: una referencia calculada por LetFer (producto de cuotas, retorno ÷ importe) que la
+ *   casa NO mostró. Nunca se presenta como oficial.
+ * - `UNKNOWN`: el origen no se puede verificar (apuestas anteriores a esta distinción, importaciones).
+ */
+export const TOTAL_ODDS_SOURCES = ['OFFICIAL', 'CALCULATED', 'UNKNOWN'] as const;
+export type TotalOddsSource = (typeof TOTAL_ODDS_SOURCES)[number];
+
+/**
  * Estados de liquidación (§21, §78, §107.2). `VOID` cubre tanto "Anulada" como "Cancelada"
  * (D-B1): financieramente son la misma cosa, una apuesta inválida sin ganancia ni pérdida.
  */
@@ -49,8 +59,21 @@ const REASON_MAX_LENGTH = 500;
 const TEXT_MAX_LENGTH = 200;
 const SPORT_MAX_LENGTH = 100;
 
+/**
+ * Resultado individual que el ticket muestra para un leg o una condición (documental): nunca
+ * liquida nada. La liquidación financiera es siempre la de la apuesta completa.
+ */
+export const VISIBLE_RESULTS = ['WON', 'LOST', 'VOID', 'PENDING'] as const;
+export type VisibleResult = (typeof VISIBLE_RESULTS)[number];
+const SCORE_MAX_LENGTH = 30;
+export const EXTERNAL_REFERENCE_MAX_LENGTH = 100;
+
 const selectionInputSchema = z.object({
-  /** Selecciones con el mismo `eventGroup` pertenecen al mismo evento (§19, §20, D-B3). */
+  /**
+   * LEG = `eventGroup` (§19, §20, D-B3, §114). Las filas del mismo grupo son las condiciones
+   * internas de un leg creado (Bet Builder / Same Game Parlay); `position` las ordena. Los datos
+   * del leg entero (cuota, marcador, resultado) viven en la fila `position = 0`.
+   */
   eventGroup: z.number().int().nonnegative(),
   position: z.number().int().nonnegative(),
   sport: z.string().trim().max(SPORT_MAX_LENGTH).optional(),
@@ -63,6 +86,12 @@ const selectionInputSchema = z.object({
    * Simple y Múltiple, nunca la inventa ni la distribuye cuando falta.
    */
   visibleOdds: oddsInputSchema().optional(),
+  /** Marcador visible del evento (documental); solo en la fila `position = 0` del leg. */
+  legScore: z.string().trim().min(1).max(SCORE_MAX_LENGTH).optional(),
+  /** Resultado individual visible del leg (documental); solo en la fila `position = 0`. */
+  legResult: z.enum(VISIBLE_RESULTS).optional(),
+  /** Estado individual visible de esta condición (documental). */
+  conditionStatus: z.enum(VISIBLE_RESULTS).optional(),
 });
 export type BetSelectionInput = z.infer<typeof selectionInputSchema>;
 
@@ -120,11 +149,20 @@ export const createBetSchema = z.object({
   /** Monto oficial confirmado (ticket/casa); si falta, se calcula `stake × unidad` (§76). */
   officialAmount: moneyInputSchema({ positive: true }).optional(),
   visibleTotalOdds: oddsInputSchema(),
+  /** Procedencia de la cuota total; si se omite queda `UNKNOWN` (nunca se asume oficial). */
+  totalOddsSource: z.enum(TOTAL_ODDS_SOURCES).optional(),
+  /**
+   * Clave de idempotencia generada por el cliente por intento de registro: si la respuesta se pierde y
+   * se reintenta, la API devuelve la apuesta ya creada en vez de duplicarla (ADR 0024).
+   */
+  clientRequestId: z.uuid().optional(),
   officialPotentialReturn: moneyInputSchema().optional(),
   placedAt: dateTimeSchema,
   /** `false` si solo se conoce la fecha, no la hora exacta (§93, D-B4). */
   placedTimeKnown: z.boolean().default(true),
   reason: z.string().trim().max(REASON_MAX_LENGTH).optional(),
+  /** Referencia visible en el ticket de la casa (documental; no es un identificador de LetFer). */
+  externalReference: z.string().trim().min(1).max(EXTERNAL_REFERENCE_MAX_LENGTH).optional(),
   selections: z.array(selectionInputSchema).min(1),
   /**
    * Vincula un ticket ya subido (§110.3): el backend comprueba que exista, pertenezca al
@@ -142,7 +180,7 @@ export type CreateBetInput = z.infer<typeof createBetSchema>;
  * apuesta `PENDING` admite todo; una ya liquidada, solo los campos no financieros (§107.9).
  */
 export const updateBetSchema = createBetSchema
-  .omit({ settlement: true })
+  .omit({ settlement: true, clientRequestId: true })
   .partial()
   .extend({ version: z.number().int().positive() });
 export type UpdateBetInput = z.infer<typeof updateBetSchema>;
@@ -274,8 +312,14 @@ export interface BetSelectionSummary {
   event: string;
   market: string | null;
   selection: string;
-  /** `null` solo en las apuestas de un lote de importación: el historial no conserva la cuota (§113.5). */
+  /**
+   * Cuota del LEG si es la fila `position = 0`; una condición interna (`position > 0`) de un leg
+   * creado no tiene cuota propia (`null`). `null` también en los lotes de importación (§113.5).
+   */
   visibleOdds: OddsString | null;
+  legScore: string | null;
+  legResult: VisibleResult | null;
+  conditionStatus: VisibleResult | null;
 }
 
 /**
@@ -310,6 +354,8 @@ export interface BetSummary {
   effectiveAmount: MoneyString;
   amountSource: AmountSource;
   visibleTotalOdds: OddsString;
+  /** Qué es `visibleTotalOdds`: oficial, calculada de referencia o de origen desconocido. */
+  totalOddsSource: TotalOddsSource;
   officialPotentialReturn: MoneyString | null;
   officialRealizedReturn: MoneyString | null;
   /** Retorno calculado no confirmado (`monto × cuota visible`); solo en una ganada (§112.2). */
@@ -330,6 +376,8 @@ export interface BetSummary {
   settledAt: string | null;
   settledTimeKnown: boolean;
   reason: string | null;
+  /** Referencia visible del ticket de la casa (documental). */
+  externalReference: string | null;
   createdBy: { id: string; name: string };
   createdAt: string;
   updatedAt: string;

@@ -56,6 +56,11 @@ export function oddsInputSchema() {
     });
 }
 
+/** `true` si dos cuotas valen lo mismo (`'2.47'` y `'2.470000'` son iguales). Cualquier inválida ⇒ `false`. */
+export function sameOdds(a: string, b: string): boolean {
+  return isOddsString(a) && isOddsString(b) && toOddsDecimal(a).equals(toOddsDecimal(b));
+}
+
 /** Formato de presentación de una cuota, p. ej. `"1.95"`. Solo para mostrar; nunca para calcular. */
 export function formatOdds(value: OddsString, decimals = 2): string {
   return toOddsDecimal(value).toDecimalPlaces(decimals).toFixed(decimals);
