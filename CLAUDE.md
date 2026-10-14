@@ -216,15 +216,19 @@ cuerpo si ambos difieren. Si una regla debe cambiar: primero se actualiza la esp
 
 ## Convenciones del asistente «Añadir apuesta» (ADR 0024)
 
-- **Tres pasos:** 1 Añadir apuesta, 2 Verificar datos, 3 Confirmar. **Solo «Registrar apuesta» (Paso 3) registra**; nada
-  más (ni Enter) envía. Cada campo existe UNA vez (los pasos se ocultan, no se desmontan). La tabla del Paso 2 y el ticket
+- **Tres pasos (rediseño 2026-10):** 1 Añadir apuesta (origen IA/Manual + archivo; solo «Analizar y continuar» analiza,
+  Manual nunca), 2 Verificar datos (todo editable), 3 Confirmar («Registro completado», solo lectura, pintado con el
+  `BetDetail` de la API; no se vuelve atrás). **Solo «Confirmar apuesta» (Paso 2, `data-action="register"`) registra**;
+  nada más (ni Enter) envía; si falla, se queda en el Paso 2. Cada campo existe UNA vez (los pasos se ocultan, no se desmontan). La tabla del Paso 2 y el ticket
   digital salen de `groupBetLegs`/la estructura real: una Creada dentro de una Múltiple es una fila, con su cuota una vez.
 - **Resultado sin definir** hasta que la IA lo lee o alguien lo elige; «detectado por IA» solo si `statusFromAi`.
 - **Borradores** (`bet_drafts`): texto del formulario, sin efecto financiero; solo su dueño los ve (404 a otros); versión,
   borrado lógico, tope de 25 y 64 KB. Al registrar se descartan. Cerrar con cambios pide confirmación.
 - **Idempotencia:** `clientRequestId` por intento (`bets.client_request_id`, único por proyecto+creador). 4xx renueva la
   clave; red/5xx la conserva.
-- **Pruebas:** `NewBetWizard.spec.tsx` (recorrido Betano, edición de un leg, IA, borradores) y `bet-drafts.e2e-spec.ts`.
+- **Pruebas:** `NewBetWizard.spec.tsx` (recorrido Betano, edición de un leg, IA, borradores, Paso 1 y Paso 3) y
+  `bet-drafts.e2e-spec.ts`. Los campos de un leg viven en un diálogo: usa `fieldFor`/`clickLegButton`
+  (`wizard-test-helpers.ts`).
   `vite.config.ts` limita los workers de la web a 4 (con más, la primera prueba de cada archivo vencía su timeout).
 - **Diseño (revisión 2026-10-14):** referencia `docs/referencias/letfer-ui-referencias/01-OBJETIVO-verificar-datos.png`.
   Colores del modal con `.wizard-skin` (tokens solo dentro del asistente); una sola zona de scroll; rejillas con container

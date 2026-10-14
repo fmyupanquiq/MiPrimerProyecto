@@ -61,3 +61,50 @@ presentación: no cambian reglas financieras, contratos ni la API.
 - **Rejillas por ancho de columna** (container queries sobre la columna `@container`), no por ancho de ventana: la
   tabla de legs pasa a tarjetas apiladas por debajo de 40rem y la tarjeta de datos a dos columnas por debajo de 44rem.
 - La banda cuenta **legs**, nunca condiciones. Tras registrar: «Apuesta registrada correctamente» con «Ver apuesta».
+
+## Rediseño de los tres pasos (2026-10)
+
+Referencias: `docs/referencias/Referencias mockups/` (R1 Manual con respaldo, R2 Manual, R3 IA sin ticket, R4 IA con
+ticket, R5 Verificar datos IA, R6 Confirmar IA, R7 Confirmar manual; 1672 × 941). Sustituye la semántica de los pasos
+del punto 1 de la decisión; el resto (borradores, idempotencia, una instancia por campo, Creada = una fila) se mantiene.
+
+1. **Paso 1 «Añadir apuesta» = origen y archivo.** Selector de origen *Ticket con IA* / *Manual* (`entryMode`, guardado
+   en el borrador; opcional y deducido si falta, `draftEntryMode`). Zona de carga (arrastrar, seleccionar o pegar del
+   portapapeles; «JPG, PNG, PDF • máx. 10 MB» desde las constantes de `ticket-files.ts`), estado del archivo, vista
+   previa y estado del proceso. **El análisis solo ocurre con «Analizar y continuar»** (una vez; volver al Paso 1 con
+   la lectura aplicada ofrece «Continuar» sin gastar otro análisis). Si falla: se queda en el Paso 1 con «Reintentar»
+   y «Continuar en modo Manual», que conserva la imagen como respaldo. **Manual nunca llama a `analyze`**; su imagen es
+   un respaldo que se vincula con `ticketId`. Sin `tickets.analyze`, el modo IA aparece deshabilitado y se empieza en
+   Manual.
+2. **Paso 2 «Verificar datos» = todo el formulario editable, y «Confirmar apuesta» es lo único que registra.** El
+   botón lleva `data-action="register"` y el envío se ignora si no viene de él (Enter, «Atrás», «Editar ticket»,
+   «Guardar borrador» nunca registran). Se conservan el cerrojo de doble clic y el `clientRequestId` (4xx renueva,
+   red/5xx conserva). El pie anticipa el impacto («Reservará S/ X en {casa}» / «Se registrará ya liquidada como …»).
+   Si el registro falla, el asistente sigue en el Paso 2 con el error. Los datos poco frecuentes (hora desconocida,
+   zona, disponible, retorno potencial, motivo) viven en «Datos opcionales», plegado y sin apertura automática.
+3. **Paso 3 «Confirmar» = «Registro completado», de solo lectura.** Se pinta **solo con el `BetDetail` que devuelve la
+   API** (nunca con el formulario): hechos, selecciones registradas (la Creada como una fila con su cuota una vez),
+   ticket original o ticket digital, «Resumen final» y «Próximos pasos». Desde aquí no se vuelve atrás (el indicador
+   deja de ser navegable) y cerrar no pide confirmación. Acciones: *Cerrar*, *Ver historial* (cierra y resalta la
+   apuesta en la lista), *Registrar otra apuesta* (asistente nuevo, otra clave de idempotencia, mismo origen) y
+   *Volver al dashboard*. Al registrar se descarta el borrador y se recargan apuestas, casas y borradores.
+4. **Textos.** Subtítulos: Paso 1 «Carga tu ticket o registra una apuesta manualmente.»; Paso 2 IA «Revisa los datos
+   extraídos por IA y confirma que la información sea correcta.»; Paso 2 Manual «Completa los datos de tu apuesta y
+   confirma que la información sea correcta.»; Paso 3 «La apuesta ha sido confirmada y registrada en tu historial.».
+   La banda IA cuenta selecciones = **legs**, nunca condiciones.
+
+**Diferencias deliberadas con las referencias:** el modal mide 69rem en los tres pasos (R1–R4 son más estrechos) para
+no cambiar de tamaño entre pasos; el origen es una tarjeta de selección; «Datos opcionales» agrupa campos que las
+referencias no muestran; las cifras llevan su procedencia («Oficial»/«Calculada») porque la regla ADR 0023 lo exige; el
+mercado de cada condición sigue visible en el Paso 2 para poder verificarlo; para una apuesta ya liquidada el Paso 3
+indica que se corrige desde el historial con motivo (ADR 0019) en lugar de ofrecer edición.
+
+**Verificación visual:** Playwright a 1672 × 941 (oscuro y claro) y 390 × 844 (sin desplazamiento horizontal), con el
+análisis interceptado (caso Betano: Múltiple de 4 con una Creada, S/ 80.00, cuota 10.17, potencial S/ 813.60, Perdido).
+A 1672 × 941 los pasos R1–R7 caben sin scroll; la verificación manual sin ticket desplaza ~40 px. Capturas en
+`docs/referencias/capturas-anadir-apuesta/` (`escritorio-oscuro-*`, `escritorio-claro-*`, `movil-390-*` y
+`comparativa-*` junto a cada referencia); no se versionan porque muestran un ticket real.
+
+**Pruebas:** `NewBetWizard.spec.tsx` (análisis una vez, fallo con Reintentar/Manual, Manual sin análisis y con `ticketId`,
+cambio de origen, portapapeles, Paso 3 desde la respuesta de la API, variantes IA/Manual, Registrar otra/Ver
+historial/dashboard), `BetsPage.spec.tsx`, `ticket-files.spec.ts` y `bet-draft-record.spec.ts` (`entryMode`).

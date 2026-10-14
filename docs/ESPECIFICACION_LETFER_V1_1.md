@@ -3160,8 +3160,10 @@ queda `UNKNOWN` (nunca se marca oficial por suposición). En Múltiple/Creada la
 Cambiarla es documental: no altera importes, retornos, ganancias ni el ledger. `BetDetail.tickets` solo se
 devuelve a quien tiene `tickets.view`.
 
-**114.8 Asistente de registro (ADR 0024).** «Añadir apuesta» tiene tres pasos (Añadir apuesta, Verificar datos,
-Confirmar); solo «Registrar apuesta» del Paso 3 registra. El resultado empieza sin definir. Los borradores son el
+**114.8 Asistente de registro (ADR 0024, rediseño 2026-10).** «Añadir apuesta» tiene tres pasos: Añadir apuesta
+(origen *Ticket con IA* o *Manual* y archivo; el análisis solo se ejecuta al pedirlo y el modo Manual nunca analiza),
+Verificar datos (todo editable; **solo «Confirmar apuesta» registra**) y Confirmar («Registro completado», de solo
+lectura, pintado con la respuesta del servidor). El resultado empieza sin definir. Los borradores son el
 estado del formulario, no apuestas: sin movimientos ni reserva de saldo, visibles solo para su dueño. El registro es
 idempotente por `clientRequestId`.
 
