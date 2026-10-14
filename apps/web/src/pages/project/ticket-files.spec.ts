@@ -45,26 +45,24 @@ describe('archivos de ticket en el cliente', () => {
   describe('pegar desde el portapapeles', () => {
     const item = (types: string[], blob = new Blob(['x'], { type: types[0] })) => ({
       types,
-      getType: async () => blob,
+      getType: () => Promise.resolve(blob),
     });
 
     it('toma la primera imagen y le da un nombre reconocible', async () => {
       const file = await readClipboardImage({
-        read: async () => [item(['text/plain']), item(['image/png'])] as never,
+        read: () => Promise.resolve([item(['text/plain']), item(['image/png'])] as never),
       });
       expect(file?.name).toBe('ticket-pegado.png');
       expect(file?.type).toBe('image/png');
     });
 
     it('sin imagen, sin permiso o sin API devuelve null (la interfaz muestra la ayuda)', async () => {
-      expect(await readClipboardImage({ read: async () => [item(['text/plain'])] as never })).toBe(
-        null,
-      );
+      expect(
+        await readClipboardImage({ read: () => Promise.resolve([item(['text/plain'])] as never) }),
+      ).toBe(null);
       expect(
         await readClipboardImage({
-          read: async () => {
-            throw new DOMException('denegado', 'NotAllowedError');
-          },
+          read: () => Promise.reject(new DOMException('denegado', 'NotAllowedError')),
         }),
       ).toBeNull();
       expect(await readClipboardImage(undefined)).toBeNull();

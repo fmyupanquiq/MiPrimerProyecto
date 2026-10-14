@@ -4,6 +4,7 @@ import {
   ANA,
   apiError,
   AUTH_STATE,
+  OWNER_PERMISSIONS,
   projectDetail,
   PROJECT_ID,
   renderApp,
@@ -11,6 +12,7 @@ import {
   stubApi,
   type Handler,
 } from '../../test-utils.js';
+import { clickLegButton, closeLegDialog, fieldFor } from './wizard-test-helpers.js';
 
 /*
  * Asistente de tres pasos de "Añadir apuesta": Paso 1 Añadir, Paso 2 Verificar datos, Paso 3 Confirmar
@@ -65,10 +67,97 @@ const ticket = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
-const CREATED_BET = {
-  status: 201,
-  body: { id: 'nueva', projectId: PROJECT_ID, selections: [], tickets: [] },
-};
+/** Fila de selección tal como la devuelve la API (`BetSelectionSummary`). */
+const apiRow = (
+  eventGroup: number,
+  position: number,
+  event: string,
+  market: string,
+  selection: string,
+  visibleOdds: string | null,
+) => ({
+  id: `s${eventGroup}${position}`,
+  eventGroup,
+  position,
+  sport: 'Fútbol',
+  event,
+  market,
+  selection,
+  visibleOdds,
+  legScore: null,
+  legResult: null,
+  conditionStatus: null,
+});
+
+/**
+ * `BetDetail` que devuelve la API al registrar el caso Betano (Múltiple de 4 con una Creada). El Paso
+ * 3 se pinta SOLO con esto; `overrides` permite que la respuesta difiera del formulario a propósito.
+ */
+const registeredBet = (overrides: Record<string, unknown> = {}) => ({
+  id: 'nueva',
+  projectId: PROJECT_ID,
+  batchId: null,
+  batchStatus: null,
+  stageId: STAGE_ID,
+  stageName: 'Etapa 1',
+  houseId: HOUSE_A,
+  houseName: 'Betano',
+  betType: 'MULTIPLE',
+  stake: '5',
+  officialAmount: '10.00',
+  effectiveAmount: '10.00',
+  amountSource: 'CONFIRMED',
+  visibleTotalOdds: '8.42',
+  totalOddsSource: 'CALCULATED',
+  officialPotentialReturn: null,
+  officialRealizedReturn: null,
+  calculatedRealizedReturn: null,
+  effectiveReturn: '0.00',
+  returnSource: null,
+  effectiveOdds: null,
+  profitLoss: '-10.00',
+  status: 'LOST',
+  placedAt: '2026-10-11T01:05:00.000Z',
+  placedTimeKnown: true,
+  settledAt: '2026-10-11T03:00:00.000Z',
+  settledTimeKnown: true,
+  reason: null,
+  externalReference: null,
+  createdBy: { id: ANA.id, name: 'Ana Pérez' },
+  createdAt: '2026-10-11T03:00:00.000Z',
+  updatedAt: '2026-10-11T03:00:00.000Z',
+  deletedAt: null,
+  purgeEligibleAt: null,
+  version: 1,
+  events: ['Universitario de Deportes - FBC Melgar'],
+  sports: ['Fútbol'],
+  ticketCount: 0,
+  selections: [
+    apiRow(0, 0, 'Universitario de Deportes - FBC Melgar', 'Doble oportunidad', '1X', '2.15'),
+    apiRow(
+      1,
+      0,
+      'Liverpool FC - Manchester City',
+      'Resultado del partido',
+      'Manchester City',
+      '2.47',
+    ),
+    apiRow(
+      1,
+      1,
+      'Liverpool FC - Manchester City',
+      'Manchester City Más/Menos Córners',
+      'Más de 2.5',
+      null,
+    ),
+    apiRow(2, 0, 'SL Benfica - Vitória Guimarães', 'Resultado del partido', 'SL Benfica', '1.21'),
+    apiRow(3, 0, 'Inter Miami CF - D.C. United', 'Goles totales Más/Menos', 'Más de 4.5', '1.31'),
+  ],
+  tickets: [],
+  ...overrides,
+});
+
+const CREATED_BET = { status: 201, body: registeredBet() };
 
 function open(extra: Record<string, Handler> = {}) {
   return stubApi({
@@ -96,7 +185,12 @@ async function openForm(extra: Record<string, Handler> = {}) {
 }
 
 const change = (scope: HTMLElement, label: string, value: string) =>
-  fireEvent.change(within(scope).getByLabelText(label), { target: { value } });
+  fireEvent.change(
+    scope.getAttribute('role') === 'dialog'
+      ? within(scope).getByLabelText(label)
+      : fieldFor(scope, label),
+    { target: { value } },
+  );
 const click = (scope: HTMLElement, name: string | RegExp) =>
   fireEvent.click(within(scope).getByRole('button', { name }));
 const stepOf = (form: HTMLElement) =>
@@ -110,8 +204,6 @@ function fillBetano(form: HTMLElement) {
   change(form, 'Fecha', '2026-10-10');
   change(form, 'Hora', '20:05');
   change(form, 'Tipo de apuesta', 'MULTIPLE');
-  click(form, 'Añadir leg');
-  click(form, 'Añadir leg');
   const legs: [string, string, string, string][] = [
     ['Universitario de Deportes - FBC Melgar', '2.15', 'Doble oportunidad', '1X'],
     ['Liverpool FC - Manchester City', '2.47', 'Resultado del partido', 'Manchester City'],
@@ -125,7 +217,7 @@ function fillBetano(form: HTMLElement) {
     change(form, `Mercado del leg ${n}`, market);
     change(form, `Pronóstico del leg ${n}`, pick);
   });
-  click(form, 'Convertir el leg 2 en Creada (añadir otra selección)');
+  clickLegButton(form, 'Convertir el leg 2 en Creada (añadir otra selección)');
   change(form, 'Mercado de la selección 2 del leg 2', 'Manchester City Más/Menos Córners');
   change(form, 'Pronóstico de la selección 2 del leg 2', 'Más de 2.5');
   change(form, 'Monto apostado', '10.00');
@@ -195,8 +287,8 @@ async function readTicket(extraction: Record<string, unknown>) {
   fireEvent.change(within(stub.form).getByLabelText('Adjuntar ticket'), {
     target: { files: [file] },
   });
-  fireEvent.click(await within(stub.form).findByRole('button', { name: 'Leer ticket con IA' }));
-  await within(stub.form).findByText(/Datos aplicados desde el ticket/);
+  fireEvent.click(await within(stub.form).findByRole('button', { name: 'Analizar y continuar' }));
+  await within(stub.form).findByText(/Ticket leído por IA/);
   return stub;
 }
 
@@ -207,12 +299,14 @@ describe('Paso 2 — Verificar datos (caso real Betano, registro manual)', () =>
   it('muestra 4 legs y 5 condiciones: el leg 2 es UNA fila "Creada" con dos pronósticos y la cuota 2.47 una vez', async () => {
     const { form, calls } = await openForm();
     fillBetano(form);
-    click(form, 'Siguiente');
+    click(form, 'Verificar datos');
     expect(stepOf(form)).toBe('Verificar datos');
 
     // Registro manual: encabezado y banda lo dicen; nada afirma que lo detectó la IA.
     expect(
-      within(form).getByText('Revisa los datos introducidos antes de continuar.'),
+      within(form).getByText(
+        'Completa los datos de tu apuesta y confirma que la información sea correcta.',
+      ),
     ).toBeTruthy();
     expect(within(form).getByText(/Registro manual\./)).toBeTruthy();
     expect(within(form).queryByText(/Detectado por IA/)).toBeNull();
@@ -251,7 +345,7 @@ describe('Paso 2 — Verificar datos (caso real Betano, registro manual)', () =>
   it('"Editar" abre solo las dos condiciones del leg 2; al cerrar, la tabla se actualiza y no se pierde nada', async () => {
     const { form, calls } = await openForm();
     fillBetano(form);
-    click(form, 'Siguiente');
+    click(form, 'Verificar datos');
 
     click(form, 'Editar el leg 2');
     const dialog = screen.getByRole('dialog', { name: 'Editar leg 2' });
@@ -276,38 +370,41 @@ describe('Paso 2 — Verificar datos (caso real Betano, registro manual)', () =>
     expect(calls.some((c) => c.method === 'POST' || c.method === 'PUT')).toBe(false);
   });
 
-  it('"Confirmar apuesta" del Paso 2 solo lleva al Paso 3; el registro definitivo es "Registrar apuesta"', async () => {
-    const { form, calls } = await openForm({ [`POST ${BETS_URL}`]: CREATED_BET });
+  it('"Confirmar apuesta" (Paso 2) registra y el Paso 3 se pinta con la respuesta de la API, no con el formulario', async () => {
+    // La API responde con otra casa y otro stake que los del formulario: el Paso 3 muestra los suyos.
+    const { form, calls } = await openForm({
+      [`POST ${BETS_URL}`]: {
+        status: 201,
+        body: registeredBet({ houseName: 'Betano Perú', stake: '6' }),
+      },
+    });
     fillBetano(form);
-    click(form, 'Siguiente');
+    closeLegDialog();
+    click(form, 'Verificar datos');
     // La cuota total no la muestra el ticket: se usa el producto SOLO como referencia calculada.
     click(form, /Usar el producto de las cuotas \(8\.42\) como referencia/);
     fireEvent.click(within(form).getByRole('button', { name: 'Perdido' }));
-    click(form, 'Confirmar apuesta');
-    expect(stepOf(form)).toBe('Confirmar');
     expect(calls.some((c) => c.method === 'POST')).toBe(false);
 
-    // Paso 3: el ticket digital reconstruido, con la estructura y las cifras que se guardarán.
-    const digital = within(form).getByRole('article', {
-      name: 'Vista previa del ticket de LetFer',
-    });
-    expect(within(digital).getByText(/4 legs · 5 selecciones/)).toBeTruthy();
-    expect(within(digital).getAllByText('2.47')).toHaveLength(1);
-    expect(within(digital).getByText('Cuota total oficial').nextElementSibling!.textContent).toBe(
-      '—',
-    );
-    expect(
-      within(digital).getByText('Cuota calculada de referencia').nextElementSibling!.textContent,
-    ).toBe('8.42');
-    expect(within(digital).getByText('Importe apostado').nextElementSibling!.textContent).toBe(
-      'S/ 10.00',
-    );
-    expect(within(digital).getByText('Stake').nextElementSibling!.textContent).toBe('5');
+    click(form, 'Confirmar apuesta');
+    expect(await screen.findByRole('heading', { name: 'Registro completado' })).toBeTruthy();
+    expect(stepOf(form)).toBe('Confirmar');
+    // Desde el Paso 3 ya no se vuelve: ningún paso del indicador es navegable.
+    for (const name of ['Añadir apuesta', 'Verificar datos', 'Confirmar']) {
+      expect(within(form).getByRole<HTMLButtonElement>('button', { name }).disabled).toBe(true);
+    }
+    const done = within(form).getByRole('region', { name: 'Registro completado' });
+    expect(within(done).getByText('Betano Perú')).toBeTruthy();
+    expect(within(done).getByText('Stake').nextElementSibling!.textContent).toBe('6');
+    expect(within(done).getByText('Perdido')).toBeTruthy();
+    // Selecciones registradas: 4 legs, la Creada como una fila con su cuota UNA vez.
+    const registered = within(form).getByRole('region', { name: 'Selecciones registradas' });
+    expect(within(registered).getAllByRole('listitem', { name: /^Leg \d$/ })).toHaveLength(4);
+    const leg2 = within(registered).getByRole('listitem', { name: 'Leg 2' });
+    expect(within(leg2).getByText('Creada')).toBeTruthy();
+    expect(within(leg2).getByText('2 pronósticos')).toBeTruthy();
+    expect(within(leg2).getAllByText('2.47')).toHaveLength(1);
 
-    click(form, 'Registrar apuesta');
-    expect(
-      await screen.findByText('Apuesta registrada correctamente (ya liquidada).'),
-    ).toBeTruthy();
     const body = calls.find((c) => c.method === 'POST' && c.path === BETS_URL)!.body as {
       stake: string;
       officialAmount: string;
@@ -334,23 +431,29 @@ describe('Paso 2 — Verificar datos (caso real Betano, registro manual)', () =>
       '1.31',
     ]);
     expect(body.clientRequestId).toMatch(/^[0-9a-f-]{36}$/);
+
+    // Cerrar no pide confirmación: ya no hay nada sin guardar.
+    fireEvent.click(within(form).getAllByRole('button', { name: 'Cerrar' })[0]!);
+    expect(screen.queryByRole('dialog', { name: '¿Salir sin registrar la apuesta?' })).toBeNull();
+    expect(screen.queryByRole('form', { name: 'Añadir apuesta' })).toBeNull();
   });
 });
 
 describe('Paso 2 — lectura de IA', () => {
   it('lectura completa: banda con 4 legs (nunca 5), insignia, resultado detectado y resumen', async () => {
     const { form } = await readTicket(betanoExtraction());
-    click(form, 'Siguiente');
+    click(form, 'Verificar datos');
     expect(
       within(form).getByText(
         'Revisa los datos extraídos por IA y confirma que la información sea correcta.',
       ),
     ).toBeTruthy();
+    // Cuenta LEGS (4), nunca condiciones (5).
     expect(
-      within(form).getByText(
-        'Ticket leído por IA. Se han detectado 4 legs y el resultado de la apuesta. Verifica los datos antes de continuar.',
-      ),
-    ).toBeTruthy();
+      within(form).getByText('Ticket leído por IA.').closest('[role="status"]')!.textContent,
+    ).toBe(
+      'Ticket leído por IA. Se han detectado 4 selecciones y el resultado de la apuesta. Verifica los datos y confirma el registro.',
+    );
     expect(within(form).getByText(/Detectado por IA\. Verifica antes de confirmar\./)).toBeTruthy();
     expect(within(form).getByRole('heading', { name: 'Selecciones detectadas (4)' })).toBeTruthy();
 
@@ -382,11 +485,13 @@ describe('Paso 2 — lectura de IA', () => {
     const { form } = await readTicket(
       betanoExtraction({ result: undefined, officialAmount: undefined }),
     );
-    click(form, 'Siguiente');
-    const banner = within(form).getByText(/Ticket leído por IA con datos incompletos/);
+    click(form, 'Verificar datos');
+    const banner = within(form)
+      .getByText(/Ticket leído por IA con datos incompletos/)
+      .closest('[role="status"]')!;
     expect(banner.textContent).toContain('el monto o el stake');
     expect(banner.textContent).toContain('el resultado');
-    expect(within(form).queryByText(/Verifica los datos antes de continuar\./)).toBeNull();
+    expect(within(form).queryByText(/Verifica los datos y confirma el registro/)).toBeNull();
     // Sin resultado: sin definir (ni Pendiente ni Perdido por defecto) y el análisis pide revisión.
     expect(within(form).getByText(/Resultado sin definir/)).toBeTruthy();
     const summary = within(form).getByRole('region', { name: 'Resumen' });
@@ -397,7 +502,7 @@ describe('Paso 2 — lectura de IA', () => {
 
   it('si la persona elige el resultado, deja de decir que lo detectó la IA', async () => {
     const { form } = await readTicket(betanoExtraction());
-    click(form, 'Siguiente');
+    click(form, 'Verificar datos');
     expect(within(form).getByText(/Resultado detectado por IA:/)).toBeTruthy();
     fireEvent.click(within(form).getByRole('button', { name: 'Ganado' }));
     expect(within(form).queryByText(/Resultado detectado por IA:/)).toBeNull();
@@ -407,9 +512,9 @@ describe('Paso 2 — lectura de IA', () => {
   it('ticket subido sin analizar: banda informativa y ninguna cifra inventada', async () => {
     const { form } = await openForm({ [`POST ${URL}/tickets`]: { status: 201, body: ticket() } });
     const file = new File(['contenido'], 'ticket.jpg', { type: 'image/jpeg' });
-    fireEvent.change(within(form).getByLabelText('Adjuntar ticket'), { target: { files: [file] } });
-    await within(form).findByText('Todavía no se analizó con IA.');
-    click(form, 'Siguiente');
+    fireEvent.change(fieldFor(form, 'Adjuntar ticket'), { target: { files: [file] } });
+    await within(form).findByText('Listo para analizar');
+    click(form, 'Verificar datos');
     expect(within(form).getByText(/Ticket adjunto sin analizar/)).toBeTruthy();
     expect(within(form).queryByText(/Detectado por IA/)).toBeNull();
     const summary = within(form).getByRole('region', { name: 'Resumen' });
@@ -421,12 +526,16 @@ describe('Paso 2 — lectura de IA', () => {
     expect(within(original).getByRole('button', { name: 'Ver ticket' })).toBeTruthy();
   });
 
-  it('registro manual sin imagen: el ticket original muestra un estado vacío, no una imagen de ejemplo', async () => {
+  it('registro manual sin imagen: la columna del ticket muestra un estado vacío (nunca una imagen de ejemplo)', async () => {
     const { form } = await openForm();
-    click(form, 'Siguiente');
-    const original = within(form).getByRole('region', { name: 'Ticket original' });
-    expect(within(original).getByText(/Registro manual: no hay imagen adjunta/)).toBeTruthy();
-    expect(within(original).queryByRole('img')).toBeNull();
+    fireEvent.click(within(form).getByRole('radio', { name: /Manual/ }));
+    click(form, 'Verificar datos');
+    const backup = within(form).getByRole('region', { name: 'Ticket de respaldo' });
+    expect(within(backup).getByText('Sin ticket de respaldo')).toBeTruthy();
+    expect(within(backup).queryByRole('img')).toBeNull();
+    // "Adjuntar respaldo" lleva al Paso 1, donde se sube.
+    fireEvent.click(within(backup).getByRole('button', { name: 'Adjuntar respaldo' }));
+    expect(stepOf(form)).toBe('Añadir apuesta');
   });
 });
 
@@ -442,24 +551,23 @@ describe('registro seguro', () => {
       },
     });
     fillBetano(form);
-    click(form, 'Siguiente');
+    click(form, 'Verificar datos');
     click(form, /Usar el producto de las cuotas/);
-    click(form, 'Confirmar apuesta');
     const keys = () =>
       calls
         .filter((c) => c.method === 'POST' && c.path === BETS_URL)
         .map((c) => (c.body as { clientRequestId: string }).clientRequestId);
 
-    click(form, 'Registrar apuesta');
+    click(form, 'Confirmar apuesta');
     await waitFor(() => expect(keys()).toHaveLength(1));
-    await within(form).findByRole('button', { name: 'Registrar apuesta' });
-    click(form, 'Registrar apuesta');
+    await within(form).findByRole('button', { name: 'Confirmar apuesta' });
+    click(form, 'Confirmar apuesta');
     await waitFor(() => expect(keys()).toHaveLength(2));
     // 500 ⇒ resultado incierto: mismo intento, misma clave.
     expect(keys()[1]).toBe(keys()[0]);
 
-    await within(form).findByRole('button', { name: 'Registrar apuesta' });
-    click(form, 'Registrar apuesta');
+    await within(form).findByRole('button', { name: 'Confirmar apuesta' });
+    click(form, 'Confirmar apuesta');
     await waitFor(() => expect(keys()).toHaveLength(3));
     // 400 ⇒ no se creó nada: el siguiente intento es otro (otra clave).
     expect(keys()[2]).not.toBe(keys()[1]);
@@ -565,7 +673,7 @@ describe('borradores (ADR 0024)', () => {
     // "Seguir editando" vuelve al formulario sin perder nada.
     click(dialog, 'Seguir editando');
     expect(screen.queryByRole('dialog', { name: '¿Salir sin registrar la apuesta?' })).toBeNull();
-    expect(within(form).getByLabelText<HTMLSelectElement>('Casa de apuestas').value).toBe(HOUSE_A);
+    expect(fieldFor<HTMLSelectElement>(form, 'Casa de apuestas').value).toBe(HOUSE_A);
 
     click(form, 'Cancelar');
     click(
@@ -596,9 +704,9 @@ describe('borradores (ADR 0024)', () => {
     fireEvent.click(within(section).getByRole('button', { name: /^Retomar el borrador/ }));
     const form = await screen.findByRole('form', { name: 'Añadir apuesta' });
     await within(form).findByRole('option', { name: 'Betano' });
-    expect(within(form).getByLabelText<HTMLSelectElement>('Casa de apuestas').value).toBe(HOUSE_A);
-    expect(within(form).getByLabelText<HTMLInputElement>('Monto apostado').value).toBe('10.00');
-    click(form, 'Siguiente');
+    expect(fieldFor<HTMLSelectElement>(form, 'Casa de apuestas').value).toBe(HOUSE_A);
+    expect(fieldFor<HTMLInputElement>(form, 'Monto apostado').value).toBe('10.00');
+    click(form, 'Verificar datos');
     const leg2 = within(table(form)).getByRole('listitem', { name: 'Leg 2' });
     expect(within(leg2).getByText('2 pronósticos')).toBeTruthy();
     expect(within(leg2).getAllByText('2.47')).toHaveLength(1);
@@ -628,10 +736,9 @@ describe('borradores (ADR 0024)', () => {
     fireEvent.click(within(section).getByRole('button', { name: /^Retomar el borrador/ }));
     const form = await screen.findByRole('form', { name: 'Añadir apuesta' });
     await within(form).findByRole('option', { name: 'Betano' });
-    click(form, 'Siguiente');
+    click(form, 'Verificar datos');
     click(form, /Usar el producto de las cuotas/);
     click(form, 'Confirmar apuesta');
-    click(form, 'Registrar apuesta');
     expect(await screen.findByText('Apuesta registrada correctamente.')).toBeTruthy();
     expect(calls.some((c) => c.method === 'DELETE' && c.path === `${DRAFTS_URL}/${DRAFT_ID}`)).toBe(
       true,
@@ -646,32 +753,39 @@ describe('rediseño de alta fidelidad del Paso 2 (referencia 01-OBJETIVO)', () =
   const summaryValue = (form: HTMLElement, label: string) =>
     within(summary(form)).getByText(label).nextElementSibling!.textContent;
 
-  it('"Editar ticket" y "Atrás" vuelven al Paso 1 sin perder nada; "Siguiente" recupera la verificación igual', async () => {
-    const { form, calls } = await openForm();
+  it('"Editar ticket" y "Atrás" vuelven al Paso 1 sin perder nada; el indicador recupera la verificación igual', async () => {
+    const { form, calls } = await openForm({
+      [`POST ${URL}/tickets`]: { status: 201, body: ticket() },
+    });
+    // Un respaldo (modo Manual: nunca se analiza) para que exista "Editar ticket".
+    fireEvent.click(within(form).getByRole('radio', { name: /Manual/ }));
+    const file = new File(['contenido'], 'ticket.jpg', { type: 'image/jpeg' });
+    fireEvent.change(within(form).getByLabelText('Adjuntar ticket'), { target: { files: [file] } });
+    await within(form).findByText('Archivo adjunto');
     fillBetano(form);
-    click(form, 'Siguiente');
+    closeLegDialog();
+    click(form, 'Verificar datos');
     expect(stepOf(form)).toBe('Verificar datos');
 
     click(form, 'Editar ticket');
     expect(stepOf(form)).toBe('Añadir apuesta');
-    expect(within(form).getByLabelText<HTMLTextAreaElement>('Partido del leg 1').value).toBe(
-      'Universitario de Deportes - FBC Melgar',
-    );
-    expect(within(form).getByLabelText<HTMLInputElement>('Monto apostado').value).toBe('10.00');
+    expect(fieldFor<HTMLInputElement>(form, 'Monto apostado').value).toBe('10.00');
 
-    click(form, 'Siguiente');
+    click(form, 'Verificar datos');
     expect(within(table(form)).getAllByRole('listitem', { name: /^Leg \d$/ })).toHaveLength(4);
     click(form, 'Atrás');
     expect(stepOf(form)).toBe('Añadir apuesta');
-    expect(within(form).getByLabelText<HTMLSelectElement>('Casa de apuestas').value).toBe(HOUSE_A);
-    // Ir y volver entre pasos no envía nada.
-    expect(calls.some((c) => c.method === 'POST' || c.method === 'PUT')).toBe(false);
+    expect(fieldFor<HTMLSelectElement>(form, 'Casa de apuestas').value).toBe(HOUSE_A);
+    // Ir y volver entre pasos no envía nada (solo la subida del respaldo, nunca un análisis).
+    expect(calls.some((c) => c.path.endsWith('/analyze'))).toBe(false);
+    expect(calls.some((c) => c.method === 'POST' && c.path === BETS_URL)).toBe(false);
+    expect(calls.some((c) => c.method === 'PUT')).toBe(false);
   });
 
   it('corregir en la verificación actualiza la fila, el resumen y el monto potencial con las mismas cifras', async () => {
     const { form } = await openForm();
     fillBetano(form);
-    click(form, 'Siguiente');
+    click(form, 'Verificar datos');
     click(form, /Usar el producto de las cuotas \(8\.42\) como referencia/);
     expect(summaryValue(form, 'Monto apostado')).toContain('S/ 10.00');
     expect(summaryValue(form, 'Stake')).toContain('5');
@@ -697,24 +811,26 @@ describe('rediseño de alta fidelidad del Paso 2 (referencia 01-OBJETIVO)', () =
 
   it('verificación compacta: sin ayudas del Paso 1, la procedencia de cuota y monto va dentro del campo', async () => {
     const { form } = await readTicket(betanoExtraction());
-    // Paso 1: ayudas de edición visibles.
-    expect(within(form).getByText('No conozco la hora exacta')).toBeTruthy();
-    click(form, 'Siguiente');
-    expect(within(form).queryByText('No conozco la hora exacta')).toBeNull();
+    // Las ayudas largas (hora desconocida, zona, disponible) viven en "Datos opcionales", plegado.
+    expect(
+      within(form)
+        .getByRole('button', { name: /Datos opcionales/ })
+        .getAttribute('aria-expanded'),
+    ).toBe('false');
     // La cuota ya tiene procedencia (calculada desde los legs): no se vuelve a preguntar, pero se rotula.
     expect(within(form).queryByRole('group', { name: 'Origen de la cuota total' })).toBeNull();
     expect(within(datos(form)).getByText('Calculada por LetFer')).toBeTruthy();
     expect(within(datos(form)).getByText('Monto oficial indicado')).toBeTruthy();
-    expect(within(form).getByLabelText<HTMLInputElement>('Cuota total visible').value).toBe('8.42');
+    expect(fieldFor<HTMLInputElement>(form, 'Cuota total visible').value).toBe('8.42');
   });
 
   it('sin datos todavía, la verificación no muestra ninguna cifra financiera inventada', async () => {
     const { form } = await openForm();
-    click(form, 'Siguiente');
+    click(form, 'Verificar datos');
     const potential = within(datos(form)).getByRole('group', { name: 'Monto potencial' });
     expect(potential.textContent).toContain('—');
-    expect(within(form).getByLabelText<HTMLInputElement>('Monto apostado').value).toBe('');
-    expect(within(form).getByLabelText<HTMLInputElement>('Cuota de la selección 1').value).toBe('');
+    expect(fieldFor<HTMLInputElement>(form, 'Monto apostado').value).toBe('');
+    expect(fieldFor<HTMLInputElement>(form, 'Cuota de la selección 1').value).toBe('');
     for (const label of ['Stake', 'Monto apostado', 'Cuota total', 'Monto potencial']) {
       expect(summaryValue(form, label)).toBe('—');
     }
@@ -747,10 +863,10 @@ describe('rediseño de alta fidelidad del Paso 2 (referencia 01-OBJETIVO)', () =
       },
     });
     const file = new File(['contenido'], 'ticket.jpg', { type: 'image/jpeg' });
-    fireEvent.change(within(form).getByLabelText('Adjuntar ticket'), { target: { files: [file] } });
-    fireEvent.click(await within(form).findByRole('button', { name: 'Leer ticket con IA' }));
+    fireEvent.change(fieldFor(form, 'Adjuntar ticket'), { target: { files: [file] } });
+    fireEvent.click(await within(form).findByRole('button', { name: 'Analizar y continuar' }));
     await within(form).findByText(/No pudimos leer el ticket/);
-    click(form, 'Siguiente');
+    click(form, 'Verificar datos');
     expect(within(form).queryByText(/Ticket leído por IA/)).toBeNull();
     expect(within(form).getByText(/Ticket adjunto sin analizar/)).toBeTruthy();
     expect(within(form).queryByText(/Detectado por IA/)).toBeNull();
@@ -758,18 +874,297 @@ describe('rediseño de alta fidelidad del Paso 2 (referencia 01-OBJETIVO)', () =
     expect(summaryValue(form, 'Monto apostado')).toBe('—');
   });
 
-  it('tras registrar, el aviso dice "Apuesta registrada correctamente" y ofrece "Ver apuesta"', async () => {
+  it('tras registrar, el Paso 3 dice "Apuesta registrada correctamente" y, al cerrar, el aviso ofrece "Ver apuesta"', async () => {
     const { form } = await openForm({ [`POST ${BETS_URL}`]: CREATED_BET });
     fillBetano(form);
-    click(form, 'Siguiente');
+    closeLegDialog();
+    click(form, 'Verificar datos');
     click(form, /Usar el producto de las cuotas/);
     click(form, 'Confirmar apuesta');
-    click(form, 'Registrar apuesta');
+    expect(await within(form).findByText('Apuesta registrada correctamente.')).toBeTruthy();
+    fireEvent.click(within(form).getAllByRole('button', { name: 'Cerrar' })[0]!);
     const notice = (await screen.findByText('Apuesta registrada correctamente.')).closest(
       '[role="status"]',
     ) as HTMLElement;
     expect(within(notice).getByRole('link', { name: 'Ver apuesta' }).getAttribute('href')).toBe(
       `${BETS_URL}/nueva`,
     );
+  });
+});
+
+describe('rediseño de los tres pasos: Paso 1 (origen y archivo) y Paso 3 (registro completado)', () => {
+  const upload = (form: HTMLElement, name = 'ticket.jpg', type = 'image/jpeg') =>
+    fireEvent.change(within(form).getByLabelText('Adjuntar ticket'), {
+      target: { files: [new File(['contenido'], name, { type })] },
+    });
+  const analysisResponse = (status: 'COMPLETED' | 'FAILED', extraction: unknown) => ({
+    status: 200,
+    body: {
+      id: 'an1',
+      ticketId: TICKET_ID,
+      version: 1,
+      status,
+      provider: 'fake',
+      model: 'fake-model',
+      extraction,
+      confidenceByField: null,
+      errorMessage: status === 'FAILED' ? 'No se pudo leer' : null,
+      analyzedBy: { id: ANA.id, name: 'Ana Pérez' },
+      analyzedAt: '2026-06-01T20:01:00.000Z',
+    },
+  });
+  const analyzeCalls = (calls: { method: string; path: string }[]) =>
+    calls.filter((c) => c.method === 'POST' && c.path.endsWith('/analyze'));
+  const radio = (form: HTMLElement, name: RegExp) => within(form).getByRole('radio', { name });
+  const postedBets = (calls: { method: string; path: string; body?: unknown }[]) =>
+    calls
+      .filter((c) => c.method === 'POST' && c.path === BETS_URL)
+      .map((c) => c.body as { clientRequestId: string; ticketId?: string });
+
+  it('modo IA: "Analizar y continuar" exige un archivo; con él analiza UNA vez, aplica la lectura y pasa a Verificar datos', async () => {
+    const { form, calls } = await openForm({
+      [`POST ${URL}/tickets`]: { status: 201, body: ticket() },
+      [`POST ${URL}/tickets/${TICKET_ID}/analyze`]: analysisResponse(
+        'COMPLETED',
+        betanoExtraction(),
+      ),
+    });
+    expect(radio(form, /^Ticket con IA/).getAttribute('aria-checked')).toBe('true');
+    const analyze = () =>
+      within(form).getByRole<HTMLButtonElement>('button', { name: 'Analizar y continuar' });
+    expect(analyze().disabled).toBe(true);
+    expect(within(form).getByText('Esperando ticket')).toBeTruthy();
+
+    upload(form);
+    await within(form).findByText('Listo para analizar');
+    expect(within(form).getByText('Pendiente de análisis')).toBeTruthy();
+    // Subir nunca analiza (D-T4): solo "Analizar y continuar".
+    expect(analyzeCalls(calls)).toHaveLength(0);
+
+    fireEvent.click(analyze());
+    await within(form).findByText('Ticket leído por IA.');
+    expect(stepOf(form)).toBe('Verificar datos');
+    expect(analyzeCalls(calls)).toHaveLength(1);
+    expect(within(table(form)).getAllByRole('listitem', { name: /^Leg \d$/ })).toHaveLength(4);
+
+    // Volver al Paso 1 con la lectura ya aplicada no gasta otro análisis: "Continuar".
+    fireEvent.click(within(form).getByRole('button', { name: /Añadir apuesta/ }));
+    expect(within(form).getByText('Ticket analizado')).toBeTruthy();
+    click(form, 'Continuar');
+    expect(stepOf(form)).toBe('Verificar datos');
+    expect(analyzeCalls(calls)).toHaveLength(1);
+  });
+
+  it('si el análisis falla: se queda en el Paso 1 con "Reintentar" y "Continuar en modo Manual", que conserva la imagen y no vuelve a analizar', async () => {
+    const { form, calls } = await openForm({
+      [`POST ${URL}/tickets`]: { status: 201, body: ticket() },
+      [`POST ${URL}/tickets/${TICKET_ID}/analyze`]: analysisResponse('FAILED', null),
+    });
+    upload(form);
+    await within(form).findByText('Listo para analizar');
+    click(form, 'Analizar y continuar');
+    expect(await within(form).findByText('No se pudo analizar el ticket')).toBeTruthy();
+    expect(stepOf(form)).toBe('Añadir apuesta');
+    expect(within(form).queryByText('Ticket leído por IA.')).toBeNull();
+    expect(within(form).getByRole('button', { name: 'Reintentar' })).toBeTruthy();
+
+    click(form, 'Continuar en modo Manual');
+    expect(radio(form, /^Manual/).getAttribute('aria-checked')).toBe('true');
+    // La imagen sigue, ahora como respaldo (no analizada).
+    expect(within(form).getByText('Archivo adjunto')).toBeTruthy();
+    click(form, 'Continuar a verificar datos');
+    expect(stepOf(form)).toBe('Verificar datos');
+    expect(within(form).getByRole('region', { name: 'Ticket de respaldo' })).toBeTruthy();
+    expect(analyzeCalls(calls)).toHaveLength(1);
+  });
+
+  it('modo Manual con respaldo: sube la imagen, NUNCA la analiza y al registrar la vincula con ticketId', async () => {
+    const { form, calls } = await openForm({
+      [`POST ${URL}/tickets`]: { status: 201, body: ticket() },
+      [`POST ${BETS_URL}`]: CREATED_BET,
+    });
+    fireEvent.click(radio(form, /^Manual/));
+    expect(within(form).queryByRole('region', { name: 'La IA detectará' })).toBeNull();
+    upload(form);
+    await within(form).findByText('Archivo adjunto');
+    expect(within(form).queryByRole('button', { name: /Analizar/ })).toBeNull();
+
+    fillBetano(form);
+    closeLegDialog();
+    click(form, 'Continuar a verificar datos');
+    click(form, /Usar el producto de las cuotas/);
+    click(form, 'Confirmar apuesta');
+    await screen.findByRole('heading', { name: 'Registro completado' });
+    expect(analyzeCalls(calls)).toHaveLength(0);
+    expect(postedBets(calls)[0]!.ticketId).toBe(TICKET_ID);
+  });
+
+  it('cambiar de origen conserva el archivo; sin tickets.analyze el modo IA está deshabilitado y se empieza en Manual', async () => {
+    const { form } = await openForm({ [`POST ${URL}/tickets`]: { status: 201, body: ticket() } });
+    upload(form);
+    await within(form).findByText('Listo para analizar');
+    fireEvent.click(radio(form, /^Manual/));
+    expect(within(form).getByText('Archivo adjunto')).toBeTruthy();
+    fireEvent.click(radio(form, /^Ticket con IA/));
+    expect(within(form).getByText('Listo para analizar')).toBeTruthy();
+    cleanup();
+
+    open({
+      [`GET ${URL}`]: {
+        status: 200,
+        body: projectDetail({
+          activeStage: { id: STAGE_ID, name: 'Etapa 1', unitStake: '2.00' },
+          myPermissions: OWNER_PERMISSIONS.filter((p) => p !== 'tickets.analyze'),
+        }),
+      },
+    });
+    renderApp(BETS_URL);
+    fireEvent.click(await screen.findByRole('button', { name: 'Añadir apuesta' }));
+    const limited = screen.getByRole('form', { name: 'Añadir apuesta' });
+    expect(radio(limited, /^Manual/).getAttribute('aria-checked')).toBe('true');
+    expect(radio(limited, /^Ticket con IA/).getAttribute('aria-disabled')).toBe('true');
+    expect(within(limited).getByText('No tienes permiso para analizar tickets.')).toBeTruthy();
+    fireEvent.click(radio(limited, /^Ticket con IA/));
+    expect(radio(limited, /^Manual/).getAttribute('aria-checked')).toBe('true');
+  });
+
+  it('"Pegar desde portapapeles": sube la imagen del portapapeles; sin imagen, explica cómo pegar', async () => {
+    const original = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    let items: unknown[] = [];
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { read: () => Promise.resolve(items) },
+    });
+    try {
+      const { form, calls } = await openForm({
+        [`POST ${URL}/tickets`]: {
+          status: 201,
+          body: ticket({ originalFileName: 'ticket-pegado.png' }),
+        },
+      });
+      click(form, 'Pegar desde portapapeles');
+      expect(
+        await within(form).findByText(/No hay ninguna imagen en el portapapeles/),
+      ).toBeTruthy();
+      expect(calls.some((c) => c.method === 'POST' && c.path === `${URL}/tickets`)).toBe(false);
+
+      items = [
+        {
+          types: ['image/png'],
+          getType: () => Promise.resolve(new Blob(['x'], { type: 'image/png' })),
+        },
+      ];
+      click(form, 'Pegar desde portapapeles');
+      await within(form).findByText('Listo para analizar');
+      expect(calls.some((c) => c.method === 'POST' && c.path === `${URL}/tickets`)).toBe(true);
+    } finally {
+      if (original) Object.defineProperty(navigator, 'clipboard', original);
+      else Reflect.deleteProperty(navigator, 'clipboard');
+    }
+  });
+
+  it('Paso 3 (IA): "Leído por IA" y estructura validada; "Registrar otra apuesta" reinicia vacío con otra clave de idempotencia', async () => {
+    const { form, calls } = await openForm({
+      [`POST ${URL}/tickets`]: { status: 201, body: ticket() },
+      [`POST ${URL}/tickets/${TICKET_ID}/analyze`]: analysisResponse(
+        'COMPLETED',
+        betanoExtraction(),
+      ),
+      [`POST ${BETS_URL}`]: {
+        status: 201,
+        body: registeredBet({ ticketCount: 1, tickets: [ticket({ betId: 'nueva' })] }),
+      },
+    });
+    upload(form);
+    await within(form).findByText('Listo para analizar');
+    click(form, 'Analizar y continuar');
+    await within(form).findByText('Ticket leído por IA.');
+    click(form, 'Confirmar apuesta');
+    await screen.findByRole('heading', { name: 'Registro completado' });
+
+    expect(
+      within(form).getByText(/El ticket leído por IA fue guardado en tu historial/),
+    ).toBeTruthy();
+    const original = within(form).getAllByRole('region', { name: 'Ticket original' }).at(-1)!;
+    expect(within(original).getByText('Leído por IA')).toBeTruthy();
+    const final = within(form).getByRole('region', { name: 'Resumen final' });
+    expect(within(final).getByText('Completado')).toBeTruthy();
+    expect(within(final).getByText('Estructura del ticket')).toBeTruthy();
+    expect(within(final).getByText('Validada')).toBeTruthy();
+
+    // "Registrar otra apuesta" (pie): un asistente nuevo y vacío en el Paso 1, mismo origen.
+    fireEvent.click(within(form).getAllByRole('button', { name: 'Registrar otra apuesta' })[0]!);
+    const fresh = screen.getByRole('form', { name: 'Añadir apuesta' });
+    expect(stepOf(fresh)).toBe('Añadir apuesta');
+    expect(radio(fresh, /^Ticket con IA/).getAttribute('aria-checked')).toBe('true');
+    expect(within(fresh).getByText('Ningún archivo cargado')).toBeTruthy();
+    expect(fieldFor<HTMLInputElement>(fresh, 'Monto apostado').value).toBe('');
+
+    // Y su registro usa otra clave de idempotencia.
+    fireEvent.click(radio(fresh, /^Manual/));
+    fillBetano(fresh);
+    closeLegDialog();
+    click(fresh, 'Continuar a verificar datos');
+    click(fresh, /Usar el producto de las cuotas/);
+    click(fresh, 'Confirmar apuesta');
+    await waitFor(() => expect(postedBets(calls)).toHaveLength(2));
+    const [first, second] = postedBets(calls);
+    expect(second!.clientRequestId).not.toBe(first!.clientRequestId);
+  });
+
+  it('Paso 3 (manual): origen "Manual", respaldo "Sin adjuntar" y ticket digital; "Ver historial" cierra y destaca la apuesta', async () => {
+    let listed = false;
+    const { form } = await openForm({
+      [`GET ${BETS_URL}`]: () => ({ status: 200, body: listed ? [registeredBet()] : [] }),
+      [`POST ${BETS_URL}`]: () => {
+        listed = true;
+        return CREATED_BET;
+      },
+    });
+    fireEvent.click(radio(form, /^Manual/));
+    fillBetano(form);
+    closeLegDialog();
+    click(form, 'Continuar a verificar datos');
+    click(form, /Usar el producto de las cuotas/);
+    click(form, 'Confirmar apuesta');
+    await screen.findByRole('heading', { name: 'Registro completado' });
+
+    expect(within(form).getByText(/El registro manual fue guardado en tu historial/)).toBeTruthy();
+    const done = within(form).getByRole('region', { name: 'Registro completado' });
+    expect(within(done).getByText('Origen del registro')).toBeTruthy();
+    // Sin respaldo, la columna derecha nunca queda vacía: el ticket digital de la apuesta.
+    expect(within(form).getByRole('region', { name: 'Ticket digital' })).toBeTruthy();
+    const final = within(form).getByRole('region', { name: 'Resumen final' });
+    expect(within(final).getByText('Origen').nextElementSibling!.textContent).toBe('Manual');
+    expect(within(final).getByText('Respaldo del ticket').nextElementSibling!.textContent).toBe(
+      'Sin adjuntar',
+    );
+    // Liquidada: se corrige desde el historial (con motivo), nunca editándola aquí.
+    expect(within(form).getByText(/corrección con motivo/)).toBeTruthy();
+
+    click(form, 'Ver historial');
+    expect(screen.queryByRole('form', { name: 'Añadir apuesta' })).toBeNull();
+    await waitFor(() =>
+      expect(document.querySelector('[data-bet-row][data-highlighted]')).not.toBeNull(),
+    );
+  });
+
+  it('"Volver al dashboard" cierra el asistente y lleva al dashboard del proyecto', async () => {
+    const { form } = await openForm({
+      [`POST ${BETS_URL}`]: CREATED_BET,
+      [`GET ${URL}/dashboard/status`]: { status: 500, body: undefined },
+      [`GET ${URL}/dashboard/analysis`]: { status: 500, body: undefined },
+      [`GET ${URL}/dashboard/bankroll-chart`]: { status: 500, body: undefined },
+    });
+    fireEvent.click(radio(form, /^Manual/));
+    fillBetano(form);
+    closeLegDialog();
+    click(form, 'Continuar a verificar datos');
+    click(form, /Usar el producto de las cuotas/);
+    click(form, 'Confirmar apuesta');
+    await screen.findByRole('heading', { name: 'Registro completado' });
+    click(form, 'Volver al dashboard');
+    expect(await screen.findByRole('heading', { name: 'Dashboard' })).toBeTruthy();
+    expect(screen.queryByRole('form', { name: 'Añadir apuesta' })).toBeNull();
   });
 });

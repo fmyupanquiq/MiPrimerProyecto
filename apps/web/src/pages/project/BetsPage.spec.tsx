@@ -15,6 +15,7 @@ import {
   openRowAction,
   rowActionNames,
 } from '../../test-utils.js';
+import { clickLegButton, closeLegDialog, fieldFor, openLegDialog } from './wizard-test-helpers.js';
 
 afterEach(() => {
   cleanup();
@@ -194,25 +195,24 @@ describe('apuestas, selecciones y liquidaciones (§18-§27, §107)', () => {
     const form = screen.getByRole('form', { name: 'Añadir apuesta' });
     await within(form).findByRole('option', { name: 'Betano' });
 
-    fireEvent.change(within(form).getByLabelText('Casa de apuestas'), {
+    fireEvent.change(fieldFor(form, 'Casa de apuestas'), {
       target: { value: HOUSE_A },
     });
-    fireEvent.change(within(form).getByLabelText('Stake rápido'), { target: { value: 'custom' } });
-    fireEvent.change(within(form).getByLabelText('Stake'), { target: { value: '2' } });
-    fireEvent.change(within(form).getByLabelText('Fecha'), { target: { value: '2026-06-01' } });
-    fireEvent.change(within(form).getByLabelText('Hora'), { target: { value: '20:00' } });
-    fireEvent.change(within(form).getByLabelText('Partido'), {
+    fireEvent.change(fieldFor(form, 'Stake rápido'), { target: { value: 'custom' } });
+    fireEvent.change(fieldFor(form, 'Stake'), { target: { value: '2' } });
+    fireEvent.change(fieldFor(form, 'Fecha'), { target: { value: '2026-06-01' } });
+    fireEvent.change(fieldFor(form, 'Hora'), { target: { value: '20:00' } });
+    fireEvent.change(fieldFor(form, 'Partido'), {
       target: { value: 'Real Madrid vs. Barcelona' },
     });
-    fireEvent.change(within(form).getByLabelText('Pronóstico de la selección 1'), {
+    fireEvent.change(fieldFor(form, 'Pronóstico de la selección 1'), {
       target: { value: 'Real Madrid gana' },
     });
-    fireEvent.change(within(form).getByLabelText('Cuota de la selección 1'), {
+    fireEvent.change(fieldFor(form, 'Cuota de la selección 1'), {
       target: { value: '1.95' },
     });
-    fireEvent.click(within(form).getByRole('button', { name: 'Siguiente' }));
+    fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
     fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
-    fireEvent.click(within(form).getByRole('button', { name: 'Registrar apuesta' }));
 
     expect(await screen.findByText('Apuesta registrada correctamente.')).toBeTruthy();
     const created = calls.find((c) => c.method === 'POST' && c.path === BETS_URL)!;
@@ -237,9 +237,8 @@ describe('apuestas, selecciones y liquidaciones (§18-§27, §107)', () => {
     renderApp(BETS_URL);
     fireEvent.click(await screen.findByRole('button', { name: 'Añadir apuesta' }));
     const form = screen.getByRole('form', { name: 'Añadir apuesta' });
-    fireEvent.click(within(form).getByRole('button', { name: 'Siguiente' }));
+    fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
     fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
-    fireEvent.click(within(form).getByRole('button', { name: 'Registrar apuesta' }));
     expect(await within(form).findByRole('alert')).toBeTruthy();
     expect(calls.filter((c) => c.method === 'POST')).toHaveLength(0);
   });
@@ -262,7 +261,7 @@ describe('apuestas, selecciones y liquidaciones (§18-§27, §107)', () => {
     await openRowAction('Mover de etapa');
     const form = screen.getByRole('form', { name: 'Mover de etapa la apuesta de Betano' });
     await within(form).findByRole('option', { name: 'Etapa 2' });
-    fireEvent.change(within(form).getByLabelText('Nueva etapa'), { target: { value: 'e2' } });
+    fireEvent.change(fieldFor(form, 'Nueva etapa'), { target: { value: 'e2' } });
     fireEvent.click(within(form).getByRole('button', { name: 'Mover' }));
 
     const dialog = await screen.findByRole('dialog', { name: 'Confirma tu contraseña' });
@@ -347,7 +346,7 @@ describe('tickets e IA en el formulario de apuesta (§28-§31, §110)', () => {
    * mismo control dos veces, pero sí la misma referencia visible en dos lugares legítimos.
    */
   const ticketZone = (form: HTMLElement) =>
-    within(form).getByRole('region', { name: 'Completa con IA' });
+    within(form).getByRole('region', { name: 'Estado del archivo' });
 
   /**
    * Abre el formulario, sube un ticket y pulsa "Leer ticket con IA" (Fase 10.7): el análisis
@@ -367,14 +366,14 @@ describe('tickets e IA en el formulario de apuesta (§28-§31, §110)', () => {
     const form = screen.getByRole('form', { name: 'Añadir apuesta' });
     await within(form).findByRole('option', { name: 'Betano' });
     const file = new File(['contenido'], 'ticket.jpg', { type: 'image/jpeg' });
-    fireEvent.change(within(form).getByLabelText('Adjuntar ticket'), { target: { files: [file] } });
-    fireEvent.click(await within(form).findByRole('button', { name: 'Leer ticket con IA' }));
-    await within(form).findByText(/Datos aplicados desde el ticket/);
+    fireEvent.change(fieldFor(form, 'Adjuntar ticket'), { target: { files: [file] } });
+    fireEvent.click(await within(form).findByRole('button', { name: 'Analizar y continuar' }));
+    await within(form).findByText(/Ticket leído por IA/);
     return { ...stub, form };
   }
 
   const change = (form: HTMLElement, label: string, value: string) =>
-    fireEvent.change(within(form).getByLabelText(label), { target: { value } });
+    fireEvent.change(fieldFor(form, label), { target: { value } });
 
   const analysisOf = (
     extraction: Record<string, unknown>,
@@ -410,9 +409,9 @@ describe('tickets e IA en el formulario de apuesta (§28-§31, §110)', () => {
     expect(within(card).getByRole('button', { name: 'Ver ticket.jpg en grande' })).toBeTruthy();
     expect(within(card).getByRole('button', { name: 'Ver ticket' })).toBeTruthy();
 
-    // "Cambiar imagen" quita el ticket y se queda en el Paso 1 (donde se sube otro).
-    fireEvent.click(within(card).getByRole('button', { name: 'Cambiar imagen' }));
-    expect(within(form).queryByRole('region', { name: 'Ticket original' })).toBeNull();
+    // "Eliminar" (Paso 1) quita el ticket: la tarjeta queda sin imagen y se vuelve al Paso 1.
+    fireEvent.click(within(form).getByRole('button', { name: 'Eliminar' }));
+    expect(within(card).queryByRole('button', { name: 'Ver ticket.jpg en grande' })).toBeNull();
     expect(
       within(form)
         .getByRole('button', { name: /Añadir apuesta/ })
@@ -488,11 +487,11 @@ describe('tickets e IA en el formulario de apuesta (§28-§31, §110)', () => {
         [`POST ${URL}/tickets`]: { status: 201, body: ticket() },
       });
       const file = new File(['contenido'], 'ticket.jpg', { type: 'image/jpeg' });
-      fireEvent.change(within(form).getByLabelText('Adjuntar ticket'), {
+      fireEvent.change(fieldFor(form, 'Adjuntar ticket'), {
         target: { files: [file] },
       });
       expect(await within(ticketZone(form)).findByText('ticket.jpg')).toBeTruthy();
-      fireEvent.click(within(form).getByRole('button', { name: 'Cambiar ticket' }));
+      fireEvent.click(within(form).getByRole('button', { name: 'Eliminar' }));
       expect(within(form).queryByText('ticket.jpg')).toBeNull();
       expect(within(form).getByRole('button', { name: 'Sube tu ticket' })).toBeTruthy();
     });
@@ -504,21 +503,16 @@ describe('tickets e IA en el formulario de apuesta (§28-§31, §110)', () => {
       [`POST ${URL}/tickets/${TICKET_ID}/analyze`]: analysisOf({ house: 'Betano' }),
     });
     const file = new File(['contenido'], 'ticket.jpg', { type: 'image/jpeg' });
-    fireEvent.change(within(form).getByLabelText('Adjuntar ticket'), { target: { files: [file] } });
+    fireEvent.change(fieldFor(form, 'Adjuntar ticket'), { target: { files: [file] } });
     await within(ticketZone(form)).findByText('ticket.jpg');
-    fireEvent.click(within(form).getByRole('button', { name: 'Leer ticket con IA' }));
-    expect(
-      within(form).getByText(
-        /Analizando tu ticket: identificando casa, importe, selecciones y resultado/,
-      ),
-    ).toBeTruthy();
+    fireEvent.click(within(form).getByRole('button', { name: 'Analizar y continuar' }));
+    expect(within(form).getByText('Analizando ticket…')).toBeTruthy();
     expect(within(form).getByRole('button', { name: 'Analizando…' })).toBeTruthy();
-    await within(form).findByText(/Datos aplicados desde el ticket/);
+    await within(form).findByText(/Ticket leído por IA/);
   });
 
   describe('prellenado completo del formulario (Fase 10.7)', () => {
-    const shown = (form: HTMLElement, label: string) =>
-      within(form).getByLabelText(label).textContent;
+    const shown = (form: HTMLElement, label: string) => fieldFor(form, label).textContent;
     const summaryOf = (form: HTMLElement) => within(form).getByRole('region', { name: 'Resumen' });
 
     it('solo subir la imagen no calcula nada: el resumen sigue sin cifras hasta analizar', async () => {
@@ -529,7 +523,7 @@ describe('tickets e IA en el formulario de apuesta (§28-§31, §110)', () => {
         dataTransfer: { files: [new File(['contenido'], 'ticket.jpg', { type: 'image/jpeg' })] },
       });
       await within(form).findByRole('region', { name: 'Ticket original' });
-      expect(within(form).getByText('Todavía no se analizó con IA.')).toBeTruthy();
+      expect(within(form).getByText('Listo para analizar')).toBeTruthy();
       expect(shown(form, 'Monto apostado calculado')).toBe('—');
       expect(within(summaryOf(form)).queryByText(/\(stake × unidad\)/)).toBeNull();
     });
@@ -563,10 +557,10 @@ describe('tickets e IA en el formulario de apuesta (§28-§31, §110)', () => {
         );
       const { form } = await read();
       expect(within(form).getAllByText('Capturado por IA').length).toBeGreaterThan(0);
-      fireEvent.click(within(form).getByRole('button', { name: 'Cambiar imagen' }));
+      fireEvent.click(within(form).getByRole('button', { name: 'Eliminar' }));
 
       // La imagen ya no está y el formulario deja de decir que fue "Capturado por IA".
-      expect(within(form).queryByRole('region', { name: 'Ticket original' })).toBeNull();
+      expect(within(form).queryByRole('button', { name: 'Ver ticket.jpg en grande' })).toBeNull();
       expect(within(form).queryByText('Capturado por IA')).toBeNull();
       expect(within(form).getByText(/se\s+atribuyen a otra imagen/)).toBeTruthy();
 
@@ -574,8 +568,8 @@ describe('tickets e IA en el formulario de apuesta (§28-§31, §110)', () => {
       fireEvent.click(within(form).getByRole('button', { name: 'Descartar los datos leídos' }));
       expect(within(form).queryByText(/se\s+atribuyen a otra imagen/)).toBeNull();
       expect(shown(form, 'Monto apostado calculado')).toBe('—');
-      expect(within(form).getByLabelText<HTMLSelectElement>('Casa de apuestas').value).toBe('');
-      expect(within(form).getByLabelText<HTMLTextAreaElement>('Partido').value).toBe('');
+      expect(fieldFor<HTMLSelectElement>(form, 'Casa de apuestas').value).toBe('');
+      expect(fieldFor<HTMLTextAreaElement>(form, 'Partido').value).toBe('');
       expect(within(summaryOf(form)).getByText('Sin definir')).toBeTruthy();
     });
 
@@ -588,11 +582,11 @@ describe('tickets e IA en el formulario de apuesta (§28-§31, §110)', () => {
           selections: [{ event: 'A vs B', selection: 'Gana A', visibleOdds: '2.00' }],
         }),
       );
-      fireEvent.click(within(form).getByRole('button', { name: 'Cambiar imagen' }));
+      fireEvent.click(within(form).getByRole('button', { name: 'Eliminar' }));
       fireEvent.click(within(form).getByRole('button', { name: 'Conservar como datos manuales' }));
       expect(within(form).queryByText(/se\s+atribuyen a otra imagen/)).toBeNull();
       expect(shown(form, 'Monto apostado calculado')).toBe('S/ 10.00');
-      expect(within(form).getByLabelText<HTMLTextAreaElement>('Partido').value).toBe('A vs B');
+      expect(fieldFor<HTMLTextAreaElement>(form, 'Partido').value).toBe('A vs B');
       expect(within(form).queryByText('Capturado por IA')).toBeNull();
     });
 
@@ -616,7 +610,7 @@ describe('tickets e IA en el formulario de apuesta (§28-§31, §110)', () => {
       fireEvent.drop(zone, {
         dataTransfer: { files: [new File(['contenido'], 'ticket.jpg', { type: 'image/jpeg' })] },
       });
-      fireEvent.click(await within(form).findByRole('button', { name: 'Leer ticket con IA' }));
+      fireEvent.click(await within(form).findByRole('button', { name: 'Analizar y continuar' }));
       expect(await within(form).findByText(/No pudimos leer el ticket/)).toBeTruthy();
       expect(within(form).queryByText(/Datos aplicados desde el ticket/)).toBeNull();
       expect(shown(form, 'Monto apostado calculado')).toBe('—');
@@ -624,7 +618,7 @@ describe('tickets e IA en el formulario de apuesta (§28-§31, §110)', () => {
       for (const label of ['Stake', 'Cuota total', 'Monto potencial']) {
         expect(within(summary).getByText(label).nextElementSibling!.textContent).toBe('—');
       }
-      expect(within(form).getByLabelText<HTMLSelectElement>('Stake rápido').value).toBe('');
+      expect(fieldFor<HTMLSelectElement>(form, 'Stake rápido').value).toBe('');
     });
 
     /** El ticket real de regresión: Betano, "Combinada de 5", Perdida, 5 selecciones distintas. */
@@ -677,68 +671,55 @@ describe('tickets e IA en el formulario de apuesta (§28-§31, §110)', () => {
     it('el ticket real de Betano (Combinada de 5, Perdida) prellena el formulario completo con sus 5 selecciones (criterio de éxito)', async () => {
       const { form, calls } = await readTicket(analysisOf(betanoFixture));
 
-      expect(within(form).getByLabelText<HTMLSelectElement>('Casa de apuestas').value).toBe(
-        HOUSE_A,
-      );
-      expect(within(form).getByLabelText<HTMLInputElement>('Fecha').value).toBe('2026-10-06');
-      expect(within(form).getByLabelText<HTMLInputElement>('Hora').value).toBe('12:50');
-      expect(within(form).getByLabelText<HTMLSelectElement>('Tipo de apuesta').value).toBe(
-        'MULTIPLE',
-      );
+      expect(fieldFor<HTMLSelectElement>(form, 'Casa de apuestas').value).toBe(HOUSE_A);
+      expect(fieldFor<HTMLInputElement>(form, 'Fecha').value).toBe('2026-10-06');
+      expect(fieldFor<HTMLInputElement>(form, 'Hora').value).toBe('12:50');
+      expect(fieldFor<HTMLSelectElement>(form, 'Tipo de apuesta').value).toBe('MULTIPLE');
       const resultGroup = within(form).getByRole('group', { name: 'Resultado' });
       expect(
         within(resultGroup).getByRole('button', { name: 'Perdido' }).getAttribute('aria-pressed'),
       ).toBe('true');
-      expect(within(form).getByLabelText<HTMLInputElement>('Monto apostado').value).toBe('10.72');
+      expect(fieldFor<HTMLInputElement>(form, 'Monto apostado').value).toBe('10.72');
       // Perdida, sin retorno ni cuota total visible, pero con las 5 cuotas individuales completas
       // (§2-§4, Fase 10.9): LetFer calcula su producto (1.31×1.42×1.29×1.30×1.53 = 4.772919762),
       // lo redondea a 2 decimales para la cuota registrable (4.77, nunca "4.772919762") y permite
       // continuar — nunca afirma que la casa mostró 4.77.
-      expect(within(form).getByLabelText<HTMLInputElement>('Cuota total visible').value).toBe(
-        '4.77',
-      );
+      expect(fieldFor<HTMLInputElement>(form, 'Cuota total visible').value).toBe('4.77');
       expect(
         within(form).getByText(/Calculada desde las selecciones: producto de sus cuotas/),
       ).toBeTruthy();
-      // El panel del ticket, aparte, muestra la misma referencia ya rotulada "Cuota calculada"
-      // (no "Cuota efectiva": esa etiqueta es solo para retorno ÷ importe, §9).
-      expect(within(form).getByText('Cuota calculada')).toBeTruthy();
+      // Nunca se presenta como oficial: la nota lo dice y el campo lleva "Calculada".
       expect(
-        within(form).getByText(/solo de referencia, no es la cuota oficial de la casa/),
+        within(form).getByText(/Es una referencia, no la cuota oficial de la casa/),
       ).toBeTruthy();
+      expect(within(form).getByText('Calculada por LetFer')).toBeTruthy();
 
       // Los 5 legs, cada uno con su partido, mercado, pronóstico y cuota (§114).
-      expect(within(form).getAllByLabelText(/^Partido del leg \d$/)).toHaveLength(5);
-      expect(within(form).getByLabelText<HTMLInputElement>('Partido del leg 1').value).toBe(
-        'Croacia vs España',
-      );
+      expect(within(form).getAllByRole('listitem', { name: /^Leg \d+$/ })).toHaveLength(5);
+      expect(fieldFor<HTMLInputElement>(form, 'Partido del leg 1').value).toBe('Croacia vs España');
       // Mercado y pronóstico se conservan SEPARADOS, tal como los leyó la IA.
-      expect(within(form).getByLabelText<HTMLInputElement>('Mercado del leg 1').value).toBe(
+      expect(fieldFor<HTMLInputElement>(form, 'Mercado del leg 1').value).toBe(
         'Resultado del partido',
       );
-      expect(within(form).getByLabelText<HTMLInputElement>('Pronóstico del leg 1').value).toBe(
-        'España',
-      );
-      expect(within(form).getByLabelText<HTMLInputElement>('Cuota del leg 1').value).toBe('1.31');
-      expect(within(form).getByLabelText<HTMLInputElement>('Partido del leg 5').value).toBe(
+      expect(fieldFor<HTMLInputElement>(form, 'Pronóstico del leg 1').value).toBe('España');
+      expect(fieldFor<HTMLInputElement>(form, 'Cuota del leg 1').value).toBe('1.31');
+      expect(fieldFor<HTMLInputElement>(form, 'Partido del leg 5').value).toBe(
         'Escocia vs Eslovenia',
       );
-      expect(within(form).getByLabelText<HTMLInputElement>('Mercado del leg 5').value).toBe(
+      expect(fieldFor<HTMLInputElement>(form, 'Mercado del leg 5').value).toBe(
         'Ambos equipos anotan',
       );
-      expect(within(form).getByLabelText<HTMLInputElement>('Pronóstico del leg 5').value).toBe(
-        'No',
-      );
-      expect(within(form).getByLabelText<HTMLInputElement>('Cuota del leg 5').value).toBe('1.53');
+      expect(fieldFor<HTMLInputElement>(form, 'Pronóstico del leg 5').value).toBe('No');
+      expect(fieldFor<HTMLInputElement>(form, 'Cuota del leg 5').value).toBe('1.53');
 
       // Nunca un panel aparte de "Usar este valor": los campos reales ya quedaron rellenos.
       expect(within(form).queryByRole('button', { name: 'Usar este valor' })).toBeNull();
 
       // Sigue siendo 100% editable.
-      fireEvent.change(within(form).getByLabelText('Partido del leg 1'), {
+      fireEvent.change(fieldFor(form, 'Partido del leg 1'), {
         target: { value: 'Croacia vs España (corregido)' },
       });
-      expect(within(form).getByLabelText<HTMLInputElement>('Partido del leg 1').value).toBe(
+      expect(fieldFor<HTMLInputElement>(form, 'Partido del leg 1').value).toBe(
         'Croacia vs España (corregido)',
       );
 
@@ -750,13 +731,10 @@ describe('tickets e IA en el formulario de apuesta (§28-§31, §110)', () => {
       const { form, calls } = await readTicket(analysisOf(betanoFixture), {
         [`POST ${BETS_URL}`]: { status: 201, body: bet({ id: 'nueva' }) },
       });
-      expect(within(form).getByLabelText<HTMLInputElement>('Cuota total visible').value).toBe(
-        '4.77',
-      );
-      fireEvent.click(within(form).getByRole('button', { name: 'Siguiente' }));
+      expect(fieldFor<HTMLInputElement>(form, 'Cuota total visible').value).toBe('4.77');
+      fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
       fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
-      fireEvent.click(within(form).getByRole('button', { name: 'Registrar apuesta' }));
-      await screen.findByText('Apuesta registrada correctamente (ya liquidada).');
+      await screen.findByRole('heading', { name: 'Registro completado' });
       const body = calls.find((c) => c.method === 'POST' && c.path === BETS_URL)!.body as {
         visibleTotalOdds: string;
       };
@@ -811,9 +789,10 @@ describe('tickets e IA en el formulario de apuesta (§28-§31, §110)', () => {
       );
 
       // 4 legs, nunca 5: las condiciones internas no abren legs propios.
-      expect(within(form).getAllByLabelText(/^Partido del leg \d$/)).toHaveLength(4);
-      expect(within(form).queryByLabelText('Partido del leg 5')).toBeNull();
-      const leg2 = within(form).getByRole('region', { name: 'Leg 2' });
+      expect(within(form).getAllByRole('listitem', { name: /^Leg \d+$/ })).toHaveLength(4);
+      expect(within(form).queryByRole('listitem', { name: 'Leg 5' })).toBeNull();
+      openLegDialog(form, 2);
+      const leg2 = screen.getByRole('dialog', { name: 'Editar leg 2' });
       expect(within(leg2).getByText('Creada')).toBeTruthy();
       expect(within(leg2).getByLabelText<HTMLInputElement>('Partido del leg 2').value).toBe(
         'Equipo C vs Equipo D',
@@ -837,20 +816,16 @@ describe('tickets e IA en el formulario de apuesta (§28-§31, §110)', () => {
       // ...y la cuota 2.50 existe UNA sola vez (la del leg): las selecciones no tienen campo de cuota.
       expect(within(leg2).getAllByLabelText(/^Cuota/)).toHaveLength(1);
       expect(within(leg2).getByLabelText<HTMLInputElement>('Cuota del leg 2').value).toBe('2.50');
-      const oddsOf = (n: number) =>
-        within(form).getByLabelText<HTMLInputElement>(`Cuota del leg ${n}`).value;
+      const oddsOf = (n: number) => fieldFor<HTMLInputElement>(form, `Cuota del leg ${n}`).value;
       expect([1, 2, 3, 4].map(oddsOf)).toEqual(['2.00', '2.50', '1.20', '1.30']);
 
       // La cuota total de referencia sale de los 4 legs reales: 2.00 × 2.50 × 1.20 × 1.30 = 7.80.
-      expect(within(form).getByLabelText<HTMLInputElement>('Cuota total visible').value).toBe(
-        '7.80',
-      );
+      expect(fieldFor<HTMLInputElement>(form, 'Cuota total visible').value).toBe('7.80');
 
       // Se registra con la estructura exacta: 4 legs, 5 filas, cuota 2.50 una vez, marcador en la 1.ª fila.
-      fireEvent.click(within(form).getByRole('button', { name: 'Siguiente' }));
+      fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
       fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
-      fireEvent.click(within(form).getByRole('button', { name: 'Registrar apuesta' }));
-      await screen.findByText('Apuesta registrada correctamente (ya liquidada).');
+      await screen.findByRole('heading', { name: 'Registro completado' });
       const body = calls.find((c) => c.method === 'POST' && c.path === BETS_URL)!.body as {
         selections: {
           eventGroup: number;
@@ -889,9 +864,9 @@ describe('tickets e IA en el formulario de apuesta (§28-§31, §110)', () => {
         within(resultGroup).getByRole('button', { name: 'Ganado' }).getAttribute('aria-pressed'),
       ).toBe('true');
       // Ganancia neta = retorno (51.40) − importe (10.00) = 41.40, nunca 51.40 directo.
-      expect(within(form).getByLabelText<HTMLInputElement>('Ganancia').value).toBe('41.40');
-      // El panel del ticket también calcula la cuota efectiva (retorno real ÷ importe) aparte.
-      expect(within(form).getByText(/Calculada: retorno real ÷ importe apostado\./)).toBeTruthy();
+      expect(fieldFor<HTMLInputElement>(form, 'Ganancia').value).toBe('41.40');
+      // La cuota que muestra el ticket se conserva tal cual (no se sustituye por retorno ÷ importe).
+      expect(fieldFor<HTMLInputElement>(form, 'Cuota de la selección 1').value).toBe('5.14');
     });
 
     it('ticket pendiente: cuota efectiva "potencial", nunca un retorno oficial (§8)', async () => {
@@ -918,18 +893,15 @@ describe('tickets e IA en el formulario de apuesta (§28-§31, §110)', () => {
         );
       }
       expect(within(form).getByText(/Resultado sin definir/)).toBeTruthy();
-      expect(within(form).getByLabelText<HTMLInputElement>('Cuota total visible').value).toBe(
-        '2.17',
-      );
-      // Cuota efectiva calculada del retorno potencial (4.35 ÷ 2.00 = 2.175): distinta de la
-      // visible (2.17) y nunca rotulada como oficial.
-      expect(within(form).getByText('Cuota efectiva')).toBeTruthy();
-      expect(within(form).getByText('2.175')).toBeTruthy();
-      expect(
-        within(form).getByText(
-          /Calculada a partir del retorno potencial: la apuesta sigue pendiente, no es un retorno oficial\./,
-        ),
-      ).toBeTruthy();
+      expect(fieldFor<HTMLInputElement>(form, 'Cuota total visible').value).toBe('2.17');
+      // El retorno potencial del ticket es solo eso, potencial: va a "Monto potencial · Oficial" y
+      // nunca a un retorno realizado (la apuesta sigue sin resultado).
+      const summary = within(form).getByRole('region', { name: 'Resumen' });
+      const potential =
+        within(summary).getByText('Monto potencial').nextElementSibling!.textContent;
+      expect(potential).toContain('S/ 4.35');
+      expect(potential).toContain('Oficial');
+      expect(within(form).queryByText(/A\+G:/)).toBeNull();
     });
 
     it('ticket ganado SIN cuota visible: LetFer la calcula (retorno ÷ importe) y permite registrar (Caso G, §1-§2)', async () => {
@@ -949,18 +921,15 @@ describe('tickets e IA en el formulario de apuesta (§28-§31, §110)', () => {
       ).toBe('true');
       // Sin cuota total en el ticket: LetFer la calcula (51.40 ÷ 10.00 = 5.14) y la usa para que
       // el formulario quede registrable, rotulada como calculada, nunca como la de la casa.
-      expect(within(form).getByLabelText<HTMLInputElement>('Cuota de la selección 1').value).toBe(
-        '5.14',
-      );
+      expect(fieldFor<HTMLInputElement>(form, 'Cuota de la selección 1').value).toBe('5.14');
       expect(within(form).getByText(/Calculada automáticamente:/)).toBeTruthy();
       expect(within(form).getByText(/retorno S\/ 51\.40 ÷ apuesta S\/ 10\.00/)).toBeTruthy();
-      expect(within(form).getByLabelText<HTMLInputElement>('Ganancia').value).toBe('41.40');
+      expect(fieldFor<HTMLInputElement>(form, 'Ganancia').value).toBe('41.40');
 
       // Nunca bloquea el registro por falta de una cuota "obligatoria": se registra sin error.
-      fireEvent.click(within(form).getByRole('button', { name: 'Siguiente' }));
+      fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
       fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
-      fireEvent.click(within(form).getByRole('button', { name: 'Registrar apuesta' }));
-      await screen.findByText('Apuesta registrada correctamente (ya liquidada).');
+      await screen.findByRole('heading', { name: 'Registro completado' });
       const body = calls.find((c) => c.method === 'POST' && c.path === BETS_URL)!.body as {
         visibleTotalOdds: string;
       };
@@ -977,17 +946,14 @@ describe('tickets e IA en el formulario de apuesta (§28-§31, §110)', () => {
         }),
         { [`POST ${BETS_URL}`]: { status: 201, body: bet({ id: 'nueva' }) } },
       );
-      expect(within(form).getByLabelText<HTMLInputElement>('Cuota de la selección 1').value).toBe(
-        '2.175',
-      );
+      expect(fieldFor<HTMLInputElement>(form, 'Cuota de la selección 1').value).toBe('2.175');
       expect(within(form).getByText(/Calculada automáticamente:/)).toBeTruthy();
       expect(
         within(form).getByText(/retorno S\/ 4\.35 \(potencial\) ÷ apuesta S\/ 2\.00/),
       ).toBeTruthy();
 
-      fireEvent.click(within(form).getByRole('button', { name: 'Siguiente' }));
+      fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
       fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
-      fireEvent.click(within(form).getByRole('button', { name: 'Registrar apuesta' }));
       await screen.findByText('Apuesta registrada correctamente.');
       const body = calls.find((c) => c.method === 'POST' && c.path === BETS_URL)!.body as {
         visibleTotalOdds: string;
@@ -999,13 +965,9 @@ describe('tickets e IA en el formulario de apuesta (§28-§31, §110)', () => {
       const { form } = await readTicket(
         analysisOf({ house: 'Betano', officialAmount: '10.00', officialRealizedReturn: '51.40' }),
       );
-      expect(within(form).getByLabelText<HTMLInputElement>('Cuota de la selección 1').value).toBe(
-        '5.14',
-      );
+      expect(fieldFor<HTMLInputElement>(form, 'Cuota de la selección 1').value).toBe('5.14');
       change(form, 'Cuota de la selección 1', '5.20');
-      expect(within(form).getByLabelText<HTMLInputElement>('Cuota de la selección 1').value).toBe(
-        '5.20',
-      );
+      expect(fieldFor<HTMLInputElement>(form, 'Cuota de la selección 1').value).toBe('5.20');
       // Al editarla, deja de coincidir con la calculada: el rótulo "Calculada automáticamente"
       // desaparece y la corrección manual no se vuelve a pisar.
       expect(within(form).queryByText(/Calculada automáticamente:/)).toBeNull();
@@ -1024,13 +986,11 @@ describe('tickets e IA en el formulario de apuesta (§28-§31, §110)', () => {
         },
       );
       // La cuota visible (3.50) nunca interviene en el cálculo del stake.
-      expect(within(form).getByLabelText<HTMLInputElement>('Cuota de la selección 1').value).toBe(
-        '3.50',
+      expect(fieldFor<HTMLInputElement>(form, 'Cuota de la selección 1').value).toBe('3.50');
+      expect(String(fieldFor<HTMLSelectElement>(form, 'Stake rápido').value === 'custom')).toBe(
+        'true',
       );
-      expect(
-        String(within(form).getByLabelText<HTMLSelectElement>('Stake rápido').value === 'custom'),
-      ).toBe('true');
-      expect(within(form).getByLabelText<HTMLInputElement>('Stake').value).toBe('1.085');
+      expect(fieldFor<HTMLInputElement>(form, 'Stake').value).toBe('1.085');
     });
 
     it('importe igual a la unidad → stake 1, sin omitirlo ni redondearlo (Caso D)', async () => {
@@ -1042,10 +1002,10 @@ describe('tickets e IA en el formulario de apuesta (§28-§31, §110)', () => {
           }),
         },
       });
-      expect(
-        String(within(form).getByLabelText<HTMLSelectElement>('Stake rápido').value === 'custom'),
-      ).toBe('true');
-      expect(within(form).getByLabelText<HTMLInputElement>('Stake').value).toBe('1');
+      expect(String(fieldFor<HTMLSelectElement>(form, 'Stake rápido').value === 'custom')).toBe(
+        'true',
+      );
+      expect(fieldFor<HTMLInputElement>(form, 'Stake').value).toBe('1');
     });
 
     it('perdida con una selección sin cuota: NO inventa un producto parcial (Fase 10.9, §2-§4)', async () => {
@@ -1063,7 +1023,7 @@ describe('tickets e IA en el formulario de apuesta (§28-§31, §110)', () => {
       );
       // Sin la cuota de la segunda selección, el producto de "solo las conocidas" sería menor al
       // real y engañoso: no se calcula nada, el campo queda para que la persona lo complete.
-      expect(within(form).getByLabelText<HTMLInputElement>('Cuota total visible').value).toBe('');
+      expect(fieldFor<HTMLInputElement>(form, 'Cuota total visible').value).toBe('');
       expect(within(form).queryByText(/Calculada por LetFer/)).toBeNull();
     });
 
@@ -1079,10 +1039,12 @@ describe('tickets e IA en el formulario de apuesta (§28-§31, §110)', () => {
           ],
         }),
       );
-      const chip = (form: HTMLElement, name: string) =>
-        within(form).getByRole('button', { name }).getAttribute('aria-pressed');
-      expect(chip(official.form, 'Oficial (la muestra la casa)')).toBe('true');
-      expect(chip(official.form, 'Calculada de referencia')).toBe('false');
+      // La procedencia va dentro del campo "Cuota total": oficial o calculada, nunca ambas.
+      const origin = (form: HTMLElement) => ({
+        official: within(form).queryByText('Cuota oficial de la casa') !== null,
+        calculated: within(form).queryByText('Calculada por LetFer') !== null,
+      });
+      expect(origin(official.form)).toEqual({ official: true, calculated: false });
       cleanup();
 
       const calculated = await readTicket(
@@ -1100,8 +1062,7 @@ describe('tickets e IA en el formulario de apuesta (§28-§31, §110)', () => {
       expect(
         within(calculated.form).getByLabelText<HTMLInputElement>('Cuota total visible').value,
       ).toBe('6.00');
-      expect(chip(calculated.form, 'Calculada de referencia')).toBe('true');
-      expect(chip(calculated.form, 'Oficial (la muestra la casa)')).toBe('false');
+      expect(origin(calculated.form)).toEqual({ official: false, calculated: true });
     });
 
     it('editar la cuota total visible (Múltiple/Creada) cuenta como corrección manual: una segunda lectura no la pisa (§14, §16, Fase 10.9)', async () => {
@@ -1116,16 +1077,13 @@ describe('tickets e IA en el formulario de apuesta (§28-§31, §110)', () => {
           ],
         }),
       );
-      expect(within(form).getByLabelText<HTMLInputElement>('Cuota total visible').value).toBe(
-        '2.50',
-      );
+      expect(fieldFor<HTMLInputElement>(form, 'Cuota total visible').value).toBe('2.50');
       change(form, 'Cuota total visible', '2.80');
 
+      fireEvent.click(within(form).getByRole('button', { name: /Añadir apuesta/ }));
       fireEvent.click(within(form).getByRole('button', { name: 'Volver a analizar' }));
       await within(form).findByText(/ya habías corregido algunos datos a mano/);
-      expect(within(form).getByLabelText<HTMLInputElement>('Cuota total visible').value).toBe(
-        '2.80',
-      );
+      expect(fieldFor<HTMLInputElement>(form, 'Cuota total visible').value).toBe('2.80');
     });
 
     it('Creada/Bet Builder detectado por la IA no exige cuotas individuales, solo la total (§6)', async () => {
@@ -1142,27 +1100,18 @@ describe('tickets e IA en el formulario de apuesta (§28-§31, §110)', () => {
         { [`POST ${BETS_URL}`]: { status: 201, body: bet({ id: 'nueva' }) } },
       );
 
-      expect(within(form).getByLabelText<HTMLSelectElement>('Tipo de apuesta').value).toBe(
-        'CREATED',
-      );
-      expect(within(form).getByLabelText<HTMLInputElement>('Cuota total visible').value).toBe(
-        '2.70',
-      );
+      expect(fieldFor<HTMLSelectElement>(form, 'Tipo de apuesta').value).toBe('CREATED');
+      expect(fieldFor<HTMLInputElement>(form, 'Cuota total visible').value).toBe('2.70');
       // Ninguna cuota individual: ni inventada ni repartida desde la total.
-      expect(within(form).getByLabelText<HTMLInputElement>('Cuota de la selección 1').value).toBe(
-        '',
-      );
-      expect(within(form).getByLabelText<HTMLInputElement>('Cuota de la selección 2').value).toBe(
-        '',
-      );
+      expect(fieldFor<HTMLInputElement>(form, 'Cuota de la selección 1').value).toBe('');
+      expect(fieldFor<HTMLInputElement>(form, 'Cuota de la selección 2').value).toBe('');
 
       change(form, 'Fecha', '2026-10-06');
       change(form, 'Hora', '12:50');
       // El ticket no mostraba stake ni importe: la persona lo completa (nada se supone).
-      fireEvent.change(within(form).getByLabelText('Stake rápido'), { target: { value: '10' } });
-      fireEvent.click(within(form).getByRole('button', { name: 'Siguiente' }));
+      fireEvent.change(fieldFor(form, 'Stake rápido'), { target: { value: '10' } });
+      fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
       fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
-      fireEvent.click(within(form).getByRole('button', { name: 'Registrar apuesta' }));
       expect(await screen.findByText('Apuesta registrada correctamente.')).toBeTruthy();
       // `calls` ya trae la subida del ticket (previa, en `readTicket`): hay que buscar la del alta.
       const body = calls.find((c) => c.method === 'POST' && c.path === BETS_URL)!.body as {
@@ -1178,21 +1127,21 @@ describe('tickets e IA en el formulario de apuesta (§28-§31, §110)', () => {
         analysisOf({ house: 'Casa Desconocida XYZ', officialAmount: '12.00' }),
       );
       // La casa sigue sin elegir: no hay ninguna que coincida con "Casa Desconocida XYZ".
-      expect(within(form).getByLabelText<HTMLSelectElement>('Casa de apuestas').value).toBe('');
+      expect(fieldFor<HTMLSelectElement>(form, 'Casa de apuestas').value).toBe('');
       // Sin stake explícito en el ticket, LetFer lo calcula: 12.00 ÷ 10.00 (unidad) = 1.2, que no
       // coincide con ningún atajo → "Otra cantidad" con el valor exacto, nunca aproximado a 10.
-      expect(
-        String(within(form).getByLabelText<HTMLSelectElement>('Stake rápido').value === 'custom'),
-      ).toBe('true');
-      expect(within(form).getByLabelText<HTMLInputElement>('Stake').value).toBe('1.2');
+      expect(String(fieldFor<HTMLSelectElement>(form, 'Stake rápido').value === 'custom')).toBe(
+        'true',
+      );
+      expect(fieldFor<HTMLInputElement>(form, 'Stake').value).toBe('1.2');
     });
 
     it('importe 60 con unidad 10: el stake calculado (6) no coincide con ningún atajo rápido (§4)', async () => {
       const { form } = await readTicket(analysisOf({ house: 'Betano', officialAmount: '60.00' }));
-      expect(
-        String(within(form).getByLabelText<HTMLSelectElement>('Stake rápido').value === 'custom'),
-      ).toBe('true');
-      expect(within(form).getByLabelText<HTMLInputElement>('Stake').value).toBe('6');
+      expect(String(fieldFor<HTMLSelectElement>(form, 'Stake rápido').value === 'custom')).toBe(
+        'true',
+      );
+      expect(fieldFor<HTMLInputElement>(form, 'Stake').value).toBe('6');
       // El stake deriva exactamente del importe: nunca hay discrepancia que avisar en este caso.
       expect(within(form).queryByText(/El ticket indica/)).toBeNull();
     });
@@ -1205,10 +1154,10 @@ describe('tickets e IA en el formulario de apuesta (§28-§31, §110)', () => {
       );
       // "5" no es uno de los atajos (10/20/30/40/50): se extrae tal cual el stake real del
       // ticket, en "Otra cantidad", nunca aproximado a un atajo cercano.
-      expect(
-        String(within(form).getByLabelText<HTMLSelectElement>('Stake rápido').value === 'custom'),
-      ).toBe('true');
-      expect(within(form).getByLabelText<HTMLInputElement>('Stake').value).toBe('5');
+      expect(String(fieldFor<HTMLSelectElement>(form, 'Stake rápido').value === 'custom')).toBe(
+        'true',
+      );
+      expect(fieldFor<HTMLInputElement>(form, 'Stake').value).toBe('5');
       expect(
         within(form).getByText(
           /El ticket indica S\/ 10\.72, pero el cálculo de LetFer para stake 5 es S\/ 50\.00/,
@@ -1218,28 +1167,30 @@ describe('tickets e IA en el formulario de apuesta (§28-§31, §110)', () => {
 
     it('si el usuario ya corrigió un campo, una nueva lectura pide confirmación; "Mantener mis cambios" no toca nada (§14)', async () => {
       const { form } = await readTicket(analysisOf({ house: 'Betano', officialAmount: '25.00' }));
-      expect(within(form).getByLabelText<HTMLInputElement>('Monto apostado').value).toBe('25.00');
+      expect(fieldFor<HTMLInputElement>(form, 'Monto apostado').value).toBe('25.00');
 
       change(form, 'Monto apostado', '30.00');
+      fireEvent.click(within(form).getByRole('button', { name: /Añadir apuesta/ }));
       fireEvent.click(within(form).getByRole('button', { name: 'Volver a analizar' }));
       await within(form).findByText(/ya habías corregido algunos datos a mano/);
       // Nada se pisó mientras se decide.
-      expect(within(form).getByLabelText<HTMLInputElement>('Monto apostado').value).toBe('30.00');
+      expect(fieldFor<HTMLInputElement>(form, 'Monto apostado').value).toBe('30.00');
 
       fireEvent.click(within(form).getByRole('button', { name: 'Mantener mis cambios' }));
       expect(within(form).queryByText(/ya habías corregido algunos datos a mano/)).toBeNull();
-      expect(within(form).getByLabelText<HTMLInputElement>('Monto apostado').value).toBe('30.00');
+      expect(fieldFor<HTMLInputElement>(form, 'Monto apostado').value).toBe('30.00');
     });
 
     it('"Reemplazar con esta lectura" sí aplica la nueva lectura sobre los cambios manuales (§14)', async () => {
       const { form } = await readTicket(analysisOf({ house: 'Betano', officialAmount: '25.00' }));
       change(form, 'Monto apostado', '30.00');
 
+      fireEvent.click(within(form).getByRole('button', { name: /Añadir apuesta/ }));
       fireEvent.click(within(form).getByRole('button', { name: 'Volver a analizar' }));
       await within(form).findByText(/ya habías corregido algunos datos a mano/);
       fireEvent.click(within(form).getByRole('button', { name: 'Reemplazar con esta lectura' }));
 
-      expect(within(form).getByLabelText<HTMLInputElement>('Monto apostado').value).toBe('25.00');
+      expect(fieldFor<HTMLInputElement>(form, 'Monto apostado').value).toBe('25.00');
       expect(within(form).queryByText(/ya habías corregido algunos datos a mano/)).toBeNull();
     });
   });
@@ -1258,7 +1209,7 @@ describe('tickets e IA en el formulario de apuesta (§28-§31, §110)', () => {
       ['10.72', '10.72'],
     ])('el importe "%s" del ticket se normaliza a "%s" en el formulario', async (raw, expected) => {
       const { form } = await readTicket(analysisOf({ house: 'Betano', officialAmount: raw }));
-      expect(within(form).getByLabelText<HTMLInputElement>('Monto apostado').value).toBe(expected);
+      expect(fieldFor<HTMLInputElement>(form, 'Monto apostado').value).toBe(expected);
       // La comparación con stake × unidad no revienta: o coincide, o avisa, nunca una excepción.
       expect(document.body.textContent).not.toMatch(/no es una cifra de dinero válida/);
     });
@@ -1270,7 +1221,7 @@ describe('tickets e IA en el formulario de apuesta (§28-§31, §110)', () => {
       // Nunca se rompe el render ni queda una pantalla en blanco.
       expect(within(form).getByRole('heading', { name: 'Añadir apuesta' })).toBeTruthy();
       // El campo se queda vacío (no se fuerza ni se adivina un valor).
-      expect(within(form).getByLabelText<HTMLInputElement>('Monto apostado').value).toBe('');
+      expect(fieldFor<HTMLInputElement>(form, 'Monto apostado').value).toBe('');
       expect(
         within(form).getByText(
           /Monto apostado detectado en el ticket no pudo interpretarse automáticamente/,
@@ -1298,23 +1249,22 @@ describe('tickets e IA en el formulario de apuesta (§28-§31, §110)', () => {
         }),
         { [`POST ${BETS_URL}`]: { status: 201, body: bet({ id: 'nueva' }) } },
       );
-      expect(within(form).getByLabelText<HTMLInputElement>('Monto apostado').value).toBe('10.72');
+      expect(fieldFor<HTMLInputElement>(form, 'Monto apostado').value).toBe('10.72');
       // Sin stake explícito, LetFer lo deriva del importe normalizado (10.72 ÷ 10.00 = 1.072):
       // no hay discrepancia que avisar, y nunca revienta por el símbolo "S/" original.
-      expect(
-        String(within(form).getByLabelText<HTMLSelectElement>('Stake rápido').value === 'custom'),
-      ).toBe('true');
-      expect(within(form).getByLabelText<HTMLInputElement>('Stake').value).toBe('1.072');
+      expect(String(fieldFor<HTMLSelectElement>(form, 'Stake rápido').value === 'custom')).toBe(
+        'true',
+      );
+      expect(fieldFor<HTMLInputElement>(form, 'Stake').value).toBe('1.072');
       expect(within(form).queryByText(/El ticket indica/)).toBeNull();
 
       // Sigue siendo posible corregir a mano y registrar sin ningún error de React.
       change(form, 'Monto apostado', '10.72');
       change(form, 'Cuota total visible', '1.86'); // el ticket no la mostraba: se completa a mano
-      fireEvent.click(within(form).getByRole('button', { name: 'Siguiente' }));
+      fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
       fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
-      fireEvent.click(within(form).getByRole('button', { name: 'Registrar apuesta' }));
       // Resultado "Perdida" → se registra ya liquidada, no la apuesta pendiente de siempre.
-      await screen.findByText('Apuesta registrada correctamente (ya liquidada).');
+      await screen.findByRole('heading', { name: 'Registro completado' });
       expect(calls.some((c) => c.method === 'POST' && c.path === BETS_URL)).toBe(true);
     });
   });
@@ -1330,28 +1280,27 @@ describe('tickets e IA en el formulario de apuesta (§28-§31, §110)', () => {
     await within(form).findByRole('option', { name: 'Betano' });
 
     const file = new File(['contenido'], 'ticket.jpg', { type: 'image/jpeg' });
-    fireEvent.change(within(form).getByLabelText('Adjuntar ticket'), { target: { files: [file] } });
+    fireEvent.change(fieldFor(form, 'Adjuntar ticket'), { target: { files: [file] } });
     expect(await within(ticketZone(form)).findByText('ticket.jpg')).toBeTruthy();
 
-    fireEvent.change(within(form).getByLabelText('Casa de apuestas'), {
+    fireEvent.change(fieldFor(form, 'Casa de apuestas'), {
       target: { value: HOUSE_A },
     });
-    fireEvent.change(within(form).getByLabelText('Stake rápido'), { target: { value: 'custom' } });
-    fireEvent.change(within(form).getByLabelText('Stake'), { target: { value: '2' } });
-    fireEvent.change(within(form).getByLabelText('Fecha'), { target: { value: '2026-06-01' } });
-    fireEvent.change(within(form).getByLabelText('Hora'), { target: { value: '20:00' } });
-    fireEvent.change(within(form).getByLabelText('Partido'), {
+    fireEvent.change(fieldFor(form, 'Stake rápido'), { target: { value: 'custom' } });
+    fireEvent.change(fieldFor(form, 'Stake'), { target: { value: '2' } });
+    fireEvent.change(fieldFor(form, 'Fecha'), { target: { value: '2026-06-01' } });
+    fireEvent.change(fieldFor(form, 'Hora'), { target: { value: '20:00' } });
+    fireEvent.change(fieldFor(form, 'Partido'), {
       target: { value: 'Real Madrid vs. Barcelona' },
     });
-    fireEvent.change(within(form).getByLabelText('Pronóstico de la selección 1'), {
+    fireEvent.change(fieldFor(form, 'Pronóstico de la selección 1'), {
       target: { value: 'Real Madrid gana' },
     });
-    fireEvent.change(within(form).getByLabelText('Cuota de la selección 1'), {
+    fireEvent.change(fieldFor(form, 'Cuota de la selección 1'), {
       target: { value: '1.95' },
     });
-    fireEvent.click(within(form).getByRole('button', { name: 'Siguiente' }));
+    fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
     fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
-    fireEvent.click(within(form).getByRole('button', { name: 'Registrar apuesta' }));
 
     expect(await screen.findByText('Apuesta registrada correctamente.')).toBeTruthy();
     const created = calls.find((c) => c.method === 'POST' && c.path === BETS_URL)!;
@@ -1384,8 +1333,8 @@ describe('tickets e IA en el formulario de apuesta (§28-§31, §110)', () => {
     await within(form).findByRole('option', { name: 'Betano' });
 
     const file = new File(['contenido'], 'ticket.jpg', { type: 'image/jpeg' });
-    fireEvent.change(within(form).getByLabelText('Adjuntar ticket'), { target: { files: [file] } });
-    fireEvent.click(await within(form).findByRole('button', { name: 'Leer ticket con IA' }));
+    fireEvent.change(fieldFor(form, 'Adjuntar ticket'), { target: { files: [file] } });
+    fireEvent.click(await within(form).findByRole('button', { name: 'Analizar y continuar' }));
 
     // Sin ningún "Usar este valor": el campo real ya queda con el valor leído.
     expect(await within(form).findByLabelText<HTMLInputElement>('Monto apostado')).toHaveProperty(
@@ -1393,7 +1342,7 @@ describe('tickets e IA en el formulario de apuesta (§28-§31, §110)', () => {
       '25.00',
     );
     expect(within(form).queryByRole('button', { name: 'Usar este valor' })).toBeNull();
-    expect(within(form).getByText(/Datos aplicados desde el ticket/)).toBeTruthy();
+    expect(within(form).getByText(/Ticket leído por IA/)).toBeTruthy();
   });
 
   it('la fecha y la hora detectadas prellenan el formulario automáticamente y siguen editables (§2, Fase 10.7)', async () => {
@@ -1422,15 +1371,15 @@ describe('tickets e IA en el formulario de apuesta (§28-§31, §110)', () => {
     await within(form).findByRole('option', { name: 'Betano' });
 
     const file = new File(['contenido'], 'ticket.jpg', { type: 'image/jpeg' });
-    fireEvent.change(within(form).getByLabelText('Adjuntar ticket'), { target: { files: [file] } });
-    fireEvent.click(await within(form).findByRole('button', { name: 'Leer ticket con IA' }));
+    fireEvent.change(fieldFor(form, 'Adjuntar ticket'), { target: { files: [file] } });
+    fireEvent.click(await within(form).findByRole('button', { name: 'Analizar y continuar' }));
 
     // Prellenada automáticamente, pero el usuario sigue pudiendo corregirla.
-    await within(form).findByText(/Datos aplicados desde el ticket/);
-    expect(within(form).getByLabelText<HTMLInputElement>('Fecha').value).toBe('2026-05-20');
-    expect(within(form).getByLabelText<HTMLInputElement>('Hora').value).toBe('21:43');
-    fireEvent.change(within(form).getByLabelText('Fecha'), { target: { value: '2026-05-21' } });
-    expect(within(form).getByLabelText<HTMLInputElement>('Fecha').value).toBe('2026-05-21');
+    await within(form).findByText(/Ticket leído por IA/);
+    expect(fieldFor<HTMLInputElement>(form, 'Fecha').value).toBe('2026-05-20');
+    expect(fieldFor<HTMLInputElement>(form, 'Hora').value).toBe('21:43');
+    fireEvent.change(fieldFor(form, 'Fecha'), { target: { value: '2026-05-21' } });
+    expect(fieldFor<HTMLInputElement>(form, 'Fecha').value).toBe('2026-05-21');
   });
 
   it('si la IA falla, muestra el motivo real de la API, no el genérico de servidor (corrección posterior al rediseño)', async () => {
@@ -1448,8 +1397,8 @@ describe('tickets e IA en el formulario de apuesta (§28-§31, §110)', () => {
     await within(form).findByRole('option', { name: 'Betano' });
 
     const file = new File(['contenido'], 'ticket.jpg', { type: 'image/jpeg' });
-    fireEvent.change(within(form).getByLabelText('Adjuntar ticket'), { target: { files: [file] } });
-    fireEvent.click(await within(form).findByRole('button', { name: 'Leer ticket con IA' }));
+    fireEvent.change(fieldFor(form, 'Adjuntar ticket'), { target: { files: [file] } });
+    fireEvent.click(await within(form).findByRole('button', { name: 'Analizar y continuar' }));
 
     expect(
       await within(form).findByText(/No pudimos leer el ticket\. Revisa la imagen/),
@@ -1522,16 +1471,14 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
     return { ...stub, form };
   }
 
-  const input = (form: HTMLElement, label: string) =>
-    within(form).getByLabelText<HTMLInputElement>(label);
-  const shown = (form: HTMLElement, label: string) =>
-    within(form).getByLabelText(label).textContent;
+  const input = (form: HTMLElement, label: string) => fieldFor<HTMLInputElement>(form, label);
+  const shown = (form: HTMLElement, label: string) => fieldFor(form, label).textContent;
   const change = (form: HTMLElement, label: string, value: string) =>
-    fireEvent.change(within(form).getByLabelText(label), { target: { value } });
+    fireEvent.change(fieldFor(form, label), { target: { value } });
   const press = (form: HTMLElement, group: string, name: string) => {
     if (group === 'Formato de apuesta') {
       const value = { Simple: 'SIMPLE', Múltiple: 'MULTIPLE', Creada: 'CREATED' }[name]!;
-      fireEvent.change(within(form).getByLabelText('Tipo de apuesta'), { target: { value } });
+      fireEvent.change(fieldFor(form, 'Tipo de apuesta'), { target: { value } });
       return;
     }
     fireEvent.click(
@@ -1550,7 +1497,7 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
     change(form, 'Pronóstico de la selección 1', 'Gana Arsenal');
     change(form, 'Cuota de la selección 1', odds);
     // Sin stake por defecto: se elige uno explícitamente, como lo haría una persona.
-    fireEvent.change(within(form).getByLabelText('Stake rápido'), { target: { value: '10' } });
+    fireEvent.change(fieldFor(form, 'Stake rápido'), { target: { value: '10' } });
   }
 
   function setSettledAt(form: HTMLElement) {
@@ -1568,7 +1515,7 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
         activeStage: { id: STAGE_ID, name: 'Etapa 1', unitStake: '2.00' },
       });
       // Ningún stake elegido: el selector queda en "Elige un stake", sin un valor oculto.
-      expect(within(form).getByLabelText<HTMLSelectElement>('Stake rápido').value).toBe('');
+      expect(fieldFor<HTMLSelectElement>(form, 'Stake rápido').value).toBe('');
       const summary = summaryOf(form);
       expect(shown(form, 'Monto apostado calculado')).toBe('—');
       // Ni "10", ni S/ 20.00, ni la nota "10 × S/ 2.00 (stake × unidad)".
@@ -1586,9 +1533,8 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
       change(form, 'Partido', 'A vs B');
       change(form, 'Pronóstico de la selección 1', 'Gana A');
       change(form, 'Cuota de la selección 1', '1.95');
-      fireEvent.click(within(form).getByRole('button', { name: 'Siguiente' }));
+      fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
       fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
-      fireEvent.click(within(form).getByRole('button', { name: 'Registrar apuesta' }));
       expect(await within(form).findByText(/Indica el stake o el monto oficial/)).toBeTruthy();
       expect(calls.some((c) => c.method === 'POST')).toBe(false);
     });
@@ -1614,9 +1560,8 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
       change(form, 'Monto apostado', '10.00');
       expect(shown(form, 'Monto apostado calculado')).toBe('S/ 10.00');
       expect(within(form).getByText('Monto oficial indicado')).toBeTruthy();
-      fireEvent.click(within(form).getByRole('button', { name: 'Siguiente' }));
+      fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
       fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
-      fireEvent.click(within(form).getByRole('button', { name: 'Registrar apuesta' }));
       expect(await screen.findByText('Apuesta registrada correctamente.')).toBeTruthy();
       const body = calls.find((c) => c.method === 'POST')!.body as {
         stake: string;
@@ -1634,21 +1579,21 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
     it('son áreas de texto de varias líneas que conservan el texto íntegro', async () => {
       const { form } = await openForm();
       for (const label of ['Pronóstico de la selección 1', 'Partido']) {
-        const field = within(form).getByLabelText<HTMLTextAreaElement>(label);
+        const field = fieldFor<HTMLTextAreaElement>(form, label);
         expect(field.tagName).toBe('TEXTAREA');
         change(form, label, LONG);
-        expect(within(form).getByLabelText<HTMLTextAreaElement>(label).value).toBe(LONG);
+        expect(fieldFor<HTMLTextAreaElement>(form, label).value).toBe(LONG);
       }
     });
 
     it('Mercado también crece, y "Más detalles" sigue abriéndose y cerrándose', async () => {
       const { form } = await openForm();
       // El mercado ya está a la vista (campo de varias líneas, igual que el pronóstico).
-      expect(within(form).getByLabelText('Mercado de la selección 1').tagName).toBe('TEXTAREA');
+      expect(fieldFor(form, 'Mercado de la selección 1').tagName).toBe('TEXTAREA');
       const toggle = within(form).getByRole('button', { name: /Más detalles/ });
       expect(toggle.getAttribute('aria-expanded')).toBe('false');
       fireEvent.click(toggle);
-      expect(within(form).getByLabelText('Marcador del ticket')).toBeTruthy();
+      expect(fieldFor(form, 'Marcador del ticket')).toBeTruthy();
       fireEvent.click(within(form).getByRole('button', { name: /Menos detalles/ }));
       expect(within(form).queryByLabelText('Marcador del ticket')).toBeNull();
     });
@@ -1656,9 +1601,7 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
     it('Enter no mete un salto de línea: avanza de paso como lo hacía el input', async () => {
       // Se parte del paso 0 (Origen): Enter lleva al 1 (Apuesta), sin registrar nada.
       const { form } = await openForm();
-      const pronostico = within(form).getByLabelText<HTMLTextAreaElement>(
-        'Pronóstico de la selección 1',
-      );
+      const pronostico = fieldFor<HTMLTextAreaElement>(form, 'Pronóstico de la selección 1');
       change(form, 'Pronóstico de la selección 1', 'Gana A');
       fireEvent.keyDown(pronostico, { key: 'Enter' });
       expect(pronostico.value).toBe('Gana A');
@@ -1673,9 +1616,9 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
     it('un texto pegado con saltos de línea queda en una sola línea, sin perder palabras', async () => {
       const { form } = await openForm();
       change(form, 'Pronóstico de la selección 1', 'Más de 2.5\nManchester City');
-      expect(
-        within(form).getByLabelText<HTMLTextAreaElement>('Pronóstico de la selección 1').value,
-      ).toBe('Más de 2.5 Manchester City');
+      expect(fieldFor<HTMLTextAreaElement>(form, 'Pronóstico de la selección 1').value).toBe(
+        'Más de 2.5 Manchester City',
+      );
     });
   });
 
@@ -1687,83 +1630,61 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
           .getByRole('button', { name: /Añadir apuesta/ })
           .getAttribute('aria-current'),
       ).toBe('step');
-      expect(within(form).getByText('Completa con IA')).toBeTruthy();
-      expect(within(form).getByLabelText('Sube tu ticket')).toBeTruthy();
-      expect(within(form).queryByRole('button', { name: 'Registrar apuesta' })).toBeNull();
+      expect(within(form).getByRole('region', { name: 'Origen del registro' })).toBeTruthy();
+      expect(fieldFor(form, 'Sube tu ticket')).toBeTruthy();
+      expect(within(form).queryByRole('button', { name: 'Confirmar apuesta' })).toBeNull();
     });
 
-    it('"Siguiente"/"Atrás" avanzan y retroceden entre Añadir, Verificar y Confirmar', async () => {
+    it('el indicador y "Atrás" van y vuelven entre Añadir y Verificar; "Confirmar" solo se alcanza registrando', async () => {
       const { form } = await openForm();
-      fireEvent.click(within(form).getByRole('button', { name: 'Siguiente' }));
-      expect(
-        within(form)
-          .getByRole('button', { name: /Verificar datos/ })
-          .getAttribute('aria-current'),
-      ).toBe('step');
-      expect(within(form).queryByRole('button', { name: 'Registrar apuesta' })).toBeNull();
-      fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
-      // "Confirmar apuesta" del Paso 2 solo lleva al Paso 3: NO registra todavía.
-      expect(
-        within(form)
-          .getByRole('button', { name: /Confirmar/ })
-          .getAttribute('aria-current'),
-      ).toBe('step');
-      expect(within(form).getByRole('button', { name: 'Registrar apuesta' })).toBeTruthy();
+      const current = (name: RegExp) =>
+        within(form).getByRole('button', { name }).getAttribute('aria-current');
+      expect(within(form).queryByRole('button', { name: 'Confirmar apuesta' })).toBeNull();
+      fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
+      expect(current(/Verificar datos/)).toBe('step');
+      expect(within(form).getByRole('button', { name: 'Confirmar apuesta' })).toBeTruthy();
+      // "Confirmar" (Paso 3) no se puede elegir: a él solo se llega registrando.
+      const confirmStep = within(form).getByRole('button', { name: 'Confirmar' });
+      expect((confirmStep as HTMLButtonElement).disabled).toBe(true);
+      fireEvent.click(confirmStep);
+      expect(current(/Verificar datos/)).toBe('step');
       fireEvent.click(within(form).getByRole('button', { name: 'Atrás' }));
-      expect(
-        within(form)
-          .getByRole('button', { name: /Verificar datos/ })
-          .getAttribute('aria-current'),
-      ).toBe('step');
+      expect(current(/Añadir apuesta/)).toBe('step');
     });
 
-    it('Confirmar: sin stake elegido, el monto oficial deriva el stake y la vista previa lo rotula como derivado', async () => {
+    it('Verificar datos: sin stake elegido, el monto oficial deriva el stake y el resumen lo rotula', async () => {
       const { form } = await openForm();
-      fireEvent.click(within(form).getByRole('button', { name: /Confirmar/ }));
-      const review = within(form).getByRole('article', {
-        name: 'Vista previa del ticket de LetFer',
-      });
+      fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
+      const summary = within(form).getByRole('region', { name: 'Resumen' });
+      const value = (label: string) =>
+        within(summary).getByText(label).nextElementSibling!.textContent;
       // Antes de introducir nada, ninguna cifra inventada.
-      expect(within(review).getByText('Stake').nextElementSibling!.textContent).toBe('—');
-      expect(within(review).getByText('Importe apostado').nextElementSibling!.textContent).toBe(
-        '—',
-      );
+      expect(value('Stake')).toBe('—');
+      expect(value('Monto apostado')).toBe('—');
 
       change(form, 'Monto apostado', '10.00');
-      // Unidad de la etapa de prueba: 10.00 ⇒ stake 1; el importe oficial manda y es "(oficial)".
-      const after = within(form).getByRole('article', {
-        name: 'Vista previa del ticket de LetFer',
-      });
-      expect(within(after).getByText('Importe apostado').nextElementSibling!.textContent).toBe(
-        'S/ 10.00',
-      );
-      expect(within(after).getByText('(derivado)')).toBeTruthy();
-      expect(within(after).getByText('(oficial)')).toBeTruthy();
+      // El importe oficial manda y se rotula "Oficial"; el stake se deriva de él (nunca supuesto).
+      expect(value('Monto apostado')).toContain('S/ 10.00');
+      expect(value('Monto apostado')).toContain('Oficial');
+      expect(value('Stake')).toContain('Derivado del monto');
     });
 
-    it('los pasos del indicador se pueden elegir libremente, nunca bloquean el salto (solo orientan)', async () => {
+    it('el indicador deja ir y volver entre los Pasos 1 y 2 sin validar nada', async () => {
       const { form } = await openForm();
-      fireEvent.click(within(form).getByRole('button', { name: /Confirmar/ }));
-      expect(
-        within(form)
-          .getByRole('button', { name: /Confirmar/ })
-          .getAttribute('aria-current'),
-      ).toBe('step');
-      expect(within(form).getByRole('button', { name: 'Registrar apuesta' })).toBeTruthy();
+      const current = (name: RegExp) =>
+        within(form).getByRole('button', { name }).getAttribute('aria-current');
+      fireEvent.click(within(form).getByRole('button', { name: /Verificar datos/ }));
+      expect(current(/Verificar datos/)).toBe('step');
       fireEvent.click(within(form).getByRole('button', { name: /Añadir apuesta/ }));
-      expect(
-        within(form)
-          .getByRole('button', { name: /Añadir apuesta/ })
-          .getAttribute('aria-current'),
-      ).toBe('step');
+      expect(current(/Añadir apuesta/)).toBe('step');
     });
 
     it('Enter o un envío accidental en los pasos 1 y 2 nunca registra ni avanza de paso', async () => {
       const { form, calls } = await openForm({}, created);
       fillSimple(form);
       // Enter en un campo de texto: ni envía ni avanza.
-      fireEvent.keyDown(within(form).getByLabelText('Partido'), { key: 'Enter' });
-      const casa = within(form).getByLabelText('Hora');
+      fireEvent.keyDown(fieldFor(form, 'Partido'), { key: 'Enter' });
+      const casa = fieldFor(form, 'Hora');
       const prevented = !fireEvent.keyDown(casa, { key: 'Enter' });
       expect(prevented).toBe(true);
       fireEvent.submit(form);
@@ -1771,41 +1692,36 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
         within(form).getByRole('button', { name }).getAttribute('aria-current');
       expect(step(/Añadir apuesta/)).toBe('step');
       // También en el Paso 2 (Verificar datos): un envío accidental no registra.
-      fireEvent.click(within(form).getByRole('button', { name: 'Siguiente' }));
+      fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
       fireEvent.submit(form);
       expect(step(/Verificar datos/)).toBe('step');
       expect(calls.some((c) => c.method === 'POST')).toBe(false);
     });
 
-    it('"Atrás", "Editar ticket" y "Confirmar apuesta" navegan sin enviar nada y conservan los datos', async () => {
+    it('"Atrás" y el indicador navegan sin enviar nada y conservan los datos', async () => {
       const { form, calls } = await openForm({}, created);
       fillSimple(form, '1.95');
-      fireEvent.click(within(form).getByRole('button', { name: 'Siguiente' }));
-      fireEvent.click(within(form).getByRole('button', { name: 'Editar ticket' }));
+      closeLegDialog();
+      fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
+      fireEvent.click(within(form).getByRole('button', { name: 'Atrás' }));
       expect(
         within(form)
           .getByRole('button', { name: /Añadir apuesta/ })
           .getAttribute('aria-current'),
       ).toBe('step');
-      expect(within(form).getByLabelText<HTMLTextAreaElement>('Partido').value).toBe(
+      expect(fieldFor<HTMLTextAreaElement>(form, 'Partido').value).toBe(
         'Arsenal vs Manchester City',
       );
-      fireEvent.click(within(form).getByRole('button', { name: 'Siguiente' }));
-      fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
-      fireEvent.click(within(form).getByRole('button', { name: 'Atrás' }));
-      fireEvent.click(within(form).getByRole('button', { name: 'Atrás' }));
-      expect(within(form).getByLabelText<HTMLInputElement>('Cuota de la selección 1').value).toBe(
-        '1.95',
-      );
+      fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
+      expect(fieldFor<HTMLInputElement>(form, 'Cuota de la selección 1').value).toBe('1.95');
       expect(calls.some((c) => c.method === 'POST')).toBe(false);
     });
 
     it('doble clic en "Registrar apuesta": un solo envío', async () => {
       const { form, calls } = await openForm({}, created);
       fillSimple(form);
-      fireEvent.click(within(form).getByRole('button', { name: 'Siguiente' }));
-      fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
-      const register = within(form).getByRole('button', { name: 'Registrar apuesta' });
+      fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
+      const register = within(form).getByRole('button', { name: 'Confirmar apuesta' });
       fireEvent.click(register);
       fireEvent.click(register);
       expect(await screen.findByText('Apuesta registrada correctamente.')).toBeTruthy();
@@ -1832,9 +1748,8 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
     it('los campos de los tres pasos siguen formando una sola apuesta al registrar', async () => {
       const { form, calls } = await openForm({}, created);
       fillSimple(form);
-      fireEvent.click(within(form).getByRole('button', { name: 'Siguiente' }));
+      fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
       fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
-      fireEvent.click(within(form).getByRole('button', { name: 'Registrar apuesta' }));
       expect(await screen.findByText('Apuesta registrada correctamente.')).toBeTruthy();
       expect(calls.find((c) => c.method === 'POST' && c.path === BETS_URL)!.body).toMatchObject({
         houseId: HOUSE_A,
@@ -1861,8 +1776,8 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
     expect(input(form, 'Fecha').value).toBe('2026-05-30');
     expect(input(form, 'Hora').value).toBe('08:15');
 
-    expect(within(form).getByLabelText<HTMLSelectElement>('Deporte').value).toBe('Fútbol');
-    expect(within(form).getByLabelText<HTMLSelectElement>('Tipo de apuesta').value).toBe('SIMPLE');
+    expect(fieldFor<HTMLSelectElement>(form, 'Deporte').value).toBe('Fútbol');
+    expect(fieldFor<HTMLSelectElement>(form, 'Tipo de apuesta').value).toBe('SIMPLE');
     // El resultado empieza SIN definir: ningún botón marcado (nunca "Pendiente" solo por abrir el formulario).
     const result = within(form).getByRole('group', { name: 'Resultado' });
     for (const name of ['Ganado', 'Perdido', 'Pendiente', 'Anulado', 'Cash Out']) {
@@ -1892,9 +1807,8 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
     change(form, 'Partido', 'Arsenal vs Manchester City');
     change(form, 'Pronóstico de la selección 1', 'Gana Arsenal');
     change(form, 'Cuota de la selección 1', '1.52');
-    fireEvent.click(within(form).getByRole('button', { name: 'Siguiente' }));
+    fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
     fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
-    fireEvent.click(within(form).getByRole('button', { name: 'Registrar apuesta' }));
     expect(await within(form).findByText('Elige una casa.')).toBeTruthy();
     expect(calls.some((c) => c.method === 'POST')).toBe(false);
   });
@@ -1902,7 +1816,7 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
   it('al cambiar la cuota o el stake, A+G y ganancia se recalculan al instante', async () => {
     const { form } = await openForm();
     fillSimple(form); // cuota 1.52
-    fireEvent.change(within(form).getByLabelText('Stake rápido'), { target: { value: 'custom' } });
+    fireEvent.change(fieldFor(form, 'Stake rápido'), { target: { value: 'custom' } });
     change(form, 'Stake', '6'); // 60
     press(form, 'Resultado', 'Ganado');
     expect(shown(form, 'A+G')).toBe('S/ 91.20');
@@ -1945,7 +1859,7 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
 
   it('stake: los cinco atajos (10 a 50, de 10 en 10) están en el selector; 5, 15, 25... no lo son', async () => {
     const { form } = await openForm();
-    const select = within(form).getByLabelText<HTMLSelectElement>('Stake rápido');
+    const select = fieldFor<HTMLSelectElement>(form, 'Stake rápido');
     const values = [...select.options].map((option) => option.value);
     expect(values).toEqual(['', ...STAKE_PRESETS.map(String), 'custom']);
     for (const value of [1, 2, 3, 4, 5, 15, 25, 35, 45]) {
@@ -1958,8 +1872,8 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
 
   it('al elegir un atajo distinto, queda seleccionado y el importe se recalcula', async () => {
     const { form } = await openForm();
-    fireEvent.change(within(form).getByLabelText('Stake rápido'), { target: { value: '40' } });
-    expect(within(form).getByLabelText<HTMLSelectElement>('Stake rápido').value).toBe('40');
+    fireEvent.change(fieldFor(form, 'Stake rápido'), { target: { value: '40' } });
+    expect(fieldFor<HTMLSelectElement>(form, 'Stake rápido').value).toBe('40');
     expect(shown(form, 'Monto apostado calculado')).toBe('S/ 400.00'); // 40 × 10
   });
 
@@ -1968,10 +1882,10 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
     // Sin "Otra cantidad", no hay campo de texto para el stake: solo los atajos.
     expect(within(form).queryByLabelText('Stake')).toBeNull();
 
-    fireEvent.change(within(form).getByLabelText('Stake rápido'), { target: { value: 'custom' } });
-    expect(
-      String(within(form).getByLabelText<HTMLSelectElement>('Stake rápido').value === 'custom'),
-    ).toBe('true');
+    fireEvent.change(fieldFor(form, 'Stake rápido'), { target: { value: 'custom' } });
+    expect(String(fieldFor<HTMLSelectElement>(form, 'Stake rápido').value === 'custom')).toBe(
+      'true',
+    );
     // El selector queda en "Otra cantidad…" (ningún atajo) mientras se escribe una cantidad.
     change(form, 'Stake', '15'); // precisamente un valor que ya no es atajo (5, 15, 25...)
     expect(shown(form, 'Monto apostado calculado')).toBe('S/ 150.00');
@@ -1981,16 +1895,16 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
 
   it('elegir de nuevo un atajo reemplaza la cantidad personalizada', async () => {
     const { form } = await openForm();
-    fireEvent.change(within(form).getByLabelText('Stake rápido'), { target: { value: 'custom' } });
+    fireEvent.change(fieldFor(form, 'Stake rápido'), { target: { value: 'custom' } });
     change(form, 'Stake', '25');
     expect(shown(form, 'Monto apostado calculado')).toBe('S/ 250.00');
 
-    fireEvent.change(within(form).getByLabelText('Stake rápido'), { target: { value: '30' } });
+    fireEvent.change(fieldFor(form, 'Stake rápido'), { target: { value: '30' } });
     expect(within(form).queryByLabelText('Stake')).toBeNull(); // el campo manual se oculta otra vez
-    expect(
-      String(within(form).getByLabelText<HTMLSelectElement>('Stake rápido').value === 'custom'),
-    ).toBe('false');
-    expect(within(form).getByLabelText<HTMLSelectElement>('Stake rápido').value).toBe('30');
+    expect(String(fieldFor<HTMLSelectElement>(form, 'Stake rápido').value === 'custom')).toBe(
+      'false',
+    );
+    expect(fieldFor<HTMLSelectElement>(form, 'Stake rápido').value).toBe('30');
     expect(shown(form, 'Monto apostado calculado')).toBe('S/ 300.00'); // 30 × 10, no 25 × 10
   });
 
@@ -1998,9 +1912,9 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
     const { form } = await openForm({
       activeStage: { id: STAGE_ID, name: 'Etapa 1', unitStake: '2.00' },
     });
-    fireEvent.change(within(form).getByLabelText('Stake rápido'), { target: { value: '10' } });
+    fireEvent.change(fieldFor(form, 'Stake rápido'), { target: { value: '10' } });
     expect(shown(form, 'Monto apostado calculado')).toBe('S/ 20.00');
-    fireEvent.change(within(form).getByLabelText('Stake rápido'), { target: { value: '20' } });
+    fireEvent.change(fieldFor(form, 'Stake rápido'), { target: { value: '20' } });
     expect(shown(form, 'Monto apostado calculado')).toBe('S/ 40.00');
   });
 
@@ -2008,7 +1922,7 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
     const { form } = await openForm({
       activeStage: { id: STAGE_ID, name: 'Etapa 1', unitStake: '5.00' },
     });
-    fireEvent.change(within(form).getByLabelText('Stake rápido'), { target: { value: '50' } });
+    fireEvent.change(fieldFor(form, 'Stake rápido'), { target: { value: '50' } });
     expect(shown(form, 'Monto apostado calculado')).toBe('S/ 250.00');
   });
 
@@ -2022,7 +1936,7 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
     expect(within(form).queryByText('Etapa activa')).toBeNull();
     expect(within(form).queryByText('Etapa 1')).toBeNull();
     expect(within(form).queryByText(/^Unidad\b/)).toBeNull();
-    fireEvent.change(within(form).getByLabelText('Stake rápido'), { target: { value: '10' } });
+    fireEvent.change(fieldFor(form, 'Stake rápido'), { target: { value: '10' } });
     expect(shown(form, 'Monto apostado calculado')).toBe('S/ 100.00'); // stake 10 × unidad 10
   });
 
@@ -2032,16 +1946,15 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
     });
     expect(within(form).queryByText('Etapa 2')).toBeNull();
     expect(within(form).queryByText(/^Unidad\b/)).toBeNull();
-    fireEvent.change(within(form).getByLabelText('Stake rápido'), { target: { value: '10' } });
+    fireEvent.change(fieldFor(form, 'Stake rápido'), { target: { value: '10' } });
     expect(shown(form, 'Monto apostado calculado')).toBe('S/ 200.00'); // 10 × 20 (no 10 × 10)
   });
 
   it('nunca se envía stageId: la apuesta queda en la etapa activa que resuelve la API', async () => {
     const { form, calls } = await openForm({}, created);
     fillSimple(form);
-    fireEvent.click(within(form).getByRole('button', { name: 'Siguiente' }));
+    fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
     fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
-    fireEvent.click(within(form).getByRole('button', { name: 'Registrar apuesta' }));
     expect(await screen.findByText('Apuesta registrada correctamente.')).toBeTruthy();
     expect(calls.find((c) => c.method === 'POST')!.body).not.toHaveProperty('stageId');
   });
@@ -2049,9 +1962,11 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
   it('tras registrar, el aviso ofrece "Ver apuesta" hacia el detalle de la apuesta nueva', async () => {
     const { form } = await openForm({}, created);
     fillSimple(form);
-    fireEvent.click(within(form).getByRole('button', { name: 'Siguiente' }));
+    fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
     fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
-    fireEvent.click(within(form).getByRole('button', { name: 'Registrar apuesta' }));
+    await screen.findByRole('heading', { name: 'Registro completado' });
+    // El aviso de la página queda para cuando se cierra el asistente (no pide confirmación).
+    fireEvent.click(within(form).getAllByRole('button', { name: 'Cerrar' })[0]!);
     const notice = (await screen.findByText('Apuesta registrada correctamente.')).closest(
       '[role="status"]',
     )!;
@@ -2073,11 +1988,10 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
   it('el stake manual sigue validándose antes de llamar a la API', async () => {
     const { form, calls } = await openForm();
     fillSimple(form);
-    fireEvent.change(within(form).getByLabelText('Stake rápido'), { target: { value: 'custom' } });
+    fireEvent.change(fieldFor(form, 'Stake rápido'), { target: { value: 'custom' } });
     change(form, 'Stake', '0');
-    fireEvent.click(within(form).getByRole('button', { name: 'Siguiente' }));
+    fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
     fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
-    fireEvent.click(within(form).getByRole('button', { name: 'Registrar apuesta' }));
     expect(await within(form).findByText(/stake válido/)).toBeTruthy();
     expect(calls.some((c) => c.method === 'POST')).toBe(false);
   });
@@ -2085,11 +1999,10 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
   it('pendiente: se registra con la cuota de la Simple como cuota total, sin liquidación', async () => {
     const { form, calls } = await openForm({}, created);
     fillSimple(form);
-    fireEvent.change(within(form).getByLabelText('Stake rápido'), { target: { value: 'custom' } });
+    fireEvent.change(fieldFor(form, 'Stake rápido'), { target: { value: 'custom' } });
     change(form, 'Stake', '6');
-    fireEvent.click(within(form).getByRole('button', { name: 'Siguiente' }));
+    fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
     fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
-    fireEvent.click(within(form).getByRole('button', { name: 'Registrar apuesta' }));
     expect(await screen.findByText('Apuesta registrada correctamente.')).toBeTruthy();
     const body = calls.find((c) => c.method === 'POST')!.body as Record<string, unknown>;
     expect(body).toMatchObject({
@@ -2113,20 +2026,17 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
   it('ganada: A+G = monto + ganancia, con la ganancia calculada y precargada (60 × 0.52 = 31.20)', async () => {
     const { form, calls } = await openForm({}, created);
     fillSimple(form);
-    fireEvent.change(within(form).getByLabelText('Stake rápido'), { target: { value: 'custom' } });
+    fireEvent.change(fieldFor(form, 'Stake rápido'), { target: { value: 'custom' } });
     change(form, 'Stake', '6'); // 6 × 10 = 60
     press(form, 'Resultado', 'Ganado');
     expect(shown(form, 'A+G')).toBe('S/ 91.20');
     expect(input(form, 'Ganancia').value).toBe('31.20');
     expect(shown(form, 'Cuota resultante')).toBe('1.52');
     setSettledAt(form);
-    fireEvent.click(within(form).getByRole('button', { name: 'Siguiente' }));
+    fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
     fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
-    fireEvent.click(within(form).getByRole('button', { name: 'Registrar apuesta' }));
 
-    expect(
-      await screen.findByText('Apuesta registrada correctamente (ya liquidada).'),
-    ).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Registro completado' })).toBeTruthy();
     const posts = calls.filter((c) => c.method === 'POST');
     expect(posts).toHaveLength(1); // alta y liquidación en una sola operación
     const body = posts[0]!.body as { settlement: Record<string, unknown> };
@@ -2141,7 +2051,7 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
   it('ajustar la ganancia recalcula A+G y la cuota efectiva, y se envía como retorno oficial', async () => {
     const { form, calls } = await openForm({}, created);
     fillSimple(form, '1.56');
-    fireEvent.change(within(form).getByLabelText('Stake rápido'), { target: { value: 'custom' } });
+    fireEvent.change(fieldFor(form, 'Stake rápido'), { target: { value: 'custom' } });
     change(form, 'Stake', '6'); // 60
     press(form, 'Resultado', 'Ganado');
     expect(input(form, 'Ganancia').value).toBe('33.60'); // 60 × 0.56, lo que calcula LetFer
@@ -2152,13 +2062,10 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
     expect(shown(form, 'Cuota resultante')).toBe('1.567833');
     expect(within(form).getByText(/La casa muestra 1.56/)).toBeTruthy();
     setSettledAt(form);
-    fireEvent.click(within(form).getByRole('button', { name: 'Siguiente' }));
+    fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
     fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
-    fireEvent.click(within(form).getByRole('button', { name: 'Registrar apuesta' }));
 
-    expect(
-      await screen.findByText('Apuesta registrada correctamente (ya liquidada).'),
-    ).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Registro completado' })).toBeTruthy();
     expect(calls.find((c) => c.method === 'POST')!.body).toMatchObject({
       visibleTotalOdds: '1.56', // la de la casa, intacta (regla crítica 6)
       settlement: { status: 'WON', officialRealizedReturn: '94.07' },
@@ -2168,7 +2075,7 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
   it('"Usar la calculada" deshace el ajuste de la ganancia', async () => {
     const { form } = await openForm();
     fillSimple(form);
-    fireEvent.change(within(form).getByLabelText('Stake rápido'), { target: { value: 'custom' } });
+    fireEvent.change(fieldFor(form, 'Stake rápido'), { target: { value: 'custom' } });
     change(form, 'Stake', '6');
     press(form, 'Resultado', 'Ganado');
     change(form, 'Ganancia', '40.00');
@@ -2185,19 +2092,16 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
   it('perdida: A+G 0 y ganancia = −monto, sin campo para ajustarla', async () => {
     const { form, calls } = await openForm({}, created);
     fillSimple(form);
-    fireEvent.change(within(form).getByLabelText('Stake rápido'), { target: { value: 'custom' } });
+    fireEvent.change(fieldFor(form, 'Stake rápido'), { target: { value: 'custom' } });
     change(form, 'Stake', '6');
     press(form, 'Resultado', 'Perdido');
     expect(shown(form, 'A+G')).toBe('S/ 0.00');
     expect(shown(form, 'Ganancia calculada')).toBe('-S/ 60.00');
     expect(within(form).queryByLabelText('Ganancia')).toBeNull();
     setSettledAt(form);
-    fireEvent.click(within(form).getByRole('button', { name: 'Siguiente' }));
+    fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
     fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
-    fireEvent.click(within(form).getByRole('button', { name: 'Registrar apuesta' }));
-    expect(
-      await screen.findByText('Apuesta registrada correctamente (ya liquidada).'),
-    ).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Registro completado' })).toBeTruthy();
     const body = calls.find((c) => c.method === 'POST')!.body as {
       settlement: Record<string, unknown>;
     };
@@ -2208,7 +2112,7 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
   it('anulada: A+G = monto, ganancia fija en 0 sin campo editable, y se registra coherente', async () => {
     const { form, calls } = await openForm({}, created);
     fillSimple(form);
-    fireEvent.change(within(form).getByLabelText('Stake rápido'), { target: { value: 'custom' } });
+    fireEvent.change(fieldFor(form, 'Stake rápido'), { target: { value: 'custom' } });
     change(form, 'Stake', '6');
     press(form, 'Resultado', 'Anulado');
     expect(shown(form, 'A+G')).toBe('S/ 60.00');
@@ -2217,12 +2121,9 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
     expect(within(form).queryByLabelText('Ganancia')).toBeNull();
     expect(within(form).queryByRole('textbox', { name: 'Ganancia' })).toBeNull();
     setSettledAt(form);
-    fireEvent.click(within(form).getByRole('button', { name: 'Siguiente' }));
+    fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
     fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
-    fireEvent.click(within(form).getByRole('button', { name: 'Registrar apuesta' }));
-    expect(
-      await screen.findByText('Apuesta registrada correctamente (ya liquidada).'),
-    ).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Registro completado' })).toBeTruthy();
     const posts = calls.filter((c) => c.method === 'POST');
     expect(posts).toHaveLength(1); // sigue siendo alta y liquidación en una sola operación
     const body = posts[0]!.body as { settlement: Record<string, unknown> };
@@ -2234,7 +2135,7 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
   it('una ganancia escrita en ganada no se arrastra al cambiar a anulada', async () => {
     const { form } = await openForm();
     fillSimple(form);
-    fireEvent.change(within(form).getByLabelText('Stake rápido'), { target: { value: 'custom' } });
+    fireEvent.change(fieldFor(form, 'Stake rápido'), { target: { value: 'custom' } });
     change(form, 'Stake', '6');
     press(form, 'Resultado', 'Ganado');
     change(form, 'Ganancia', '50.00');
@@ -2249,9 +2150,8 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
     // La etapa nunca se elige al registrar: siempre es la activa del proyecto.
     expect(within(form).queryByLabelText('Etapa')).toBeNull();
     fillSimple(form);
-    fireEvent.click(within(form).getByRole('button', { name: 'Siguiente' }));
+    fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
     fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
-    fireEvent.click(within(form).getByRole('button', { name: 'Registrar apuesta' }));
     expect(await screen.findByText('Apuesta registrada correctamente.')).toBeTruthy();
     const body = calls.find((c) => c.method === 'POST')!.body as Record<string, unknown>;
     expect(body).not.toHaveProperty('settlement');
@@ -2268,9 +2168,8 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
     change(form, 'Cuota total visible', '4.71');
     // Una cifra tecleada en una Múltiple/Creada no se asume oficial: se declara su procedencia.
     fireEvent.click(within(form).getByRole('button', { name: 'Oficial (la muestra la casa)' }));
-    fireEvent.click(within(form).getByRole('button', { name: 'Siguiente' }));
+    fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
     fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
-    fireEvent.click(within(form).getByRole('button', { name: 'Registrar apuesta' }));
     expect(await screen.findByText('Apuesta registrada correctamente.')).toBeTruthy();
     const body = calls.find((c) => c.method === 'POST')!.body as {
       visibleTotalOdds: string;
@@ -2298,9 +2197,8 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
       return stub;
     };
     const register = (form: HTMLElement) => {
-      fireEvent.click(within(form).getByRole('button', { name: 'Siguiente' }));
+      fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
       fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
-      fireEvent.click(within(form).getByRole('button', { name: 'Registrar apuesta' }));
     };
     const posted = (calls: { method: string; body?: unknown }[]) =>
       calls.find((c) => c.method === 'POST')?.body as
@@ -2335,20 +2233,13 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
           name: 'Usar el producto de las cuotas (6.00) como referencia',
         }),
       );
-      expect(within(form).getByLabelText<HTMLInputElement>('Cuota total visible').value).toBe(
-        '6.00',
+      expect(fieldFor<HTMLInputElement>(form, 'Cuota total visible').value).toBe('6.00');
+      const summary = within(form).getByRole('region', { name: 'Resumen' });
+      expect(within(summary).getByText('Cuota total').nextElementSibling!.textContent).toContain(
+        'Calculada de referencia',
       );
-      fireEvent.click(within(form).getByRole('button', { name: /Confirmar/ }));
-      const review = within(form).getByRole('article', {
-        name: 'Vista previa del ticket de LetFer',
-      });
-      expect(within(review).getByText('Cuota total oficial').nextElementSibling!.textContent).toBe(
-        '—',
-      );
-      expect(
-        within(review).getByText('Cuota calculada de referencia').nextElementSibling!.textContent,
-      ).toBe('6.00');
-      fireEvent.click(within(form).getByRole('button', { name: 'Registrar apuesta' }));
+      fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
+      fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
       expect(await screen.findByText('Apuesta registrada correctamente.')).toBeTruthy();
       expect(posted(calls)).toMatchObject({
         visibleTotalOdds: '6.00',
@@ -2372,11 +2263,7 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
     change(form, 'Mercado del leg 2', 'Resultado del partido');
     change(form, 'Pronóstico del leg 2', 'Manchester City');
     change(form, 'Cuota del leg 2', '2.47');
-    fireEvent.click(
-      within(form).getByRole('button', {
-        name: 'Convertir el leg 2 en Creada (añadir otra selección)',
-      }),
-    );
+    clickLegButton(form, 'Convertir el leg 2 en Creada (añadir otra selección)');
 
     // El leg pasa a ser Creada: dos selecciones, y la cuota sigue siendo UNA (la del leg).
     const leg2 = within(form).getByRole('region', { name: 'Leg 2' });
@@ -2393,9 +2280,8 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
     change(form, 'Cuota total visible', '3.76');
     // Una cifra tecleada en una Múltiple/Creada no se asume oficial: se declara su procedencia.
     fireEvent.click(within(form).getByRole('button', { name: 'Oficial (la muestra la casa)' }));
-    fireEvent.click(within(form).getByRole('button', { name: 'Siguiente' }));
+    fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
     fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
-    fireEvent.click(within(form).getByRole('button', { name: 'Registrar apuesta' }));
     expect(await screen.findByText('Apuesta registrada correctamente.')).toBeTruthy();
     const body = calls.find((c) => c.method === 'POST')!.body as {
       selections: {
@@ -2421,24 +2307,25 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
     const { form } = await openForm();
     fillSimple(form);
     press(form, 'Formato de apuesta', 'Múltiple');
+    clickLegButton(form, 'Convertir el leg 1 en Creada (añadir otra selección)');
+    const dialog = (n: number) => screen.getByRole('dialog', { name: `Editar leg ${n}` });
+    expect(within(dialog(1)).getByText('Creada')).toBeTruthy();
     fireEvent.click(
-      within(form).getByRole('button', {
-        name: 'Convertir el leg 1 en Creada (añadir otra selección)',
-      }),
+      within(dialog(1)).getByRole('button', { name: 'Quitar la selección 2 del leg 1' }),
     );
-    expect(
-      within(within(form).getByRole('region', { name: 'Leg 1' })).getByText('Creada'),
-    ).toBeTruthy();
-    fireEvent.click(within(form).getByRole('button', { name: 'Quitar la selección 2 del leg 1' }));
-    expect(
-      within(within(form).getByRole('region', { name: 'Leg 1' })).queryByText('Creada'),
-    ).toBeNull();
-    // Con 2 legs no se puede quitar ninguno (una Múltiple necesita al menos dos).
-    expect(within(form).queryByRole('button', { name: 'Quitar el leg 1' })).toBeNull();
-    fireEvent.click(within(form).getByRole('button', { name: 'Añadir leg' }));
-    expect(within(form).getAllByLabelText(/^Partido del leg \d$/)).toHaveLength(3);
-    fireEvent.click(within(form).getByRole('button', { name: 'Quitar el leg 3' }));
-    expect(within(form).getAllByLabelText(/^Partido del leg \d$/)).toHaveLength(2);
+    expect(within(dialog(1)).queryByText('Creada')).toBeNull();
+    // Con 2 legs no se puede eliminar ninguno (una Múltiple necesita al menos dos).
+    expect(within(dialog(1)).queryByRole('button', { name: 'Eliminar leg' })).toBeNull();
+    change(form, 'Partido del leg 2', 'Real Madrid vs Barcelona');
+    change(form, 'Pronóstico del leg 2', 'Empate');
+    closeLegDialog();
+    fireEvent.click(within(form).getByRole('button', { name: 'Añadir selección' }));
+    expect(within(form).getAllByRole('listitem', { name: /^Leg \d+$/ })).toHaveLength(3);
+    fireEvent.click(within(dialog(3)).getByRole('button', { name: 'Eliminar leg' }));
+    expect(within(form).getAllByRole('listitem', { name: /^Leg \d+$/ })).toHaveLength(2);
+    expect(fieldFor<HTMLTextAreaElement>(form, 'Partido del leg 1').value).toBe(
+      'Arsenal vs Manchester City',
+    );
   });
 
   it('formato Creada: varias selecciones del mismo partido', async () => {
@@ -2452,9 +2339,8 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
     change(form, 'Cuota total visible', '2.50');
     // Una cifra tecleada en una Múltiple/Creada no se asume oficial: se declara su procedencia.
     fireEvent.click(within(form).getByRole('button', { name: 'Oficial (la muestra la casa)' }));
-    fireEvent.click(within(form).getByRole('button', { name: 'Siguiente' }));
+    fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
     fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
-    fireEvent.click(within(form).getByRole('button', { name: 'Registrar apuesta' }));
     expect(await screen.findByText('Apuesta registrada correctamente.')).toBeTruthy();
     const body = calls.find((c) => c.method === 'POST')!.body as {
       selections: { eventGroup: number; position: number; event: string }[];
@@ -2478,12 +2364,11 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
     expect(input(form, 'Cuota de la selección 1').value).toBe('');
     expect(within(form).getAllByText('Cuota de esta selección (opcional)')).toHaveLength(2);
     change(form, 'Cuota total visible', '3.42');
-    fireEvent.change(within(form).getByLabelText('Stake rápido'), { target: { value: '10' } });
+    fireEvent.change(fieldFor(form, 'Stake rápido'), { target: { value: '10' } });
     // Una cifra tecleada en una Múltiple/Creada no se asume oficial: se declara su procedencia.
     fireEvent.click(within(form).getByRole('button', { name: 'Oficial (la muestra la casa)' }));
-    fireEvent.click(within(form).getByRole('button', { name: 'Siguiente' }));
+    fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
     fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
-    fireEvent.click(within(form).getByRole('button', { name: 'Registrar apuesta' }));
     expect(await screen.findByText('Apuesta registrada correctamente.')).toBeTruthy();
     const body = calls.find((c) => c.method === 'POST')!.body as {
       visibleTotalOdds: string;
@@ -2497,7 +2382,7 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
   it('deporte: desplegable con Fútbol por defecto y "Otro…" para escribir uno distinto', async () => {
     const { form } = await openForm();
     change(form, 'Deporte', 'Tenis');
-    expect(within(form).getByLabelText<HTMLSelectElement>('Deporte').value).toBe('Tenis');
+    expect(fieldFor<HTMLSelectElement>(form, 'Deporte').value).toBe('Tenis');
     change(form, 'Deporte', 'Otro');
     change(form, 'Otro deporte (Deporte)', 'Pádel');
     expect(input(form, 'Otro deporte (Deporte)').value).toBe('Pádel');
@@ -2505,11 +2390,11 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
 
   it('"Más detalles" muestra el marcador y el resultado visibles; el mercado ya está a la vista', async () => {
     const { form } = await openForm();
-    expect(within(form).getByLabelText('Mercado de la selección 1')).toBeTruthy();
+    expect(fieldFor(form, 'Mercado de la selección 1')).toBeTruthy();
     expect(within(form).queryByLabelText('Marcador del ticket')).toBeNull();
     fireEvent.click(within(form).getByRole('button', { name: 'Más detalles' }));
-    expect(within(form).getByLabelText('Marcador del ticket')).toBeTruthy();
-    expect(within(form).getByLabelText('Resultado visible del ticket')).toBeTruthy();
+    expect(fieldFor(form, 'Marcador del ticket')).toBeTruthy();
+    expect(fieldFor(form, 'Resultado visible del ticket')).toBeTruthy();
   });
 });
 
@@ -2534,19 +2419,19 @@ describe('fechas en edición y liquidación (convención de la Fase 10.3)', () =
   it('editar una pendiente muestra la fecha y la hora guardadas, no las actuales', async () => {
     const { form } = await openEdit();
     const saved = localParts('2026-06-01T20:00:00.000Z'); // bet().placedAt
-    expect(within(form).getByLabelText<HTMLInputElement>('Fecha').value).toBe(saved.date);
-    expect(within(form).getByLabelText<HTMLInputElement>('Hora').value).toBe(saved.time);
+    expect(fieldFor<HTMLInputElement>(form, 'Fecha').value).toBe(saved.date);
+    expect(fieldFor<HTMLInputElement>(form, 'Hora').value).toBe(saved.time);
     expect(await within(form).findByText('S/ 20.00')).toBeTruthy(); // 2 × 10, monto calculado
   });
 
   it('editar una pendiente: cuota guardada, el stake recalcula el monto y no hay control de resultado', async () => {
     const { form } = await openEdit();
-    expect(within(form).getByLabelText<HTMLInputElement>('Cuota total visible').value).toBe('1.95');
-    expect(within(form).getByLabelText<HTMLInputElement>('Stake').value).toBe('2.0000');
+    expect(fieldFor<HTMLInputElement>(form, 'Cuota total visible').value).toBe('1.95');
+    expect(fieldFor<HTMLInputElement>(form, 'Stake').value).toBe('2.0000');
     expect(await within(form).findByLabelText('Monto apostado calculado')).toBeTruthy();
-    expect(within(form).getByLabelText('Monto apostado calculado').textContent).toBe('S/ 20.00');
-    fireEvent.change(within(form).getByLabelText('Stake'), { target: { value: '3' } });
-    expect(within(form).getByLabelText('Monto apostado calculado').textContent).toBe('S/ 30.00');
+    expect(fieldFor(form, 'Monto apostado calculado').textContent).toBe('S/ 20.00');
+    fireEvent.change(fieldFor(form, 'Stake'), { target: { value: '3' } });
+    expect(fieldFor(form, 'Monto apostado calculado').textContent).toBe('S/ 30.00');
     // El resultado no se cambia editando (la API no lo admite): se liquida o se corrige aparte.
     expect(within(form).queryByRole('group', { name: 'Resultado' })).toBeNull();
     expect(within(form).queryByText('Ganada')).toBeNull();
@@ -2624,17 +2509,16 @@ describe('liquidar una pendiente (H-14, Fase 10.3): misma sección de resultado 
     const form = screen.getByRole('form', { name: 'Liquidar apuesta de Betano' });
     return { ...stub, form };
   }
-  const shown = (form: HTMLElement, label: string) =>
-    within(form).getByLabelText(label).textContent;
+  const shown = (form: HTMLElement, label: string) => fieldFor(form, label).textContent;
   const press = (form: HTMLElement, name: string) =>
     fireEvent.click(
       within(within(form).getByRole('group', { name: 'Resultado' })).getByRole('button', { name }),
     );
   function setDate(form: HTMLElement) {
-    fireEvent.change(within(form).getByLabelText('Fecha de liquidación'), {
+    fireEvent.change(fieldFor(form, 'Fecha de liquidación'), {
       target: { value: '2026-06-02' },
     });
-    fireEvent.change(within(form).getByLabelText('Hora de liquidación'), {
+    fireEvent.change(fieldFor(form, 'Hora de liquidación'), {
       target: { value: '22:00' },
     });
   }
@@ -2644,8 +2528,8 @@ describe('liquidar una pendiente (H-14, Fase 10.3): misma sección de resultado 
   it('propone el momento actual como fecha de liquidación, editable', async () => {
     const before = Date.now();
     const { form } = await openSettle();
-    const date = within(form).getByLabelText<HTMLInputElement>('Fecha de liquidación');
-    const time = within(form).getByLabelText<HTMLInputElement>('Hora de liquidación');
+    const date = fieldFor<HTMLInputElement>(form, 'Fecha de liquidación');
+    const time = fieldFor<HTMLInputElement>(form, 'Hora de liquidación');
     expect(Math.abs(new Date(`${date.value}T${time.value}`).getTime() - before)).toBeLessThan(
       120_000,
     );
@@ -2663,7 +2547,7 @@ describe('liquidar una pendiente (H-14, Fase 10.3): misma sección de resultado 
         .getAttribute('aria-pressed'),
     ).toBe('true');
     expect(shown(form, 'A+G')).toBe('S/ 39.00'); // 20 × 1.95
-    expect(within(form).getByLabelText<HTMLInputElement>('Ganancia').value).toBe('19.00');
+    expect(fieldFor<HTMLInputElement>(form, 'Ganancia').value).toBe('19.00');
     expect(shown(form, 'Cuota resultante')).toBe('1.95');
     setDate(form);
     submit(form);
@@ -2680,7 +2564,7 @@ describe('liquidar una pendiente (H-14, Fase 10.3): misma sección de resultado 
 
   it('ganancia ajustada: actualiza A+G, muestra la cuota efectiva y la envía como retorno oficial', async () => {
     const { form, calls } = await openSettle({ [`POST ${SETTLE_URL}`]: settledBody() });
-    fireEvent.change(within(form).getByLabelText('Ganancia'), { target: { value: '19.50' } });
+    fireEvent.change(fieldFor(form, 'Ganancia'), { target: { value: '19.50' } });
     expect(shown(form, 'A+G')).toBe('S/ 39.50');
     expect(within(form).getByText('Cuota efectiva')).toBeTruthy();
     expect(shown(form, 'Cuota resultante')).toBe('1.975'); // 39.50 ÷ 20
@@ -2737,7 +2621,7 @@ describe('liquidar una pendiente (H-14, Fase 10.3): misma sección de resultado 
       await within(form).findByText('Un cash out exige el retorno oficial realizado.'),
     ).toBeTruthy();
     expect(calls.some((c) => c.path === SETTLE_URL)).toBe(false);
-    fireEvent.change(within(form).getByLabelText('Ganancia'), { target: { value: '-5.00' } });
+    fireEvent.change(fieldFor(form, 'Ganancia'), { target: { value: '-5.00' } });
     expect(shown(form, 'A+G')).toBe('S/ 15.00');
     submit(form);
     expect(await screen.findByText('Se liquidó la apuesta.')).toBeTruthy();
@@ -2854,7 +2738,7 @@ describe('tarjeta de apuesta: Ver ticket, Estado y menú ⋮ (Fase 10.3)', () =>
     expect(await screen.findByText('ticket-betano.jpg')).toBeTruthy();
     expect(screen.getByRole('img', { name: 'ticket-betano.jpg' })).toBeTruthy();
     expect(screen.queryByText('Adjuntar ticket')).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Leer ticket con IA' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Analizar y continuar' })).toBeNull();
   });
 
   it('sin ticket: no aparenta tener uno (botón "Sin ticket" deshabilitado)', async () => {
@@ -2878,7 +2762,7 @@ describe('tarjeta de apuesta: Ver ticket, Estado y menú ⋮ (Fase 10.3)', () =>
         .getByRole('button', { name })
         .getAttribute('aria-pressed');
     expect(pressed('Perdida')).toBe('true');
-    expect(within(form).getByLabelText('A+G').textContent).toBe('S/ 0.00');
+    expect(fieldFor(form, 'A+G').textContent).toBe('S/ 0.00');
   });
 
   it('elegir Anulada o Cash out abre "Liquidar" con sus reglas (anulada fija, cash out exige ganancia)', async () => {
@@ -2886,15 +2770,13 @@ describe('tarjeta de apuesta: Ver ticket, Estado y menú ⋮ (Fase 10.3)', () =>
     renderApp(BETS_URL);
     await chooseRowStatus('Anulada');
     let form = screen.getByRole('form', { name: 'Liquidar apuesta de Betano' });
-    expect(within(form).getByLabelText('Ganancia calculada').textContent).toBe('S/ 0.00');
+    expect(fieldFor(form, 'Ganancia calculada').textContent).toBe('S/ 0.00');
     expect(within(form).queryByLabelText('Ganancia')).toBeNull();
     fireEvent.click(within(form).getByRole('button', { name: 'Cancelar' }));
 
     await chooseRowStatus('Cash Out');
     form = screen.getByRole('form', { name: 'Liquidar apuesta de Betano' });
-    expect(within(form).getByLabelText<HTMLInputElement>('Ganancia').placeholder).toBe(
-      'Obligatoria',
-    );
+    expect(fieldFor<HTMLInputElement>(form, 'Ganancia').placeholder).toBe('Obligatoria');
   });
 
   it('elegir Ganada abre "Liquidar" y liquida por el flujo de siempre', async () => {
@@ -2908,7 +2790,7 @@ describe('tarjeta de apuesta: Ver ticket, Estado y menú ⋮ (Fase 10.3)', () =>
     await chooseRowStatus('Ganada');
     expect(calls.some((c) => c.method === 'POST')).toBe(false); // elegir no liquida
     const form = screen.getByRole('form', { name: 'Liquidar apuesta de Betano' });
-    expect(within(form).getByLabelText('A+G').textContent).toBe('S/ 39.00');
+    expect(fieldFor(form, 'A+G').textContent).toBe('S/ 39.00');
     fireEvent.click(within(form).getByRole('button', { name: 'Confirmar liquidación' }));
     expect(await screen.findByText('Se liquidó la apuesta.')).toBeTruthy();
     expect(calls.filter((c) => c.path === `${BETS_URL}/${BET_ID}/settle`)).toHaveLength(1);
@@ -2921,9 +2803,9 @@ describe('tarjeta de apuesta: Ver ticket, Estado y menú ⋮ (Fase 10.3)', () =>
     expect(menuItems()).toEqual(['Perdida', 'Anulada', 'Cash Out', 'Pendiente (reabrir)']);
     fireEvent.click(screen.getByRole('menuitem', { name: 'Perdida' }));
     const form = screen.getByRole('form', { name: 'Corregir liquidación de la apuesta de Betano' });
-    expect(within(form).getByLabelText<HTMLSelectElement>('Resultado').value).toBe('LOST');
+    expect(fieldFor<HTMLSelectElement>(form, 'Resultado').value).toBe('LOST');
     // Sigue exigiendo motivo e impacto antes de aplicar: nada se envía todavía.
-    expect(within(form).getByLabelText(/Motivo de la corrección/)).toBeTruthy();
+    expect(fieldFor(form, /Motivo de la corrección/)).toBeTruthy();
     fireEvent.click(within(form).getByRole('button', { name: 'Cancelar' }));
 
     await chooseRowStatus('Pendiente (reabrir)');
@@ -3038,12 +2920,12 @@ describe('lista de apuestas: filtros, búsqueda y lectura (10.3e)', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Añadir apuesta' }));
     const form = await screen.findByRole('form', { name: 'Añadir apuesta' });
     await within(form).findByRole('option', { name: 'Betano' });
-    fireEvent.change(within(form).getByLabelText('Casa de apuestas'), {
+    fireEvent.change(fieldFor(form, 'Casa de apuestas'), {
       target: { value: HOUSE_A },
     });
     expect(within(form).getByText(/Disponible/)).toBeTruthy();
-    fireEvent.change(within(form).getByLabelText('Stake rápido'), { target: { value: 'custom' } });
-    fireEvent.change(within(form).getByLabelText('Stake'), { target: { value: '100' } });
+    fireEvent.change(fieldFor(form, 'Stake rápido'), { target: { value: 'custom' } });
+    fireEvent.change(fieldFor(form, 'Stake'), { target: { value: '100' } });
     expect(within(form).getByText(/El importe supera el disponible de Betano/)).toBeTruthy();
   });
 
@@ -3055,7 +2937,7 @@ describe('lista de apuestas: filtros, búsqueda y lectura (10.3e)', () => {
     fireEvent.change(await within(form).findByLabelText('Stake rápido'), {
       target: { value: 'custom' },
     });
-    fireEvent.change(within(form).getByLabelText('Stake'), { target: { value: '3' } });
+    fireEvent.change(fieldFor(form, 'Stake'), { target: { value: '3' } });
     expect(within(form).getByText('3 × S/ 10.00 (stake × unidad)')).toBeTruthy();
   });
 });
@@ -3097,24 +2979,23 @@ describe('apuestas en la zona horaria del proyecto (§93, H-20)', () => {
     const form = screen.getByRole('form', { name: 'Añadir apuesta' });
     await within(form).findByRole('option', { name: 'Betano' });
     expect(within(form).getAllByText('Hora del proyecto (Asia/Tokyo).').length).toBeGreaterThan(0);
-    fireEvent.change(within(form).getByLabelText('Casa de apuestas'), {
+    fireEvent.change(fieldFor(form, 'Casa de apuestas'), {
       target: { value: HOUSE_A },
     });
-    fireEvent.change(within(form).getByLabelText('Fecha'), { target: { value: '2026-06-01' } });
-    fireEvent.change(within(form).getByLabelText('Hora'), { target: { value: '10:00' } });
-    fireEvent.change(within(form).getByLabelText('Partido'), {
+    fireEvent.change(fieldFor(form, 'Fecha'), { target: { value: '2026-06-01' } });
+    fireEvent.change(fieldFor(form, 'Hora'), { target: { value: '10:00' } });
+    fireEvent.change(fieldFor(form, 'Partido'), {
       target: { value: 'A vs B' },
     });
-    fireEvent.change(within(form).getByLabelText('Pronóstico de la selección 1'), {
+    fireEvent.change(fieldFor(form, 'Pronóstico de la selección 1'), {
       target: { value: 'Gana A' },
     });
-    fireEvent.change(within(form).getByLabelText('Cuota de la selección 1'), {
+    fireEvent.change(fieldFor(form, 'Cuota de la selección 1'), {
       target: { value: '1.95' },
     });
-    fireEvent.change(within(form).getByLabelText('Stake rápido'), { target: { value: '10' } });
-    fireEvent.click(within(form).getByRole('button', { name: 'Siguiente' }));
+    fireEvent.change(fieldFor(form, 'Stake rápido'), { target: { value: '10' } });
+    fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
     fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
-    fireEvent.click(within(form).getByRole('button', { name: 'Registrar apuesta' }));
     expect(await screen.findByText('Apuesta registrada correctamente.')).toBeTruthy();
     const created = calls.find((c) => c.method === 'POST' && c.path === BETS_URL)!;
     // 10:00 en Tokio (UTC+9) = 01:00 UTC.
@@ -3129,7 +3010,7 @@ describe('apuestas en la zona horaria del proyecto (§93, H-20)', () => {
     renderApp(BETS_URL);
     await openRowAction('Editar');
     const form = screen.getByRole('form', { name: 'Editar apuesta de Betano' });
-    expect(within(form).getByLabelText<HTMLInputElement>('Fecha').value).toBe('2026-06-01');
-    expect(within(form).getByLabelText<HTMLInputElement>('Hora').value).toBe('10:00');
+    expect(fieldFor<HTMLInputElement>(form, 'Fecha').value).toBe('2026-06-01');
+    expect(fieldFor<HTMLInputElement>(form, 'Hora').value).toBe('10:00');
   });
 });
