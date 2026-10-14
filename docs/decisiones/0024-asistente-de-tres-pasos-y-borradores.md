@@ -76,22 +76,29 @@ del punto 1 de la decisión; el resto (borradores, idempotencia, una instancia p
    y «Continuar en modo Manual», que conserva la imagen como respaldo. **Manual nunca llama a `analyze`**; su imagen es
    un respaldo que se vincula con `ticketId`. Sin `tickets.analyze`, el modo IA aparece deshabilitado y se empieza en
    Manual.
-2. **Paso 2 «Verificar datos» = todo el formulario editable, y «Confirmar apuesta» es lo único que registra.** El
-   botón lleva `data-action="register"` y el envío se ignora si no viene de él (Enter, «Atrás», «Editar ticket»,
-   «Guardar borrador» nunca registran). Se conservan el cerrojo de doble clic y el `clientRequestId` (4xx renueva,
-   red/5xx conserva). El pie anticipa el impacto («Reservará S/ X en {casa}» / «Se registrará ya liquidada como …»).
-   Si el registro falla, el asistente sigue en el Paso 2 con el error. Los datos poco frecuentes (hora desconocida,
-   zona, disponible, retorno potencial, motivo) viven en «Datos opcionales», plegado y sin apertura automática.
-3. **Paso 3 «Confirmar» = «Registro completado», de solo lectura.** Se pinta **solo con el `BetDetail` que devuelve la
-   API** (nunca con el formulario): hechos, selecciones registradas (la Creada como una fila con su cuota una vez),
-   ticket original o ticket digital, «Resumen final» y «Próximos pasos». Desde aquí no se vuelve atrás (el indicador
-   deja de ser navegable) y cerrar no pide confirmación. Acciones: *Cerrar*, *Ver historial* (cierra y resalta la
-   apuesta en la lista), *Registrar otra apuesta* (asistente nuevo, otra clave de idempotencia, mismo origen) y
-   *Volver al dashboard*. Al registrar se descarta el borrador y se recargan apuestas, casas y borradores.
+2. **Paso 2 «Verificar datos» = todo el formulario editable; «Continuar» solo avanza, nunca registra.** El botón
+   «Continuar» (sin `data-action`) pasa al Paso 3 sin llamar a la API: ni valida contra el backend ni descuenta nada.
+   Se mantiene «Atrás» (vuelve al Paso 1) y «Editar ticket»; «Guardar borrador» sigue disponible y nunca registra. Los
+   datos poco frecuentes (hora desconocida, zona, disponible, retorno potencial, motivo) viven en «Datos opcionales»,
+   plegado y sin apertura automática.
+3. **Paso 3 «Confirmar» = resumen de solo lectura de lo que se va a registrar, y «Registrar apuesta» es lo único que
+   registra.** Antes de pulsar «Registrar apuesta» se pinta con el estado del formulario (resumen, selecciones —la
+   Creada como una fila con su cuota una vez— y ticket original), nunca con una respuesta de la API que todavía no
+   existe; el pie anticipa el impacto («Reservará S/ X en {casa}» / «Se registrará ya liquidada como …»). El botón
+   lleva `data-action="register"` y el envío se ignora si no viene de él (Enter, «Atrás» nunca registran). Se
+   conservan el cerrojo de doble clic y el `clientRequestId` (4xx renueva, red/5xx conserva). Si el registro falla, el
+   asistente sigue en el Paso 3 con el error (puede volver al Paso 2 a corregir sin perder nada). Si tiene éxito, el
+   MISMO paso pasa a mostrarse **solo con el `BetDetail` que devuelve la API** (nunca con el formulario): «Registro
+   completado», hechos, selecciones registradas, ticket original o ticket digital, «Resumen final» y «Próximos
+   pasos». Desde ahí ya no se vuelve atrás (el indicador deja de ser navegable) y cerrar no pide confirmación.
+   Acciones tras registrar: *Cerrar*, *Ver historial* (cierra y resalta la apuesta en la lista), *Registrar otra
+   apuesta* (asistente nuevo, otra clave de idempotencia, mismo origen) y *Volver al dashboard*. Al registrar se
+   descarta el borrador y se recargan apuestas, casas y borradores.
 4. **Textos.** Subtítulos: Paso 1 «Carga tu ticket o registra una apuesta manualmente.»; Paso 2 IA «Revisa los datos
    extraídos por IA y confirma que la información sea correcta.»; Paso 2 Manual «Completa los datos de tu apuesta y
-   confirma que la información sea correcta.»; Paso 3 «La apuesta ha sido confirmada y registrada en tu historial.».
-   La banda IA cuenta selecciones = **legs**, nunca condiciones.
+   confirma que la información sea correcta.»; Paso 3 antes de registrar «Revisa el resumen completo antes de
+   registrar la apuesta.»; Paso 3 tras registrar «La apuesta ha sido confirmada y registrada en tu historial.». La
+   banda IA cuenta selecciones = **legs**, nunca condiciones.
 
 **Diferencias deliberadas con las referencias:** el modal mide 69rem en los tres pasos (R1–R4 son más estrechos) para
 no cambiar de tamaño entre pasos; el origen es una tarjeta de selección; «Datos opcionales» agrupa campos que las
@@ -106,5 +113,15 @@ A 1672 × 941 los pasos R1–R7 caben sin scroll; la verificación manual sin ti
 `comparativa-*` junto a cada referencia); no se versionan porque muestran un ticket real.
 
 **Pruebas:** `NewBetWizard.spec.tsx` (análisis una vez, fallo con Reintentar/Manual, Manual sin análisis y con `ticketId`,
-cambio de origen, portapapeles, Paso 3 desde la respuesta de la API, variantes IA/Manual, Registrar otra/Ver
+cambio de origen, portapapeles, Paso 3 antes y después de registrar, variantes IA/Manual, Registrar otra/Ver
 historial/dashboard), `BetsPage.spec.tsx`, `ticket-files.spec.ts` y `bet-draft-record.spec.ts` (`entryMode`).
+
+## Corrección: el registro vuelve al Paso 3 (2026-10-14)
+
+El rediseño de 2026-10 (sección anterior) había movido el registro al Paso 2 («Confirmar apuesta»), dejando el Paso 3
+como una pantalla puramente informativa pintada con la respuesta de la API. Eso contradecía el punto 1 de la
+decisión original (arriba): el Paso 3 existe justamente para confirmar con un resumen completo antes de registrar, no
+solo para mostrar el resultado después. Se corrige: el Paso 2 vuelve a ser solo edición («Continuar» avanza sin
+registrar) y el registro ocurre al pulsar «Registrar apuesta» en el Paso 3, sobre el resumen de solo lectura de todo
+lo que se va a guardar. El punto 2 y 3 de «Rediseño de los tres pasos (2026-10)» quedan como se editaron arriba para
+reflejar esto; nada cambia en la API, el ledger ni la idempotencia.
