@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { betDraftPayloadSchema, draftEntryMode, type BetDraftPayload } from './bet-draft-record.js';
+import { betDraftPayloadSchema, draftEntryMode } from './bet-draft-record.js';
 
 const payload = (overrides: Record<string, unknown> = {}) => ({
   schemaVersion: 1,
@@ -53,7 +53,7 @@ describe('entryMode del borrador (rediseño del asistente, ADR 0024)', () => {
   });
 
   it('sin el campo se deduce: con lectura de IA o ticket es "AI"; sin nada, "MANUAL"', () => {
-    const base = betDraftPayloadSchema.parse(payload()) as BetDraftPayload;
+    const base = betDraftPayloadSchema.parse(payload());
     expect(draftEntryMode(base)).toBe('MANUAL');
     expect(draftEntryMode({ ...base, aiApplied: true })).toBe('AI');
     expect(draftEntryMode({ ...base, ticketId: '0195f7c0-0000-7000-8000-0000000000c1' })).toBe(
