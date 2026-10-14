@@ -188,3 +188,44 @@ cuerpo si ambos difieren. Si una regla debe cambiar: primero se actualiza la esp
 - `npm run dev` levanta API (:3000) y web (:5173). `npm run db:start|stop|status|reset` gestiona
   PostgreSQL local; `npm run db:generate|db:migrate` gestionan las migraciones;
   `npm run bootstrap:admin` crea el primer Administrador Global.
+
+## Convenciones del modelo TICKET → LEG → CONDICIÓN (ADR 0022, §114)
+
+- **LEG = `event_group`; condición = fila del grupo (`position`).** La cuota de un leg se guarda **una vez**, en
+  la fila `position = 0`; las condiciones internas de un leg creado no tienen cuota (nunca se copia ni se reparte).
+  Una Múltiple puede contener legs creados. Marcador, resultado y estado visibles son **documentales**: nunca
+  liquidan ni generan movimientos.
+- La estructura se valida con `validateSelectionStructure` (`@letfer/shared`) en la API y en la web; la base de
+  datos la respalda con el disparador diferido de 0043. Las operaciones del formulario sobre legs son las
+  funciones puras de `bet-selection-drafts.ts`.
+- `TicketExtraction.selections[]` son legs; un leg creado lleva `conditions[]` (2–10, sin cuota). El validador
+  determinista de la IA sigue siendo la barrera antes de persistir.
+
+## IA y créditos de Anthropic (ADR 0023)
+
+- **Nunca llames a Anthropic sin autorización expresa.** El `.env` de desarrollo puede contener una clave
+  real: para QA manual o cualquier API que levantes con él, arranca con `AI_TICKETS_ENABLED=false`.
+- Las pruebas automáticas no pueden gastar créditos: `test/support/block-real-ai.ts` retira
+  `ANTHROPIC_API_KEY` y rechaza `fetch` a Anthropic. La prueba real (`anthropic-ticket-reader.spec.ts`)
+  exige `ANTHROPIC_LIVE_TESTS=yes-spend-credits` **y** la clave. El arnés de evaluación trabaja con
+  respuestas ya guardadas (`EVAL_RUN`), nunca llama a la API.
+- **Cuota total (ADR 0023):** `bets.visible_total_odds` es el único valor; `bets.total_odds_source`
+  (`OFFICIAL`/`CALCULATED`/`UNKNOWN`) dice qué es. Lo calculado nunca se presenta ni guarda como oficial;
+  lo histórico o importado queda `UNKNOWN`. En Múltiple/Creada la procedencia se declara, nunca se supone.
+- `BetDetail.tickets` solo se devuelve con `tickets.view` (lo decide el backend, no la web).
+
+## Convenciones del asistente «Añadir apuesta» (ADR 0024)
+
+- **Tres pasos:** 1 Añadir apuesta, 2 Verificar datos, 3 Confirmar. **Solo «Registrar apuesta» (Paso 3) registra**; nada
+  más (ni Enter) envía. Cada campo existe UNA vez (los pasos se ocultan, no se desmontan). La tabla del Paso 2 y el ticket
+  digital salen de `groupBetLegs`/la estructura real: una Creada dentro de una Múltiple es una fila, con su cuota una vez.
+- **Resultado sin definir** hasta que la IA lo lee o alguien lo elige; «detectado por IA» solo si `statusFromAi`.
+- **Borradores** (`bet_drafts`): texto del formulario, sin efecto financiero; solo su dueño los ve (404 a otros); versión,
+  borrado lógico, tope de 25 y 64 KB. Al registrar se descartan. Cerrar con cambios pide confirmación.
+- **Idempotencia:** `clientRequestId` por intento (`bets.client_request_id`, único por proyecto+creador). 4xx renueva la
+  clave; red/5xx la conserva.
+- **Pruebas:** `NewBetWizard.spec.tsx` (recorrido Betano, edición de un leg, IA, borradores) y `bet-drafts.e2e-spec.ts`.
+  `vite.config.ts` limita los workers de la web a 4 (con más, la primera prueba de cada archivo vencía su timeout).
+- **Diseño (revisión 2026-10-14):** referencia `docs/referencias/letfer-ui-referencias/01-OBJETIVO-verificar-datos.png`.
+  Colores del modal con `.wizard-skin` (tokens solo dentro del asistente); una sola zona de scroll; rejillas con container
+  queries (`@[40rem]`, `@[44rem]`), no `lg:`. A 1672 × 941 el Paso 2 no debe desplazarse: compruébalo con una captura.

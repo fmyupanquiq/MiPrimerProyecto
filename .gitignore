@@ -29,3 +29,6 @@ Thumbs.db
 
 # Estado local de Claude Code
 .claude/settings.local.json
+
+# Casos REALES del arnés de evaluación de tickets: capturas y datos de apuestas, nunca al repositorio
+apps/api/test/ticket-eval/cases-local/

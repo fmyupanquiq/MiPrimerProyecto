@@ -3113,3 +3113,60 @@ El lote pasa a anulado y nada se borra: el archivo original, su informe y sus fi
   contadores; el detalle por fila vive en el registro del lote y no en un evento por fila.
 - **Retornos por confirmar.** Las ganadas importadas aparecen como provisionales y el listado y el aviso del
   dashboard pueden filtrarse por lote.
+
+---
+
+## §114. Estructura TICKET → LEG → CONDICIÓN (apuestas con un leg creado)
+
+*Adenda posterior a §113; prevalece sobre el cuerpo si difiere. Decisión: ADR 0022.*
+
+**114.1 Tres niveles.** Una apuesta se representa como **ticket** (casa, fecha, importe, cuotas y retornos
+oficiales, resultado), **legs** (las apuestas principales que la casa cuenta como "una apuesta") y
+**condiciones** (las selecciones internas de un leg creado: Bet Builder, Same Game Parlay, apuestas
+construidas u otro nombre equivalente; cuenta la estructura visual, no el nombre).
+
+**114.2 Persistencia.** LEG = `bet_selections.event_group`; condición = cada fila del grupo, ordenada por
+`position` (0, 1, 2…). Una Múltiple puede contener legs de varias filas. `deriveBetType` no cambia (cuenta
+grupos: 1 grupo con 1 fila = Simple, 1 grupo con varias = Creada, varios grupos = Múltiple).
+
+**114.3 La cuota pertenece al LEG.** La cuota de un leg se guarda **una sola vez**, en la fila `position = 0`
+(`visible_odds`). Las condiciones internas (`position > 0`) de un leg creado no tienen cuota propia (nula):
+nunca se copia, se reparte ni se inventa. No existe un segundo campo autoritativo para el mismo valor.
+
+**114.4 Reglas de cuotas** (ajuste de §90 y §113.5; solo relaja, ninguna apuesta existente cambia):
+
+- Simple: la cuota de su única selección es obligatoria.
+- Creada independiente: las cuotas por selección siguen siendo opcionales (la cuota total basta).
+- Múltiple: cada leg necesita su cuota en la fila `position = 0`; las filas `position > 0` pueden ir sin cuota.
+- Lotes de importación: exentos, como antes (§113.5).
+- Las posiciones de cada leg son 0, 1, 2… sin huecos ni repetidas, y todas sus filas son del mismo partido.
+  Esta validación la hace la API al registrar o editar (`validateSelectionStructure`, compartida con la web);
+  la base de datos la respalda con un disparador diferido (migración 0043).
+
+**114.5 Datos documentales.** El ticket puede mostrar, y LetFer conserva sin ningún efecto financiero: marcador
+(`leg_score`) y resultado individual (`leg_result`) del leg —solo en la fila `position = 0`—, el estado
+individual de cada condición (`condition_status`) y la referencia impresa por la casa
+(`bets.external_reference`). **Nunca liquidan nada ni generan movimientos**: el ticket completo es una única
+apuesta y una única operación financiera (§21, §77). El nombre impreso del bloque ("Bet Builder") no se
+persiste; la interfaz lo rotula "Creada" por el tamaño del leg. Una cuota que el ticket muestre para una
+condición interna no se persiste (límite conocido).
+
+**114.6 Cuota total.** Sigue siendo la que muestra la casa. Si el ticket no la muestra, el producto de las
+cuotas de los legs es solo una referencia calculada (nunca oficial, regla crítica 6); el backend no la calcula.
+**Procedencia (ADR 0023).** `bets.visible_total_odds` sigue siendo el único valor; `bets.total_odds_source`
+(`OFFICIAL` | `CALCULATED` | `UNKNOWN`) indica qué es. Lo calculado nunca se guarda ni se muestra como oficial
+("Cuota total oficial: —" y, aparte, "Cuota calculada de referencia"); lo anterior a esta regla y lo importado
+queda `UNKNOWN` (nunca se marca oficial por suposición). En Múltiple/Creada la persona declara la procedencia.
+Cambiarla es documental: no altera importes, retornos, ganancias ni el ledger. `BetDetail.tickets` solo se
+devuelve a quien tiene `tickets.view`.
+
+**114.8 Asistente de registro (ADR 0024).** «Añadir apuesta» tiene tres pasos (Añadir apuesta, Verificar datos,
+Confirmar); solo «Registrar apuesta» del Paso 3 registra. El resultado empieza sin definir. Los borradores son el
+estado del formulario, no apuestas: sin movimientos ni reserva de saldo, visibles solo para su dueño. El registro es
+idempotente por `clientRequestId`.
+
+**114.7 IA.** El contrato de extracción es jerárquico y compatible con las respuestas anteriores:
+`selections[]` son los legs; un leg creado lleva `conditions[]` (2 a 10, sin cuota propia; `selection` del leg
+no se usa), más `legScore`, `legResult`, `conditionStatus` y `externalReference` opcionales. El validador
+determinista rechaza estructuras imposibles (una sola condición, demasiadas, condición sin pronóstico,
+duplicadas, estado fuera de `WON|LOST|VOID|PENDING`); la IA propone y la persona confirma.
