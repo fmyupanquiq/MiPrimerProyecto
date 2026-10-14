@@ -292,3 +292,39 @@ export const ExpandIcon = (p: IconProps) => (
     <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
   </Icon>
 );
+
+export const TrophyIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4Z" />
+    <path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3" />
+  </Icon>
+);
+
+export const SaveIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M5 3h11l4 4v14H5V3Z" />
+    <path d="M8 3v6h8V3M8 21v-7h8v7" />
+  </Icon>
+);
+
+export const StarIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9L12 3Z" />
+  </Icon>
+);
+
+/** Documento con lápiz ("Datos de la apuesta" en el asistente). */
+export const DocumentIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h5" />
+    <path d="M14 3v5h5v3" />
+    <path d="m18.5 14.5 2 2-5 5H13.5v-2Z" />
+  </Icon>
+);
+
+/** Barras ascendentes (monto potencial). */
+export const ChartBarsIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M5 20v-5M10 20v-9M15 20v-7M20 20V5" strokeWidth={2.6} />
+  </Icon>
+);

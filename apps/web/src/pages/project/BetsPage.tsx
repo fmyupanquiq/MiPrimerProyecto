@@ -2,21 +2,30 @@ import {
   formatOdds,
   formatPEN,
   settleBetSchema,
+  TOTAL_ODDS_SOURCES,
   updateBetSchema,
+  type BetDraftDetail,
   type BetStatus,
   type BetSummary,
   type HouseSummary,
   type TicketSummary,
+  type TotalOddsSource,
 } from '@letfer/shared';
-import { type FormEvent, type ReactNode, useState } from 'react';
+import { type FormEvent, type ReactNode, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
+import { betDraftsApi } from '../../api/betDrafts.js';
 import { betsApi } from '../../api/bets.js';
 import { housesApi, stagesApi } from '../../api/finance.js';
 import { describeApiError } from '../../api/errors.js';
 import { useAuth } from '../../auth/AuthContext.js';
 import { isReauthCancelled, useReauth } from '../../auth/ReauthContext.js';
 import { useLoad } from '../../hooks/useLoad.js';
-import { BET_STATUS_LABELS, BET_TYPE_LABELS, formatMoment } from '../../labels.js';
+import {
+  BET_STATUS_LABELS,
+  BET_TYPE_LABELS,
+  formatMoment,
+  TOTAL_ODDS_SOURCE_LABELS,
+} from '../../labels.js';
 import { formatStake, moneyTone, signedPEN } from '../../format.js';
 import { Help, TermLabel } from '../../glossary.js';
 import {
@@ -37,6 +46,7 @@ import {
   btn,
   btnDanger,
   btnPrimary,
+  btnGhost,
   EmptyState,
   inputClass,
   LoadingBlock,
@@ -57,6 +67,7 @@ import { SettlementSection } from './BetSettlementFields.js';
 import { BET_STATUS_STYLE } from './bet-status-style.js';
 import { betStatusIcon } from './BetStatusBadge.js';
 import { DropdownMenu, type DropdownItem } from './DropdownMenu.js';
+import { NestedDialog } from './bet-wizard.js';
 import { HouseSelect, NewBetForm } from './NewBetForm.js';
 import { fromDateTimeParts, nowDateTimeParts, toDateTimeParts } from '../../date-inputs.js';
 import { TicketPanel } from './TicketPanel.js';
@@ -87,10 +98,18 @@ export function BetsPage() {
   // `?nueva=1` (accesos "Añadir apuesta" del dashboard) abre el formulario directamente.
   const [searchParams] = useSearchParams();
   const [showForm, setShowForm] = useState(() => searchParams.get('nueva') === '1');
-  // Ancho del panel flotante según el formato (Fase 11, §11): Simple compacto, Múltiple/Creada
-  // más ancho para varias selecciones. Nunca forzado a un único ancho fijo para todos los casos.
-  const [newBetWide, setNewBetWide] = useState(false);
+  // Borradores de "Añadir apuesta" (ADR 0024): los del propio usuario, para retomarlos.
+  const drafts = useLoad(`bet-drafts:${project.id}`, () =>
+    can('bets.create') ? betDraftsApi.list(project.id) : Promise.resolve([]),
+  );
+  const [activeDraft, setActiveDraft] = useState<BetDraftDetail | null>(null);
+  // Cambios sin guardar en el formulario abierto: antes de cerrar se pide qué hacer con ellos.
+  const [formDirty, setFormDirty] = useState(false);
+  const [confirmClose, setConfirmClose] = useState(false);
+  const saveDraftRef = useRef<(() => Promise<boolean>) | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // Id de la apuesta recién registrada: el aviso ofrece abrirla ("Ver apuesta") de inmediato.
+  const [registeredId, setRegisteredId] = useState<string | null>(null);
   const [filter, setFilter] = useState<'ALL' | BetStatus>('ALL');
   const [query, setQuery] = useState('');
 
@@ -145,7 +164,8 @@ export function BetsPage() {
               type="button"
               className={btnPrimary}
               onClick={() => {
-                setNewBetWide(false);
+                setActiveDraft(null);
+                setFormDirty(false);
                 setShowForm(true);
               }}
             >
@@ -155,34 +175,162 @@ export function BetsPage() {
           )
         }
       />
-      {notice && <Notice tone="success">{notice}</Notice>}
+      {notice && (
+        <Notice
+          tone="success"
+          action={
+            registeredId && (
+              <Link to={`/projects/${project.id}/bets/${registeredId}`} className={btn}>
+                Ver apuesta
+              </Link>
+            )
+          }
+        >
+          {notice}
+        </Notice>
+      )}
+
+      {can('bets.create') && !showForm && !showTrashed && (drafts.data?.length ?? 0) > 0 && (
+        <section
+          aria-label="Borradores de apuesta"
+          className="flex flex-col gap-2 rounded-2xl border border-violet-200 bg-violet-50/40 p-4"
+        >
+          <h3 className="text-sm font-semibold text-slate-900">
+            Borradores sin registrar ({drafts.data!.length})
+          </h3>
+          <p className="text-xs text-slate-500">
+            Un borrador no es una apuesta: no descuenta saldo ni aparece en tus informes hasta que
+            lo registres.
+          </p>
+          <ul className="flex flex-col divide-y divide-violet-200/60">
+            {drafts.data!.map((draft) => (
+              <li
+                key={draft.id}
+                className="flex flex-wrap items-center justify-between gap-2 py-2 first:pt-0 last:pb-0"
+              >
+                <div className="min-w-0">
+                  <p className="text-sm font-medium break-words text-slate-900">
+                    {draft.summary || 'Borrador sin datos'}
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    Guardado el {formatMoment(draft.updatedAt, true)}
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    className={btn}
+                    aria-label={`Retomar el borrador: ${draft.summary || 'sin datos'}`}
+                    onClick={() => {
+                      void betDraftsApi
+                        .get(project.id, draft.id)
+                        .then((detail) => {
+                          setActiveDraft(detail);
+                          setFormDirty(false);
+                          setShowForm(true);
+                        })
+                        .catch((caught) => setNotice(describeApiError(caught)));
+                    }}
+                  >
+                    Retomar
+                  </button>
+                  <button
+                    type="button"
+                    className={btnGhost}
+                    aria-label={`Descartar el borrador: ${draft.summary || 'sin datos'}`}
+                    onClick={() => {
+                      void betDraftsApi
+                        .discard(project.id, draft.id)
+                        .then(() => {
+                          setRegisteredId(null);
+                          setNotice('Borrador descartado.');
+                          drafts.reload();
+                        })
+                        .catch((caught) => setNotice(describeApiError(caught)));
+                    }}
+                  >
+                    Descartar
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {showForm && (
         <Modal
-          onClose={() => setShowForm(false)}
+          variant="wizard"
+          onClose={() => (formDirty ? setConfirmClose(true) : setShowForm(false))}
           ariaLabel="Añadir apuesta"
-          // Fase 11.7: con ticket o con varias selecciones, un espacio de trabajo ancho y de alto
-          // estable desde `lg:` (el ticket necesita alto para poder compararse con los datos, y
-          // el panel no "salta" de tamaño al cambiar de paso); Simple sin ticket sigue compacto.
-          // Desde `md:` (tableta) también aprovecha el alto de la pantalla. Las clases `md:`/`lg:`
-          // se aplican después de las `sm:` base de `<Modal>` y las sustituyen.
-          widthClassName={
-            newBetWide
-              ? 'sm:max-w-6xl md:max-h-[92vh] lg:h-[min(56rem,94vh)] lg:max-h-none'
-              : 'sm:max-w-2xl md:max-h-[92vh] lg:max-h-[min(52rem,92vh)]'
-          }
+          // Espacio de trabajo ancho y de alto estable desde `lg:` (≈1104 px a 1672 × 941, como la
+          // referencia): el ticket necesita alto para compararse con los datos y el panel no "salta"
+          // de tamaño al cambiar de paso.
+          widthClassName="sm:max-w-[69rem] md:max-h-[96vh] lg:h-[min(60rem,97.5vh)] lg:max-h-none"
         >
           <NewBetForm
+            key={activeDraft?.id ?? 'nuevo'}
             houses={houses.data ?? []}
-            onWideChange={setNewBetWide}
-            onDone={(message) => {
-              setShowForm(false);
-              setNotice(message);
-              reload();
+            initialDraft={activeDraft ?? undefined}
+            onDirtyChange={setFormDirty}
+            registerSaveDraft={(save) => {
+              saveDraftRef.current = save;
             }}
-            onCancel={() => setShowForm(false)}
+            onDraftsChanged={drafts.reload}
+            onDone={(message, betId) => {
+              setShowForm(false);
+              setActiveDraft(null);
+              setNotice(message);
+              setRegisteredId(betId);
+              reload();
+              drafts.reload();
+            }}
+            onCancel={() => (formDirty ? setConfirmClose(true) : setShowForm(false))}
           />
         </Modal>
+      )}
+
+      {showForm && confirmClose && (
+        <NestedDialog
+          title="¿Salir sin registrar la apuesta?"
+          onClose={() => setConfirmClose(false)}
+          footer={
+            <>
+              <button type="button" className={btnGhost} onClick={() => setConfirmClose(false)}>
+                Seguir editando
+              </button>
+              <button
+                type="button"
+                className={btn}
+                onClick={() => {
+                  setConfirmClose(false);
+                  setFormDirty(false);
+                  setShowForm(false);
+                }}
+              >
+                Descartar y salir
+              </button>
+              <button
+                type="button"
+                className={btnPrimary}
+                onClick={() => {
+                  void (saveDraftRef.current?.() ?? Promise.resolve(false)).then((saved) => {
+                    if (!saved) return;
+                    setConfirmClose(false);
+                    setShowForm(false);
+                  });
+                }}
+              >
+                Guardar borrador y salir
+              </button>
+            </>
+          }
+        >
+          <p className="text-sm text-slate-700">
+            Tienes cambios sin guardar. Puedes guardarlos como borrador para retomarlos después: un
+            borrador no registra la apuesta ni toca tu saldo.
+          </p>
+        </NestedDialog>
       )}
 
       <section
@@ -272,6 +420,7 @@ export function BetsPage() {
               showTrashed={showTrashed}
               onChanged={(message) => {
                 setNotice(message);
+                setRegisteredId(null);
                 reload();
               }}
             />
@@ -488,7 +637,9 @@ function BetRow({
     bet.effectiveOdds !== null &&
     Number(bet.effectiveOdds) !== Number(bet.visibleTotalOdds)
       ? `Cuota efectiva ${bet.effectiveOdds}`
-      : undefined;
+      : bet.totalOddsSource === 'CALCULATED'
+        ? '(calculada, referencia)'
+        : undefined;
 
   return (
     <li
@@ -508,6 +659,13 @@ function BetRow({
         </div>
 
         <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+          <Link
+            to={`/projects/${project.id}/bets/${bet.id}`}
+            className={btn}
+            aria-label={`Ver apuesta de ${bet.houseName}`}
+          >
+            Ver apuesta
+          </Link>
           {can('tickets.view') &&
             ((bet.ticketCount ?? 0) > 0 ? (
               <button
@@ -845,6 +1003,7 @@ function EditBetForm({
   const [placedTimeKnown, setPlacedTimeKnown] = useState(bet.placedTimeKnown);
   const [stake, setStake] = useState(bet.stake);
   const [visibleTotalOdds, setVisibleTotalOdds] = useState(bet.visibleTotalOdds);
+  const [totalOddsSource, setTotalOddsSource] = useState<TotalOddsSource>(bet.totalOddsSource);
   const [officialAmount, setOfficialAmount] = useState(bet.officialAmount ?? '');
   const [officialPotentialReturn, setOfficialPotentialReturn] = useState(
     bet.officialPotentialReturn ?? '',
@@ -882,6 +1041,7 @@ function EditBetForm({
           ...(placedChanged ? { placedAt, placedTimeKnown } : {}),
           stake,
           visibleTotalOdds,
+          totalOddsSource,
           officialAmount: officialAmount.trim() === '' ? undefined : officialAmount,
           officialPotentialReturn:
             officialPotentialReturn.trim() === '' ? undefined : officialPotentialReturn,
@@ -964,6 +1124,20 @@ function EditBetForm({
               onChange={(event) => setVisibleTotalOdds(event.target.value)}
               className={inputClass}
             />
+          </label>
+          <label className="flex flex-col gap-1.5 text-sm font-medium">
+            Origen de la cuota total
+            <select
+              value={totalOddsSource}
+              onChange={(event) => setTotalOddsSource(event.target.value as TotalOddsSource)}
+              className={inputClass}
+            >
+              {TOTAL_ODDS_SOURCES.map((source) => (
+                <option key={source} value={source}>
+                  {TOTAL_ODDS_SOURCE_LABELS[source]}
+                </option>
+              ))}
+            </select>
           </label>
           <label className="flex flex-col gap-1.5 text-sm font-medium">
             Monto oficial (opcional)

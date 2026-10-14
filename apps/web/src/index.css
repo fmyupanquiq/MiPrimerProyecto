@@ -133,3 +133,28 @@
     }
   }
 }
+
+/*
+ * Piel del asistente «Añadir apuesta» en el tema oscuro (ADR 0024, referencia
+ * `docs/referencias/letfer-ui-referencias/01-OBJETIVO-verificar-datos.png`): navy más profundo y
+ * azulado, tarjetas apenas elevadas con borde fino azulado y campos un paso más claros. Solo
+ * redefine los mismos tokens DENTRO del modal (`.wizard-skin`): ningún componente cambia y el resto
+ * de la aplicación conserva su paleta.
+ */
+[data-theme='dark'] .wizard-skin {
+  --color-slate-50: oklch(0.155 0.03 248);
+  --color-surface: oklch(0.175 0.03 248);
+  --color-surface-2: oklch(0.2 0.035 250);
+  --color-slate-100: oklch(0.215 0.036 250);
+  --color-slate-200: oklch(0.255 0.04 252);
+  --color-slate-300: oklch(0.3 0.045 252);
+  --color-violet-500: oklch(0.56 0.27 285);
+  --color-violet-600: oklch(0.5 0.29 283);
+}
+
+/* Campos del asistente: un paso más claros que la tarjeta, como en la referencia. */
+[data-theme='dark']
+  .wizard-skin
+  :is(input, select, textarea):not([type='checkbox'], [type='radio'], [type='file']) {
+  background-color: oklch(0.205 0.036 250);
+}

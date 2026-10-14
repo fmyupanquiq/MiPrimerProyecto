@@ -18,6 +18,7 @@ import { LoginPage } from './pages/LoginPage.js';
 import { ProjectsPage } from './pages/ProjectsPage.js';
 import { ReturnsPage } from './pages/project/ReturnsPage.js';
 import { AuditPage } from './pages/project/AuditPage.js';
+import { BetDetailView } from './pages/project/BetDetailView.js';
 import { BetsPage } from './pages/project/BetsPage.js';
 import { FinancePage } from './pages/project/FinancePage.js';
 import { ImportBatchPage } from './pages/project/imports/ImportBatchPage.js';
@@ -116,6 +117,7 @@ export function App() {
             <Route path="stages" element={<StagesPage />} />
             <Route path="finance" element={<FinancePage />} />
             <Route path="bets" element={<BetsPage />} />
+            <Route path="bets/:betId" element={<BetDetailView />} />
             <Route path="returns" element={<ReturnsPage />} />
             <Route path="imports" element={<ImportsPage />} />
             <Route path="imports/new" element={<ImportUploadPage />} />

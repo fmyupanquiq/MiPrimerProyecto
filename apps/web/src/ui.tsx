@@ -406,11 +406,14 @@ export function Modal({
   ariaLabel,
   children,
   widthClassName = 'sm:max-w-xl',
+  variant = 'default',
 }: {
   onClose: () => void;
   ariaLabel: string;
   children: ReactNode;
   widthClassName?: string;
+  /** `wizard`: el asistente "Añadir apuesta" (fondo desenfocado, panel hundido con halo violeta). */
+  variant?: 'default' | 'wizard';
 }) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -427,7 +430,9 @@ export function Modal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 sm:p-4"
+      className={`fixed inset-0 z-50 flex items-center justify-center sm:p-4 ${
+        variant === 'wizard' ? 'bg-[#020611]/75 backdrop-blur-[3px]' : 'bg-black/60'
+      }`}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
@@ -436,7 +441,11 @@ export function Modal({
         role="dialog"
         aria-modal="true"
         aria-label={ariaLabel}
-        className={`flex h-full w-full flex-col overflow-hidden bg-surface shadow-xl sm:h-auto sm:max-h-[min(42rem,90vh)] sm:rounded-2xl sm:border sm:border-slate-200 ${widthClassName}`}
+        className={`flex h-full w-full flex-col overflow-hidden shadow-xl sm:h-auto ${
+          variant === 'wizard'
+            ? 'wizard-skin bg-slate-50 shadow-[0_30px_80px_-20px_rgba(0,0,0,0.85),0_0_50px_-24px_rgba(101,8,255,0.5)] sm:rounded-2xl sm:border sm:border-slate-300'
+            : 'bg-surface sm:max-h-[min(42rem,90vh)] sm:rounded-2xl sm:border sm:border-slate-200'
+        } ${widthClassName}`}
       >
         {children}
       </div>

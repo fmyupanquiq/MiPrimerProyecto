@@ -4,6 +4,7 @@ import type {
   BetCorrectionKind,
   BetStatus,
   BetType,
+  TotalOddsSource,
   HouseStatus,
   BatchFinancialSemaphore,
   ImportBatchStatus,
@@ -141,6 +142,12 @@ export const MOVEMENT_TYPE_LABELS: Record<MovementType, string> = {
   REVERSAL: 'Reversión',
 };
 
+export const TOTAL_ODDS_SOURCE_LABELS: Record<TotalOddsSource, string> = {
+  OFFICIAL: 'Oficial (la muestra la casa)',
+  CALCULATED: 'Calculada de referencia',
+  UNKNOWN: 'Origen no verificado',
+};
+
 export const BET_TYPE_LABELS: Record<BetType, string> = {
   SIMPLE: 'Simple',
   CREATED: 'Creada',
@@ -222,6 +229,7 @@ export const TICKET_FIELD_LABELS: Record<keyof TicketExtraction, string> = {
   placedDate: 'Fecha de colocación',
   placedTime: 'Hora de colocación',
   betType: 'Tipo de apuesta',
+  externalReference: 'Referencia del ticket',
   selections: 'Selecciones',
   stake: 'Stake',
   officialTotalOdds: 'Cuota total',

@@ -1,14 +1,25 @@
 import { formatOdds, formatPEN, isOddsString, type MoneyString } from '@letfer/shared';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { DateTimeParts } from '../../date-inputs.js';
 import { formatStake, signedPEN } from '../../format.js';
 import { Help } from '../../glossary.js';
-import { ChartIcon, CheckIcon, SparkleIcon } from '../../icons.js';
+import {
+  BanIcon,
+  ChartIcon,
+  CheckIcon,
+  ClockIcon,
+  CoinsIcon,
+  InfoIcon,
+  SparkleIcon,
+  TrophyIcon,
+  XCircleIcon,
+} from '../../icons.js';
 import { BET_STATUS_LABELS } from '../../labels.js';
 import { Badge, inputClass } from '../../ui.js';
 import { allowsProfitOverride, type BetDraftFigures, type DraftStatus } from './bet-draft.js';
 import { BetStatusBadge, betStatusIcon } from './BetStatusBadge.js';
 import { getDisplayTimeZone } from '../../time-zone.js';
+import { WizardCard } from './WizardCard.js';
 
 /*
  * Piezas comunes de los formularios de apuesta de la Fase 10.3: estilo, pasos numerados y la
@@ -215,8 +226,11 @@ export function FinancialSummary({
   amountNote?: ReactNode;
   potentialReturn: MoneyString | null;
   potentialProfit: MoneyString | null;
-  /** El resultado elegido hasta ahora (§18 Fase 11.3): solo de referencia, se edita en "Confirmar". */
-  status?: DraftStatus;
+  /**
+   * El resultado elegido hasta ahora (§18 Fase 11.3): solo de referencia, se edita en "Confirmar".
+   * `null` = todavía nadie lo eligió ni la IA lo leyó: se muestra "Sin definir".
+   */
+  status?: DraftStatus | null;
 }) {
   // Fase 11.7: panel compacto (cifras en una rejilla con divisores de 1px, no tarjetas apiladas)
   // para que, junto al ticket original, deje a la imagen la mayor parte del alto. Mismas cifras,
@@ -236,11 +250,17 @@ export function FinancialSummary({
           </span>
           <Caption>Resumen financiero</Caption>
         </span>
-        {status && (
+        {status !== undefined && (
           <dl className="flex items-center gap-1.5">
             <dt className={smallLabel}>Estado</dt>
             <dd>
-              <BetStatusBadge status={status} />
+              {status === null ? (
+                <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-500 ring-1 ring-slate-200 ring-inset">
+                  Sin definir
+                </span>
+              ) : (
+                <BetStatusBadge status={status} />
+              )}
             </dd>
           </dl>
         )}
@@ -300,11 +320,14 @@ export function DateTimeFields({
   timeLabel,
   value,
   onChange,
+  hideZone = false,
 }: {
   dateLabel: string;
   timeLabel: string;
   value: DateTimeParts;
   onChange: (value: DateTimeParts) => void;
+  /** El aviso de zona horaria lo muestra quien llama (p. ej. en una línea compacta). */
+  hideZone?: boolean;
 }) {
   const zone = getDisplayTimeZone();
   return (
@@ -329,7 +352,9 @@ export function DateTimeFields({
           />
         </label>
       </div>
-      {zone && <span className="text-xs text-slate-500">Hora del proyecto ({zone}).</span>}
+      {zone && !hideZone && (
+        <span className="text-xs text-slate-500">Hora del proyecto ({zone}).</span>
+      )}
     </div>
   );
 }
@@ -359,6 +384,58 @@ function Computed({
 }
 
 /**
+ * Botones grandes del resultado (apariencia del asistente). Colores semánticos con los tokens de tema:
+ * verde Ganado, rojo Perdido, ámbar Pendiente, gris Anulado y azul Cash Out. Los rótulos siguen la
+ * referencia visual ("Ganado", "Perdido"…); `chosen = false` deja todos sin seleccionar (sin definir).
+ */
+const RESULT_BUTTONS: Record<
+  DraftStatus,
+  { label: string; icon: ReactNode; idle: string; selected: string }
+> = {
+  WON: {
+    label: 'Ganado',
+    icon: <TrophyIcon className="h-5 w-5" />,
+    idle: 'border-green-300 bg-green-50 text-green-700 hover:border-green-500',
+    selected: 'border-green-500 bg-green-100 text-green-800 ring-2 ring-green-500/40',
+  },
+  LOST: {
+    label: 'Perdido',
+    icon: <XCircleIcon className="h-5 w-5" />,
+    idle: 'border-red-300 bg-red-50 text-red-700 hover:border-red-500',
+    selected: 'border-red-500 bg-red-100 text-red-800 ring-2 ring-red-500/40',
+  },
+  PENDING: {
+    label: 'Pendiente',
+    icon: <ClockIcon className="h-5 w-5" />,
+    idle: 'border-amber-300 bg-amber-50 text-amber-700 hover:border-amber-500',
+    selected: 'border-amber-500 bg-amber-100 text-amber-800 ring-2 ring-amber-500/40',
+  },
+  VOID: {
+    label: 'Anulado',
+    icon: <BanIcon className="h-5 w-5" />,
+    idle: 'border-slate-300 bg-surface text-slate-700 hover:border-slate-500',
+    selected: 'border-slate-500 bg-slate-100 text-slate-900 ring-2 ring-slate-500/40',
+  },
+  CASHOUT: {
+    label: 'Cash Out',
+    icon: <CoinsIcon className="h-5 w-5" />,
+    idle: 'border-blue-300 bg-blue-50 text-blue-700 hover:border-blue-500',
+    selected: 'border-blue-500 bg-blue-100 text-blue-800 ring-2 ring-blue-500/40',
+  },
+};
+
+/** Orden de los botones, como en la referencia visual: Ganado, Perdido, Pendiente, Anulado, Cash Out. */
+const RESULT_ORDER: DraftStatus[] = ['WON', 'LOST', 'PENDING', 'VOID', 'CASHOUT'];
+
+export const RESULT_BUTTON_LABELS: Record<DraftStatus, string> = {
+  WON: 'Ganado',
+  LOST: 'Perdido',
+  PENDING: 'Pendiente',
+  VOID: 'Anulado',
+  CASHOUT: 'Cash Out',
+};
+
+/**
  * Resultado, fecha de liquidación, A+G, ganancia y cuota.
  *
  * - La ganancia solo es editable en una ganada (para coincidir con la casa) y en un cash out; en
@@ -378,6 +455,7 @@ export function SettlementSection({
   visibleTotalOdds,
   notSettleableText,
   step,
+  premium,
 }: {
   /** Resultados que se ofrecen; `null` si la persona no puede liquidar (se muestra `notSettleableText`). */
   options: DraftStatus[] | null;
@@ -392,6 +470,11 @@ export function SettlementSection({
   notSettleableText?: string;
   /** Número de paso cuando forma parte de un formulario por pasos. */
   step?: number;
+  /**
+   * Apariencia del asistente "Añadir apuesta": tarjeta "Resultado de la apuesta" con botones grandes.
+   * `chosen` indica si alguien ya eligió (o la IA leyó) un resultado: si no, ninguno aparece marcado.
+   */
+  premium?: { chosen: boolean; detectedByAi: boolean };
 }) {
   const editable = allowsProfitOverride(status);
   const adjusted = editable && profitOverride !== null;
@@ -403,126 +486,243 @@ export function SettlementSection({
   const shownOdds =
     trimmedOdds === '' ? '-' : isOddsString(trimmedOdds) ? formatOdds(trimmedOdds) : trimmedOdds;
   const pending = status === 'PENDING';
+  // Apariencia del asistente: los detalles de liquidación (fecha, A+G, ganancia, cuota) se resumen en
+  // una línea y se despliegan a pedido (siempre montados: nada se pierde). Se abren solos cuando hay
+  // algo que completar (un cash out exige la ganancia) o ya se ajustó la ganancia.
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const showDetails = !premium || detailsOpen || status === 'CASHOUT' || adjusted;
 
-  return (
-    <FormStep
-      step={step}
-      title="¿Cuál es el resultado?"
-      hint={
-        pending
-          ? 'Si el evento aún no terminó, déjala Pendiente: su importe queda reservado hasta liquidarla.'
-          : 'Elige cómo terminó. LetFer calcula el retorno y la ganancia; ajústalos si la casa muestra otra cifra.'
-      }
-      ariaLabel="Resultado y ganancia"
-    >
+  const shell = (children: ReactNode) =>
+    premium ? (
+      <WizardCard
+        icon={<TrophyIcon />}
+        title="Resultado de la apuesta"
+        ariaLabel="Resultado y ganancia"
+      >
+        {children}
+      </WizardCard>
+    ) : (
+      <FormStep
+        step={step}
+        title="¿Cuál es el resultado?"
+        hint={
+          pending
+            ? 'Si el evento aún no terminó, déjala Pendiente: su importe queda reservado hasta liquidarla.'
+            : 'Elige cómo terminó. LetFer calcula el retorno y la ganancia; ajústalos si la casa muestra otra cifra.'
+        }
+        ariaLabel="Resultado y ganancia"
+      >
+        {children}
+      </FormStep>
+    );
+  const selectedNow = (option: DraftStatus) =>
+    (premium ? premium.chosen : true) && status === option;
+
+  // Apariencia del asistente: retorno y ganancia en la MISMA línea que el origen del resultado (la
+  // cuota ya está en "Datos de la apuesta"); el detalle completo se despliega a pedido.
+  const settlementLine =
+    premium && !pending && premium.chosen ? (
+      <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.8rem] text-slate-600">
+        {!showDetails && (
+          <>
+            <span>
+              A+G:{' '}
+              <strong className="font-semibold text-slate-900">{money(figures.returnValue)}</strong>
+            </span>
+            <span>
+              Ganancia:{' '}
+              <strong className="font-semibold text-slate-900">
+                {figures.profit === null ? '-' : signedPEN(figures.profit)}
+              </strong>
+            </span>
+          </>
+        )}
+        <button
+          type="button"
+          className="text-xs font-medium text-violet-700 underline"
+          aria-expanded={showDetails}
+          disabled={status === 'CASHOUT' || adjusted}
+          onClick={() => setDetailsOpen((open) => !open)}
+        >
+          <span aria-hidden="true">{showDetails ? 'Ocultar detalles' : 'Detalles'}</span>
+          <span className="sr-only">
+            {showDetails ? 'Ocultar detalles de liquidación' : 'Detalles de liquidación'}
+          </span>
+        </button>
+      </p>
+    ) : null;
+
+  return shell(
+    <>
       <div className="flex flex-col gap-2">
-        <Caption>Resultado</Caption>
+        {!premium && <Caption>Resultado</Caption>}
         {options ? (
-          <div className="flex flex-wrap gap-2" role="group" aria-label="Resultado">
-            {options.map((option) => (
-              <button
-                key={option}
-                type="button"
-                className={chip(status === option, statusTone(option))}
-                aria-pressed={status === option}
-                onClick={() => {
-                  onStatus(option);
-                  onProfitOverride(null);
-                }}
+          premium ? (
+            <>
+              <div
+                className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5"
+                role="group"
+                aria-label="Resultado"
               >
-                {betStatusIcon(option, 'h-4 w-4')}
-                {BET_STATUS_LABELS[option]}
-              </button>
-            ))}
-          </div>
+                {RESULT_ORDER.filter((option) => options.includes(option)).map((option) => {
+                  const look = RESULT_BUTTONS[option];
+                  const isSelected = selectedNow(option);
+                  return (
+                    <button
+                      key={option}
+                      type="button"
+                      aria-pressed={isSelected}
+                      onClick={() => {
+                        onStatus(option);
+                        onProfitOverride(null);
+                      }}
+                      className={`flex min-h-10 items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500 ${
+                        isSelected ? look.selected : look.idle
+                      }`}
+                    >
+                      {look.icon}
+                      {look.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+                <p className="flex items-center gap-2 text-[0.8rem] text-slate-600">
+                  <InfoIcon className="h-4 w-4 shrink-0 text-slate-500" />
+                  {!premium.chosen ? (
+                    'Resultado sin definir: elige cómo terminó la apuesta antes de registrarla.'
+                  ) : premium.detectedByAi ? (
+                    <span>
+                      Resultado detectado por IA:{' '}
+                      <strong
+                        className={
+                          status === 'LOST'
+                            ? 'text-red-700'
+                            : status === 'WON'
+                              ? 'text-green-700'
+                              : 'text-slate-900'
+                        }
+                      >
+                        {RESULT_BUTTON_LABELS[status]}
+                      </strong>
+                      . Verifica antes de confirmar.
+                    </span>
+                  ) : (
+                    <span>Resultado elegido: {RESULT_BUTTON_LABELS[status]}.</span>
+                  )}
+                </p>
+                {settlementLine}
+              </div>
+            </>
+          ) : (
+            <div className="flex flex-wrap gap-2" role="group" aria-label="Resultado">
+              {options.map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  className={chip(status === option, statusTone(option))}
+                  aria-pressed={status === option}
+                  onClick={() => {
+                    onStatus(option);
+                    onProfitOverride(null);
+                  }}
+                >
+                  {betStatusIcon(option, 'h-4 w-4')}
+                  {BET_STATUS_LABELS[option]}
+                </button>
+              ))}
+            </div>
+          )
         ) : (
           <p className="text-sm text-slate-600">{notSettleableText}</p>
         )}
       </div>
-      {!pending && (
-        <DateTimeFields
-          dateLabel="Fecha de liquidación"
-          timeLabel="Hora de liquidación"
-          value={settled}
-          onChange={onSettled}
-        />
-      )}
-      {/* También en Pendiente, con "-": se ve qué falta (acordado en la 10.3c). */}
-      <dl className="grid gap-3 text-sm sm:grid-cols-3">
-        <Computed
-          label="Retorno (A+G)"
-          help={<Help term="ag" />}
-          note={
-            adjusted
-              ? 'Ajustado: se guarda como retorno oficial.'
-              : status === 'WON'
-                ? 'Calculado: importe × cuota. Queda pendiente de confirmar con la casa.'
-                : status === 'LOST'
-                  ? 'Una perdida no devuelve nada.'
-                  : status === 'VOID'
-                    ? 'Se devuelve el importe apostado.'
-                    : pending
-                      ? 'Se calcula al elegir el resultado.'
-                      : undefined
-          }
-        >
-          <dd className="text-lg font-semibold tabular-nums" aria-label="A+G">
-            {money(figures.returnValue)}
-          </dd>
-        </Computed>
-        <Computed label="Ganancia" help={<Help term="profit" />}>
-          {editable ? (
-            <dd className="flex flex-col gap-1">
-              <input
-                value={profitOverride ?? figures.profit ?? ''}
-                onChange={(event) => onProfitOverride(event.target.value)}
-                className={field}
-                inputMode="decimal"
-                placeholder={status === 'CASHOUT' ? 'Obligatoria' : ''}
-                aria-label="Ganancia"
-              />
-              {adjusted ? (
-                <span className="flex flex-wrap items-center gap-2">
-                  <Badge tone="violet">Ajustada</Badge>
-                  <button
-                    type="button"
-                    className="text-xs text-violet-700 underline"
-                    onClick={() => onProfitOverride(null)}
-                  >
-                    Usar la calculada
-                  </button>
-                </span>
-              ) : (
-                <span className="text-xs text-slate-500">
-                  {status === 'CASHOUT'
-                    ? 'Indica la ganancia que pagó la casa.'
-                    : 'Calculada; cámbiala si la casa muestra otra.'}
-                </span>
-              )}
+      <div className={showDetails ? 'flex flex-col gap-3' : 'hidden'}>
+        {!pending && (
+          <DateTimeFields
+            dateLabel="Fecha de liquidación"
+            timeLabel="Hora de liquidación"
+            value={settled}
+            onChange={onSettled}
+          />
+        )}
+        {/* También en Pendiente, con "-": se ve qué falta (acordado en la 10.3c). */}
+        <dl className="grid gap-3 text-sm sm:grid-cols-3">
+          <Computed
+            label="Retorno (A+G)"
+            help={<Help term="ag" />}
+            note={
+              adjusted
+                ? 'Ajustado: se guarda como retorno oficial.'
+                : status === 'WON'
+                  ? 'Calculado: importe × cuota. Queda pendiente de confirmar con la casa.'
+                  : status === 'LOST'
+                    ? 'Una perdida no devuelve nada.'
+                    : status === 'VOID'
+                      ? 'Se devuelve el importe apostado.'
+                      : pending
+                        ? 'Se calcula al elegir el resultado.'
+                        : undefined
+            }
+          >
+            <dd className="text-lg font-semibold tabular-nums" aria-label="A+G">
+              {money(figures.returnValue)}
             </dd>
-          ) : (
-            <dd className="text-lg font-semibold tabular-nums" aria-label="Ganancia calculada">
-              {figures.profit === null ? '-' : signedPEN(figures.profit)}
-            </dd>
-          )}
-        </Computed>
-        <Computed
-          label={adjusted ? 'Cuota efectiva' : 'Cuota'}
-          help={<Help term="odds" />}
-          note={
-            adjusted
-              ? `A+G ÷ importe. La casa muestra ${shownOdds}: se guarda como cuota visible y la ganancia, como retorno oficial.`
-              : undefined
-          }
-        >
-          <dd className="text-lg font-semibold tabular-nums" aria-label="Cuota resultante">
-            {/* La cuota EFECTIVA (A+G ÷ importe) se muestra exacta, nunca a 2 decimales: es la
+          </Computed>
+          <Computed label="Ganancia" help={<Help term="profit" />}>
+            {editable ? (
+              <dd className="flex flex-col gap-1">
+                <input
+                  value={profitOverride ?? figures.profit ?? ''}
+                  onChange={(event) => onProfitOverride(event.target.value)}
+                  className={field}
+                  inputMode="decimal"
+                  placeholder={status === 'CASHOUT' ? 'Obligatoria' : ''}
+                  aria-label="Ganancia"
+                />
+                {adjusted ? (
+                  <span className="flex flex-wrap items-center gap-2">
+                    <Badge tone="violet">Ajustada</Badge>
+                    <button
+                      type="button"
+                      className="text-xs text-violet-700 underline"
+                      onClick={() => onProfitOverride(null)}
+                    >
+                      Usar la calculada
+                    </button>
+                  </span>
+                ) : (
+                  <span className="text-xs text-slate-500">
+                    {status === 'CASHOUT'
+                      ? 'Indica la ganancia que pagó la casa.'
+                      : 'Calculada; cámbiala si la casa muestra otra.'}
+                  </span>
+                )}
+              </dd>
+            ) : (
+              <dd className="text-lg font-semibold tabular-nums" aria-label="Ganancia calculada">
+                {figures.profit === null ? '-' : signedPEN(figures.profit)}
+              </dd>
+            )}
+          </Computed>
+          <Computed
+            label={adjusted ? 'Cuota efectiva' : 'Cuota'}
+            help={<Help term="odds" />}
+            note={
+              adjusted
+                ? `A+G ÷ importe. La casa muestra ${shownOdds}: se guarda como cuota visible y la ganancia, como retorno oficial.`
+                : undefined
+            }
+          >
+            <dd className="text-lg font-semibold tabular-nums" aria-label="Cuota resultante">
+              {/* La cuota EFECTIVA (A+G ÷ importe) se muestra exacta, nunca a 2 decimales: es la
                 cifra diagnóstica para que el retorno sea reproducible (§5, §7 Fase 10.9), a
                 diferencia de `shownOdds` (la visible), que ya viene formateada arriba. */}
-            {adjusted ? (figures.effectiveOdds ?? '-') : shownOdds}
-          </dd>
-        </Computed>
-      </dl>
-    </FormStep>
+              {adjusted ? (figures.effectiveOdds ?? '-') : shownOdds}
+            </dd>
+          </Computed>
+        </dl>
+      </div>
+    </>,
   );
 }
