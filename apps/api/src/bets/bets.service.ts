@@ -2,11 +2,14 @@ import { Inject, Injectable } from '@nestjs/common';
 import {
   addMoney,
   calculateBetReturn,
+  sameOdds,
+  type TicketSummary,
   compareMoney,
   deriveEffectiveOdds,
   multiplyMoney,
   subtractMoney,
   sumMoney,
+  validateSelectionStructure,
   BET_TRASH_LIMITS,
   ErrorCode,
   PROJECT_TRASH_RETENTION_DAYS,
@@ -160,6 +163,9 @@ function toSelectionSummary(row: BetSelectionRow): BetSelectionSummary {
     market: row.market,
     selection: row.selection,
     visibleOdds: row.visibleOdds,
+    legScore: row.legScore,
+    legResult: row.legResult,
+    conditionStatus: row.conditionStatus,
   };
 }
 
@@ -200,7 +206,7 @@ export class BetsService {
 
   async detail(access: ProjectAccess, betId: string): Promise<BetDetail> {
     const bet = await this.findOwned(this.db, access.project.id, betId);
-    return this.detailOf(this.db, bet);
+    return this.detailOf(this.db, bet, access);
   }
 
   /**
@@ -218,10 +224,25 @@ export class BetsService {
       throw betForbidden('No tienes permiso para registrar una apuesta ya liquidada.');
     }
     const betType = deriveBetType(input.selections);
-    this.assertSelectionOddsRequired(betType, input.selections);
+    this.assertSelectionStructure(betType, input.selections);
     const canChooseStage = access.permissions.has('bets.move_stage');
     const created = await this.db.transaction(async (tx) => {
       await lockByKey(tx, `finance:${access.project.id}`);
+      // Reintento del mismo registro (p. ej. se perdió la respuesta): devuelve la apuesta ya creada
+      // en vez de duplicarla. La clave solo vale para quien la creó, en este proyecto (ADR 0024).
+      if (input.clientRequestId !== undefined) {
+        const [existing] = await tx
+          .select()
+          .from(bets)
+          .where(
+            and(
+              eq(bets.projectId, access.project.id),
+              eq(bets.createdBy, actor.id),
+              eq(bets.clientRequestId, input.clientRequestId),
+            ),
+          );
+        if (existing) return existing;
+      }
       const house = await this.assertActiveHouse(tx, access.project.id, input.houseId);
       if (input.stageId !== undefined && !canChooseStage) {
         const active = await this.resolveStage(tx, access.project.id, undefined);
@@ -253,10 +274,13 @@ export class BetsService {
           // Un monto indicado al registrar viene de un ticket o de una persona que lo confirma (§76).
           amountConfirmed: input.officialAmount !== undefined,
           visibleTotalOdds: input.visibleTotalOdds,
+          totalOddsSource: input.totalOddsSource ?? 'UNKNOWN',
+          clientRequestId: input.clientRequestId ?? null,
           officialPotentialReturn: input.officialPotentialReturn ?? null,
           placedAt: new Date(input.placedAt),
           placedTimeKnown: input.placedTimeKnown,
           reason: input.reason ?? null,
+          externalReference: input.externalReference ?? null,
         })
         .returning();
       await this.insertSelections(tx, bet!.id, input.selections);
@@ -292,7 +316,7 @@ export class BetsService {
       }
       return bet!;
     });
-    return this.detailOf(this.db, created);
+    return this.detailOf(this.db, created, access);
   }
 
   /**
@@ -322,6 +346,7 @@ export class BetsService {
           input.stake !== undefined ||
           input.officialAmount !== undefined ||
           input.visibleTotalOdds !== undefined ||
+          input.totalOddsSource !== undefined ||
           input.officialPotentialReturn !== undefined ||
           input.selections !== undefined ||
           input.placedAt !== undefined
@@ -347,13 +372,23 @@ export class BetsService {
           patch.amountConfirmed = true; // indicado por una persona o un ticket (§76)
         }
         if (input.visibleTotalOdds !== undefined) patch.visibleTotalOdds = input.visibleTotalOdds;
+        // Cambiar el valor sin decir de dónde sale lo deja de origen desconocido: nunca se hereda
+        // en silencio la procedencia de la cifra anterior (ADR 0023).
+        if (input.totalOddsSource !== undefined) {
+          patch.totalOddsSource = input.totalOddsSource;
+        } else if (
+          input.visibleTotalOdds !== undefined &&
+          !sameOdds(input.visibleTotalOdds, bet.visibleTotalOdds)
+        ) {
+          patch.totalOddsSource = 'UNKNOWN';
+        }
         if (input.officialPotentialReturn !== undefined) {
           patch.officialPotentialReturn = input.officialPotentialReturn;
         }
         if (input.selections !== undefined) {
           newSelections = input.selections;
           patch.betType = deriveBetType(input.selections);
-          this.assertSelectionOddsRequired(patch.betType, input.selections);
+          this.assertSelectionStructure(patch.betType, input.selections);
         }
 
         const effectiveHouseId = newHouse?.id ?? bet.houseId;
@@ -385,6 +420,10 @@ export class BetsService {
       if (input.placedAt !== undefined) patch.placedAt = new Date(input.placedAt);
       if (input.placedTimeKnown !== undefined) patch.placedTimeKnown = input.placedTimeKnown;
       if (input.reason !== undefined) patch.reason = input.reason ?? null;
+      // Documental (§114): como el motivo, se puede corregir aunque la apuesta esté liquidada.
+      if (input.externalReference !== undefined) {
+        patch.externalReference = input.externalReference ?? null;
+      }
       // Vincular un ticket no tiene efecto financiero (§110.3): se permite sin importar el
       // estado de la apuesta, a diferencia de los campos que sí lo tienen (§107.9).
       if (input.ticketId) await this.linkTicket(tx, access.project.id, bet.id, input.ticketId);
@@ -438,7 +477,7 @@ export class BetsService {
       });
       return updated;
     });
-    return this.detailOf(this.db, updated);
+    return this.detailOf(this.db, updated, access);
   }
 
   /**
@@ -459,7 +498,7 @@ export class BetsService {
       this.assertNotTrashed(bet);
       return this.settleLocked(tx, access, actor, bet, input);
     });
-    return this.detailOf(this.db, updated);
+    return this.detailOf(this.db, updated, access);
   }
 
   /**
@@ -669,7 +708,7 @@ export class BetsService {
       });
       return updated;
     });
-    return this.detailOf(this.db, confirmed);
+    return this.detailOf(this.db, confirmed, access);
   }
 
   /** Ganadas liquidadas cuyo retorno sigue siendo el calculado, las más recientes primero (§77). */
@@ -782,7 +821,7 @@ export class BetsService {
     input: CorrectSettlementInput,
   ): Promise<BetDetail> {
     const updated = await this.corrections.correctSettlement(access, actor, betId, input);
-    return this.detailOf(this.db, updated);
+    return this.detailOf(this.db, updated, access);
   }
 
   /** Vista previa sin efectos de una corrección de liquidación (mismo camino que la real). */
@@ -803,7 +842,7 @@ export class BetsService {
     input: ReopenBetInput,
   ): Promise<BetDetail> {
     const updated = await this.corrections.reopen(access, actor, betId, input);
-    return this.detailOf(this.db, updated);
+    return this.detailOf(this.db, updated, access);
   }
 
   previewReopen(
@@ -886,7 +925,7 @@ export class BetsService {
       });
       return updated;
     });
-    return this.detailOf(this.db, updated);
+    return this.detailOf(this.db, updated, access);
   }
 
   /** Envía una apuesta a la papelera (§26). El Colaborador tiene un límite diario (§88, D-B6). */
@@ -1144,21 +1183,18 @@ export class BetsService {
   }
 
   /**
-   * Una Creada (§90, Fase 10.6) puede mostrar varias selecciones con una sola cuota total,
-   * sin cuota por selección; Simple y Múltiple siguen exigiendo la cuota de cada una (el
-   * disparador de 0041 es la defensa de última línea, esto es el mensaje legible antes de
-   * llegar a la base de datos).
+   * Estructura TICKET → LEG → CONDICIÓN (§114): la misma función pura que usa la web. Una Creada
+   * independiente admite selecciones sin cuota (§90); en una Múltiple cada LEG necesita su cuota
+   * (fila `position = 0`) y las condiciones internas de un leg creado pueden ir sin cuota; Simple
+   * exige la suya. Los disparadores de 0041/0043 son la defensa de última línea; esto da el
+   * mensaje legible antes de llegar a la base de datos.
    */
-  private assertSelectionOddsRequired(
+  private assertSelectionStructure(
     betType: BetType,
     selections: readonly BetSelectionInput[],
   ): void {
-    if (betType === 'CREATED') return;
-    if (selections.some((s) => s.visibleOdds === undefined)) {
-      throw invalidBetStructure(
-        'Cada selección necesita su cuota individual, salvo en una apuesta Creada.',
-      );
-    }
+    const problem = validateSelectionStructure(selections, betType);
+    if (problem) throw invalidBetStructure(problem);
   }
 
   private async insertSelections(
@@ -1178,6 +1214,9 @@ export class BetsService {
         market: selection.market ?? null,
         selection: selection.selection,
         visibleOdds: selection.visibleOdds ?? null,
+        legScore: selection.legScore ?? null,
+        legResult: selection.legResult ?? null,
+        conditionStatus: selection.conditionStatus ?? null,
       })),
     );
   }
@@ -1233,6 +1272,7 @@ export class BetsService {
       effectiveAmount,
       amountSource,
       visibleTotalOdds: bet.visibleTotalOdds,
+      totalOddsSource: bet.totalOddsSource,
       officialPotentialReturn: bet.officialPotentialReturn,
       officialRealizedReturn: bet.officialRealizedReturn,
       calculatedRealizedReturn: bet.calculatedRealizedReturn,
@@ -1246,6 +1286,7 @@ export class BetsService {
       settledAt: bet.settledAt ? bet.settledAt.toISOString() : null,
       settledTimeKnown: bet.settledTimeKnown,
       reason: bet.reason,
+      externalReference: bet.externalReference,
       createdBy: { id: bet.createdBy, name: ctx.createdByName },
       events: ctx.events,
       sports: ctx.sports,
@@ -1264,10 +1305,20 @@ export class BetsService {
     return rows.map((bet) => this.toSummary(bet, contexts.get(bet.id)!));
   }
 
-  private async detailOf(executor: DbExecutor, bet: BetRow): Promise<BetDetail> {
+  /**
+   * Los tickets (imagen, nombre de archivo, análisis de IA) solo se devuelven a quien tiene
+   * `tickets.view`: `bets.view` por sí solo no basta (la API decide, no la web).
+   */
+  private async detailOf(
+    executor: DbExecutor,
+    bet: BetRow,
+    access: ProjectAccess,
+  ): Promise<BetDetail> {
     const contexts = await this.contextsOf(executor, [bet]);
     const selections = await this.selectionsOf(executor, bet.id);
-    const ticketsByBet = await ticketsForBets(executor, [bet.id]);
+    const ticketsByBet = access.permissions.has('tickets.view')
+      ? await ticketsForBets(executor, [bet.id])
+      : new Map<string, TicketSummary[]>();
     return {
       ...this.toSummary(bet, contexts.get(bet.id)!),
       selections: selections.map(toSelectionSummary),
@@ -1384,8 +1435,10 @@ const AUDITABLE_FIELDS = [
   'stakeAmount',
   'officialAmount',
   'visibleTotalOdds',
+  'totalOddsSource',
   'officialPotentialReturn',
   'placedAt',
   'placedTimeKnown',
   'reason',
+  'externalReference',
 ] as const satisfies readonly (keyof BetRow)[];

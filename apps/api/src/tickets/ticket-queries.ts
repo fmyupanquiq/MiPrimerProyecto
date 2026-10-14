@@ -17,6 +17,14 @@ import { fullName } from '../projects/project-mappers.js';
  * entre `bets` y `tickets`; mismo patrón que `fullName` en `project-mappers.ts`).
  */
 
+/**
+ * Único mensaje de error de lectura que llega a un cliente (ADR 0017, adenda 10.6). El detalle
+ * real (proveedor, validación) vive solo en `ticket_analyses.error_message` y en el log del
+ * servidor; nunca se serializa por la API.
+ */
+export const TICKET_READ_FAILED_MESSAGE =
+  'No pudimos leer el ticket. Revisa la imagen e inténtalo nuevamente.';
+
 function toAnalysisSummary(
   row: TicketAnalysisRow,
   version: number,
@@ -31,7 +39,8 @@ function toAnalysisSummary(
     model: row.model,
     extraction: row.extraction ?? {},
     confidenceByField: row.confidenceByField,
-    errorMessage: row.errorMessage,
+    // Nunca `row.errorMessage`: puede contener el texto crudo del SDK/proveedor.
+    errorMessage: row.status === 'FAILED' ? TICKET_READ_FAILED_MESSAGE : null,
     analyzedBy: { id: row.analyzedBy, name: analyzedByName },
     analyzedAt: row.analyzedAt.toISOString(),
   };
@@ -53,6 +62,19 @@ function toTicketSummary(
     createdAt: ticket.createdAt.toISOString(),
     lastAnalysis,
   };
+}
+
+/** Un ticket suelto (aunque aún no esté vinculado a ninguna apuesta), con su último análisis. */
+export async function ticketSummaryOf(
+  executor: DbExecutor,
+  ticket: typeof tickets.$inferSelect,
+): Promise<TicketSummary> {
+  const [uploader] = await executor
+    .select({ firstName: users.firstName, lastName: users.lastName })
+    .from(users)
+    .where(eq(users.id, ticket.uploadedBy));
+  const analyses = await analysesOfTicket(executor, ticket.id);
+  return toTicketSummary(ticket, uploader ? fullName(uploader) : '', analyses[0] ?? null);
 }
 
 /** Todos los análisis de un ticket, más reciente primero; `version` es su posición (1º, 2º...). */

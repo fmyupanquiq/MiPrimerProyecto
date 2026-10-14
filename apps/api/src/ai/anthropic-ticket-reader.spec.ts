@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { LIVE_AI_TESTS_ENABLED } from '../../test/support/live-ai.js';
 import { AnthropicTicketReader } from './anthropic-ticket-reader.service.js';
 import type { AppConfig } from '../config/app-config.js';
 
@@ -40,29 +41,27 @@ describe('AnthropicTicketReader (sin red)', () => {
 });
 
 /**
- * Smoke test real y opcional (§31, §40): solo se ejecuta si quien corre las pruebas definió
- * `ANTHROPIC_API_KEY` en su entorno. `npm test` nunca depende de Internet ni de una clave real;
+ * Smoke test real y opcional (§31, §40): GASTA créditos. Solo se ejecuta con DOS decisiones
+ * explícitas: `ANTHROPIC_LIVE_TESTS=yes-spend-credits` y `ANTHROPIC_API_KEY` (tener la clave en el
+ * entorno ya no basta). `npm test` nunca depende de Internet ni de una clave real;
  * esta es la única forma de probar la integración real con Claude, a propósito fuera de la suite
  * normal.
  */
-describe.skipIf(!process.env['ANTHROPIC_API_KEY'])(
-  'AnthropicTicketReader (smoke real, opcional)',
-  () => {
-    // PNG 1×1 válido: no hay texto que leer, pero sirve para comprobar que la llamada real al SDK
-    // y la extracción estructurada funcionan de punta a punta sin reventar.
-    const onePixelPng = Buffer.from(
-      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
-      'base64',
-    );
+describe.skipIf(!LIVE_AI_TESTS_ENABLED)('AnthropicTicketReader (smoke real, opcional)', () => {
+  // PNG 1×1 válido: no hay texto que leer, pero sirve para comprobar que la llamada real al SDK
+  // y la extracción estructurada funcionan de punta a punta sin reventar.
+  const onePixelPng = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+    'base64',
+  );
 
-    it('hace una llamada real y devuelve una extracción estructurada (sin inventar datos)', async () => {
-      const reader = new AnthropicTicketReader(
-        config({ anthropicApiKey: process.env['ANTHROPIC_API_KEY'] }),
-      );
-      const result = await reader.analyze({ buffer: onePixelPng, mimeType: 'image/png' });
-      expect(result.provider).toBe('anthropic');
-      expect(result.model).toBe('claude-sonnet-5-5');
-      expect(result.extraction).toBeTypeOf('object');
-    }, 30_000);
-  },
-);
+  it('hace una llamada real y devuelve una extracción estructurada (sin inventar datos)', async () => {
+    const reader = new AnthropicTicketReader(
+      config({ anthropicApiKey: process.env['ANTHROPIC_API_KEY'] }),
+    );
+    const result = await reader.analyze({ buffer: onePixelPng, mimeType: 'image/png' });
+    expect(result.provider).toBe('anthropic');
+    expect(result.model).toBe('claude-sonnet-5-5');
+    expect(result.extraction).toBeTypeOf('object');
+  }, 30_000);
+});

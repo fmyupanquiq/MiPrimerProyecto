@@ -22,7 +22,11 @@ import {
   TicketReaderUnavailableError,
   type TicketReader,
 } from '../ai/ticket-reader.js';
-import { analysesOfTicket } from './ticket-queries.js';
+import {
+  TicketExtractionInvalidError,
+  validateTicketExtraction,
+} from '../ai/ticket-extraction-validator.js';
+import { analysesOfTicket, ticketSummaryOf, TICKET_READ_FAILED_MESSAGE } from './ticket-queries.js';
 
 export interface UploadedFile {
   buffer: Buffer;
@@ -109,6 +113,12 @@ export class TicketsService {
     };
   }
 
+  /** Un ticket del proyecto (p. ej. para retomar un borrador que lo referencia). */
+  async get(access: ProjectAccess, ticketId: string): Promise<TicketSummary> {
+    if (!/^[0-9a-f-]{36}$/i.test(ticketId)) throw financeNotFound('Ticket no encontrado.');
+    return ticketSummaryOf(this.db, await this.findOwn(access, ticketId));
+  }
+
   /** Contenido del archivo, para servirlo por una ruta autenticada (§42: nunca una URL pública). */
   async getFile(
     access: ProjectAccess,
@@ -135,10 +145,22 @@ export class TicketsService {
 
     const analyzedAt = this.clock.now();
     let result: Awaited<ReturnType<TicketReader['analyze']>> | undefined;
+    // Proveedor/modelo que respondió, aunque la respuesta no supere la validación (queda en el rastro).
+    let responder: { provider: string; model: string } | undefined;
     let errorMessage: string | null = null;
     try {
       const buffer = await this.storage.read(ticket.storageKey);
-      result = await this.reader.analyze({ buffer, mimeType: ticket.mimeType });
+      const raw = await this.reader.analyze({ buffer, mimeType: ticket.mimeType });
+      responder = { provider: raw.provider, model: raw.model };
+      // Barrera de validación: la salida de la IA es una entrada no confiable. Si no la supera,
+      // no se persiste como resultado válido (mismo camino que un fallo del proveedor: FAILED).
+      const validation = validateTicketExtraction(raw.extraction, raw.confidenceByField);
+      if (!validation.ok) throw new TicketExtractionInvalidError(validation.issues);
+      result = {
+        ...raw,
+        extraction: validation.extraction,
+        confidenceByField: validation.confidenceByField,
+      };
     } catch (error) {
       // IA desactivada o sin clave: respuesta controlada, sin registrar un intento fallido ni
       // contarlo contra el límite (no se llamó a ningún proveedor).
@@ -159,8 +181,8 @@ export class TicketsService {
         projectId: access.project.id,
         analyzedBy: actor.id,
         analyzedAt,
-        provider: result?.provider ?? 'anthropic',
-        model: result?.model ?? this.config.tickets.anthropicModel,
+        provider: result?.provider ?? responder?.provider ?? 'anthropic',
+        model: result?.model ?? responder?.model ?? this.config.tickets.anthropicModel,
         status: result ? 'COMPLETED' : 'FAILED',
         errorMessage,
         extraction: result?.extraction ?? null,
@@ -173,11 +195,7 @@ export class TicketsService {
       // (auditoría propia, ADR 0017) y en el log del servidor; a quien pidió el análisis solo le
       // llega un mensaje genérico, nunca el error crudo del proveedor (§29, D-T1).
       this.logger.error(`No se pudo analizar el ticket ${ticket.id}`, errorMessage ?? undefined);
-      throw new AppError(
-        502,
-        ErrorCode.INTERNAL_ERROR,
-        'No pudimos leer el ticket. Revisa la imagen e inténtalo nuevamente.',
-      );
+      throw new AppError(502, ErrorCode.INTERNAL_ERROR, TICKET_READ_FAILED_MESSAGE);
     }
     const history = await analysesOfTicket(this.db, ticket.id);
     return history.find((a) => a.id === row!.id)!;

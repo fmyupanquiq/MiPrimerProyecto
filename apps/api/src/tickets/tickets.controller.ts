@@ -49,6 +49,16 @@ export class TicketsController {
     });
   }
 
+  @Get(':ticketId')
+  @ProjectRoute('tickets.view')
+  @Header('Cache-Control', 'no-store')
+  get(
+    @CurrentProject() access: ProjectAccess,
+    @Param('ticketId') ticketId: string,
+  ): Promise<TicketSummary> {
+    return this.tickets.get(access, ticketId);
+  }
+
   @Get(':ticketId/file')
   @ProjectRoute('tickets.view')
   @Header('Cache-Control', 'private, no-store')

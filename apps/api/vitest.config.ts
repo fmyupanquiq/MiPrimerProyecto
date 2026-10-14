@@ -4,8 +4,11 @@ import { TEST_DATABASE_URL } from './test/support/test-database.js';
 export default defineConfig({
   test: {
     environment: 'node',
-    include: ['src/**/*.spec.ts', 'test/**/*.e2e-spec.ts'],
+    // `test/**/*.spec.ts`: pruebas unitarias del arnés de evaluación de tickets (test/ticket-eval).
+    include: ['src/**/*.spec.ts', 'test/**/*.spec.ts', 'test/**/*.e2e-spec.ts'],
     globalSetup: ['./test/support/global-setup.ts'],
+    // Retira ANTHROPIC_API_KEY y bloquea fetch a Anthropic: ninguna prueba gasta créditos por accidente.
+    setupFiles: ['./test/support/block-real-ai.ts'],
     // Las pruebas de integración comparten la base de datos `letfer_test`.
     fileParallelism: false,
     env: {

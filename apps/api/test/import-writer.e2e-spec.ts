@@ -299,6 +299,13 @@ describe('escritor de importación histórica (e2e, PostgreSQL real, §113)', ()
       const rows = await ctx.t.db.select().from(bets).where(eq(bets.batchId, batch.id));
       expect(rows).toHaveLength(4);
       const byOdds = (odds: string) => rows.find((b) => b.visibleTotalOdds === odds)!;
+      // Las cuotas de una hoja de cálculo no se pueden verificar: origen desconocido, nunca oficial.
+      expect(rows.map((b) => b.totalOddsSource)).toEqual([
+        'UNKNOWN',
+        'UNKNOWN',
+        'UNKNOWN',
+        'UNKNOWN',
+      ]);
       expect(byOdds('1.750000')).toMatchObject({
         status: 'WON',
         officialAmount: '62.50',

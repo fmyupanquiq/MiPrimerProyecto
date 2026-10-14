@@ -1,0 +1,51 @@
+{
+  "meta": {
+    "id": "sintetico-multiple-pendiente",
+    "description": "Caso INVENTADO para probar el arnés (no es un ticket real): combinada pendiente de 3 selecciones.",
+    "house": "Casa Ejemplo",
+    "screen": "detalle de apuesta",
+    "synthetic": true
+  },
+  "expected": {
+    "house": "Casa Ejemplo",
+    "placedDate": "2026-01-15",
+    "placedTime": "20:30",
+    "betType": "MULTIPLE",
+    "selections": [
+      {
+        "sport": "Fútbol",
+        "event": "Equipo A vs Equipo B",
+        "market": "Resultado final",
+        "selection": "Equipo A",
+        "visibleOdds": "1.50"
+      },
+      {
+        "sport": "Fútbol",
+        "event": "Equipo C vs Equipo D",
+        "market": "Goles totales",
+        "selection": "Más de 2.5",
+        "visibleOdds": "1.80"
+      },
+      {
+        "sport": "Tenis",
+        "event": "Jugador E vs Jugador F",
+        "market": "Ganador",
+        "selection": "Jugador E",
+        "visibleOdds": "1.25"
+      }
+    ],
+    "officialTotalOdds": "3.38",
+    "officialAmount": "10.00",
+    "officialPotentialReturn": "33.75",
+    "result": "Pendiente"
+  },
+  "ignoredFields": ["officialRealizedReturn"],
+  "absentFields": { "stake": "NOT_IN_TICKET" },
+  "knownErrors": [
+    {
+      "path": "selections[1].visibleOdds",
+      "read": "1.85",
+      "explanation": "Ejemplo del formato: la cuota de la 2.ª fila es 1.80; 1.85 es un valor inventado."
+    }
+  ]
+}

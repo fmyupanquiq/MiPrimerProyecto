@@ -2,9 +2,19 @@ import { rm } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { UserRow } from '../src/database/schema/index.js';
+import { and, eq } from 'drizzle-orm';
+import {
+  bets,
+  financialMovements,
+  rolePermissions,
+  roles,
+  ticketAnalyses,
+  type UserRow,
+} from '../src/database/schema/index.js';
 import { bodyOf, createTestApp, login, sessionCookie, type TestApp } from './support/create-app.js';
 import { insertMember, insertProject } from './support/factories.js';
+
+const GENERIC_READ_ERROR = 'No pudimos leer el ticket. Revisa la imagen e inténtalo nuevamente.';
 
 type Actor = 'root' | 'owner' | 'admin' | 'collab' | 'reader' | 'stranger';
 
@@ -246,7 +256,209 @@ describe('tickets e IA (e2e, PostgreSQL real, §28-§31, §110)', () => {
       ) as unknown as AnalysisBody[];
       expect(history).toHaveLength(1);
       expect(history[0]!.status).toBe('FAILED');
-      expect(history[0]!.errorMessage).toContain('proveedor caído');
+      // El detalle real se conserva solo en la base de datos (auditoría); la API devuelve el genérico.
+      expect(history[0]!.errorMessage).toBe(GENERIC_READ_ERROR);
+      const [stored] = await ctx.t.db
+        .select()
+        .from(ticketAnalyses)
+        .where(eq(ticketAnalyses.ticketId, uploaded.id));
+      expect(stored!.errorMessage).toContain('proveedor caído');
+    });
+
+    describe('errorMessage nunca expone detalles técnicos a los miembros del proyecto', () => {
+      // Texto que un error real del SDK/proveedor podría arrastrar: nada de esto debe salir de la API.
+      const leaky = [
+        '401 {"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key"},"request_id":"req_011CSECRET"}',
+        'key=sk-ant-api03-CLAVE-SECRETA',
+        'DATABASE_URL=postgres://letfer:clave-db@127.0.0.1:5432/letfer_prod',
+        'prompt: Registra los datos leídos de la imagen o PDF de un ticket',
+        'at AnthropicTicketReader.analyze (C:/app/dist/ai/anthropic-ticket-reader.service.js:176:9)',
+      ].join(' | ');
+      const forbidden = [
+        'sk-ant-',
+        'x-api-key',
+        'authentication_error',
+        'DATABASE_URL',
+        'postgres://',
+        'clave-db',
+        'req_011CSECRET',
+        'Registra los datos leídos',
+        'AnthropicTicketReader',
+        '.service.js',
+      ];
+      const expectNoLeak = (value: unknown) => {
+        const text = JSON.stringify(value);
+        for (const fragment of forbidden) expect(text).not.toContain(fragment);
+      };
+
+      it('ni el historial, ni la respuesta del análisis, ni el detalle de la apuesta', async () => {
+        const uploaded = bodyOf(
+          await upload('collab', JPEG_BYTES, 'ticket.jpg'),
+        ) as unknown as TicketBody;
+        ctx.ticketReader.failNext(leaky);
+        const failed = await analyze('collab', uploaded.id);
+        expect(failed.status).toBe(502);
+        expectNoLeak(failed.body);
+
+        // Lector y Colaborador (ambos con tickets.view) ven solo el mensaje genérico.
+        for (const actor of ['collab', 'reader', 'owner'] as const) {
+          const history = bodyOf(
+            await analyses(actor, uploaded.id).expect(200),
+          ) as unknown as AnalysisBody[];
+          expect(history[0]!.status).toBe('FAILED');
+          expect(history[0]!.errorMessage).toBe(GENERIC_READ_ERROR);
+          expectNoLeak(history);
+        }
+
+        // También por el camino del detalle de apuesta (`ticketsForBets` → `lastAnalysis`).
+        const bet = bodyOf(
+          await createBet('collab', {
+            houseId,
+            stageId,
+            stake: '1.00',
+            visibleTotalOdds: '1.95',
+            placedAt: '2026-06-01T10:00:00.000Z',
+            selections: [simpleSelection],
+            ticketId: uploaded.id,
+          }).expect(201),
+        ) as unknown as BetBody;
+        const detail = await request(ctx.server)
+          .get(`/api/projects/${projectId}/bets/${bet.id}`)
+          .set('Cookie', cookies.reader)
+          .expect(200);
+        expectNoLeak(detail.body);
+        expect(
+          (detail.body as { tickets: TicketBody[] }).tickets[0]!.lastAnalysis!.errorMessage,
+        ).toBe(GENERIC_READ_ERROR);
+
+        // El detalle técnico no se pierde: queda en la base para auditoría.
+        const [stored] = await ctx.t.db
+          .select()
+          .from(ticketAnalyses)
+          .where(eq(ticketAnalyses.ticketId, uploaded.id));
+        expect(stored!.errorMessage).toContain('sk-ant-api03-CLAVE-SECRETA');
+      });
+
+      it('un análisis exitoso sigue mostrando sus datos y no lleva errorMessage', async () => {
+        const uploaded = bodyOf(
+          await upload('collab', JPEG_BYTES, 'ticket.jpg'),
+        ) as unknown as TicketBody;
+        ctx.ticketReader.enqueue({
+          extraction: { house: 'Betano', officialAmount: '25.00' },
+          confidenceByField: { house: 0.95 },
+        });
+        await analyze('collab', uploaded.id).expect(200);
+        const history = bodyOf(
+          await analyses('reader', uploaded.id).expect(200),
+        ) as unknown as AnalysisBody[];
+        expect(history[0]!.status).toBe('COMPLETED');
+        expect(history[0]!.errorMessage).toBeNull();
+        expect(history[0]!.extraction).toEqual({ house: 'Betano', officialAmount: '25.00' });
+        expect(history[0]!.confidenceByField).toEqual({ house: 0.95 });
+      });
+    });
+
+    describe('validación de la respuesta de la IA (barrera antes de persistir)', () => {
+      const secret = 'VALOR-DEL-TICKET-QUE-NO-DEBE-FILTRARSE';
+
+      it.each([
+        ['tipo incorrecto', { officialAmount: 25 }, 'officialAmount: WRONG_TYPE'],
+        ['enum inválido', { betType: 'PARLAY' }, 'betType: INVALID_ENUM'],
+        ['dinero imposible', { officialAmount: secret }, 'officialAmount: INVALID_MONEY'],
+        ['fecha imposible', { placedDate: '2026-02-30' }, 'placedDate: INVALID_DATE'],
+        [
+          'datos incoherentes',
+          {
+            betType: 'SIMPLE',
+            selections: [{ event: 'A vs B', selection: 'A', visibleOdds: '1.95' }],
+            officialTotalOdds: '2.50',
+          },
+          'officialTotalOdds: ODDS_MISMATCH',
+        ],
+      ])(
+        '%s: se registra como FAILED, sin extracción, apuesta ni movimientos',
+        async (_n, bad, code) => {
+          const uploaded = bodyOf(
+            await upload('collab', JPEG_BYTES, 'ticket.jpg'),
+          ) as unknown as TicketBody;
+          const betsBefore = (await ctx.t.db.select().from(bets)).length;
+          const movementsBefore = (await ctx.t.db.select().from(financialMovements)).length;
+
+          ctx.ticketReader.enqueue({ extraction: bad as never, confidenceByField: null });
+          const res = await analyze('collab', uploaded.id);
+
+          expect(res.status).toBe(502);
+          const text = JSON.stringify(res.body);
+          // Respuesta genérica: ni códigos internos, ni el valor del ticket, ni detalles del proveedor.
+          expect((res.body as { message: string }).message).toBe(
+            'No pudimos leer el ticket. Revisa la imagen e inténtalo nuevamente.',
+          );
+          expect(text).not.toContain(secret);
+          expect(text).not.toContain('INVALID_');
+
+          const history = bodyOf(
+            await analyses('collab', uploaded.id).expect(200),
+          ) as unknown as AnalysisBody[];
+          expect(history).toHaveLength(1);
+          expect(history[0]!.status).toBe('FAILED');
+          expect(history[0]!.extraction).toEqual({});
+          expect(history[0]!.confidenceByField).toBeNull();
+          // Al cliente, solo el genérico; el detalle (ruta: código, sin valores) queda en la base.
+          expect(history[0]!.errorMessage).toBe(GENERIC_READ_ERROR);
+          const [stored] = await ctx.t.db
+            .select()
+            .from(ticketAnalyses)
+            .where(eq(ticketAnalyses.ticketId, uploaded.id));
+          expect(stored!.errorMessage).toContain(code);
+          expect(stored!.errorMessage).not.toContain(secret);
+
+          expect((await ctx.t.db.select().from(bets)).length).toBe(betsBefore);
+          expect((await ctx.t.db.select().from(financialMovements)).length).toBe(movementsBefore);
+        },
+      );
+
+      it('una confianza inválida invalida también la respuesta', async () => {
+        const uploaded = bodyOf(
+          await upload('collab', JPEG_BYTES, 'ticket.jpg'),
+        ) as unknown as TicketBody;
+        ctx.ticketReader.enqueue({
+          extraction: { house: 'Betano' },
+          confidenceByField: { house: 7 },
+        });
+        await analyze('collab', uploaded.id).expect(502);
+        const history = bodyOf(
+          await analyses('collab', uploaded.id).expect(200),
+        ) as unknown as AnalysisBody[];
+        expect(history[0]!.status).toBe('FAILED');
+      });
+
+      it('tras una respuesta inválida, un reintento válido queda como versión 2 (el fallo cuenta)', async () => {
+        const uploaded = bodyOf(
+          await upload('collab', JPEG_BYTES, 'ticket.jpg'),
+        ) as unknown as TicketBody;
+        ctx.ticketReader.enqueue({ extraction: { betType: 'X' } });
+        await analyze('collab', uploaded.id).expect(502);
+        // Un reintento posterior con una respuesta válida sigue funcionando (versión 2).
+        ctx.ticketReader.enqueue({ extraction: { house: 'Betano' } });
+        const ok = bodyOf(
+          await analyze('collab', uploaded.id).expect(200),
+        ) as unknown as AnalysisBody;
+        expect(ok.status).toBe('COMPLETED');
+        expect(ok.version).toBe(2);
+      });
+
+      it('los campos extra no se persisten, pero la respuesta válida se acepta', async () => {
+        const uploaded = bodyOf(
+          await upload('collab', JPEG_BYTES, 'ticket.jpg'),
+        ) as unknown as TicketBody;
+        ctx.ticketReader.enqueue({
+          extraction: { house: 'Betano', registrarApuesta: true } as never,
+        });
+        const body = bodyOf(
+          await analyze('collab', uploaded.id).expect(200),
+        ) as unknown as AnalysisBody;
+        expect(body.extraction).toEqual({ house: 'Betano' });
+      });
     });
 
     it('con la IA desactivada o sin clave responde de forma controlada, sin registrar intento', async () => {
@@ -425,6 +637,77 @@ describe('tickets e IA (e2e, PostgreSQL real, §28-§31, §110)', () => {
         ticketId: uploaded.id,
       });
       expect(res.status).toBe(404);
+    });
+  });
+  describe('el detalle de apuesta respeta tickets.view en el backend', () => {
+    async function betWithTicket(): Promise<{ betId: string; ticketId: string }> {
+      const uploaded = bodyOf(
+        await upload('collab', JPEG_BYTES, 'mi-ticket-secreto.jpg').expect(201),
+      ) as unknown as TicketBody;
+      const bet = bodyOf(
+        await createBet('collab', {
+          houseId,
+          stageId,
+          stake: '1.00',
+          visibleTotalOdds: '1.95',
+          placedAt: '2026-06-01T10:00:00.000Z',
+          selections: [simpleSelection],
+          ticketId: uploaded.id,
+        }).expect(201),
+      ) as unknown as BetBody;
+      return { betId: bet.id, ticketId: uploaded.id };
+    }
+    const detailAs = (actor: Actor, betId: string) =>
+      request(ctx.server)
+        .get(`/api/projects/${projectId}/bets/${betId}`)
+        .set('Cookie', cookies[actor]);
+
+    it('con tickets.view el detalle incluye el ticket; sin él, ni imagen, ni nombre de archivo, ni análisis', async () => {
+      const { betId, ticketId } = await betWithTicket();
+      expect(((await detailAs('reader', betId).expect(200)).body as BetBody).tickets).toHaveLength(
+        1,
+      );
+
+      // Un rol con bets.view pero sin tickets.view (p. ej. uno personalizado).
+      const [reader] = await ctx.t.db.select().from(roles).where(eq(roles.key, 'READER'));
+      await ctx.t.db
+        .delete(rolePermissions)
+        .where(
+          and(
+            eq(rolePermissions.roleId, reader!.id),
+            eq(rolePermissions.permissionCode, 'tickets.view'),
+          ),
+        );
+
+      const hidden = await detailAs('reader', betId).expect(200);
+      expect((hidden.body as BetBody).tickets).toEqual([]);
+      const text = JSON.stringify(hidden.body);
+      expect(text).not.toContain('mi-ticket-secreto');
+      expect(text).not.toContain(ticketId);
+      // La imagen tampoco se sirve por el endpoint de tickets.
+      await getFile('reader', ticketId).expect(403);
+      // Quien sí tiene el permiso sigue viéndolo, y la apuesta en sí no cambió.
+      expect(((await detailAs('collab', betId).expect(200)).body as BetBody).tickets).toHaveLength(
+        1,
+      );
+    });
+
+    it('las respuestas de crear y editar tampoco filtran tickets a quien no tiene tickets.view', async () => {
+      const [reader] = await ctx.t.db.select().from(roles).where(eq(roles.key, 'READER'));
+      await ctx.t.db
+        .delete(rolePermissions)
+        .where(
+          and(
+            eq(rolePermissions.roleId, reader!.id),
+            eq(rolePermissions.permissionCode, 'tickets.view'),
+          ),
+        );
+      const { betId } = await betWithTicket();
+      // El Colaborador conserva tickets.view y ve el ticket en su propia respuesta.
+      expect(((await detailAs('collab', betId).expect(200)).body as BetBody).tickets).toHaveLength(
+        1,
+      );
+      expect(((await detailAs('reader', betId).expect(200)).body as BetBody).tickets).toEqual([]);
     });
   });
 });

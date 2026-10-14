@@ -1,0 +1,34 @@
+{
+  "house": "Casa Ejemplo",
+  "placedDate": "2026-01-15",
+  "betType": "MULTIPLE",
+  "selections": [
+    {
+      "sport": "Fútbol",
+      "event": "Equipo A vs Equipo B",
+      "market": "Resultado final",
+      "selection": "Equipo A",
+      "visibleOdds": "1.50"
+    },
+    {
+      "sport": "Fútbol",
+      "event": "Equipo C vs Equipo D",
+      "market": "Goles totales",
+      "selection": "Más de 2.5",
+      "visibleOdds": "1.85"
+    },
+    {
+      "sport": "Tenis",
+      "event": "Jugador E vs Jugador F",
+      "market": "Ganador",
+      "selection": "Jugador E",
+      "visibleOdds": "1.25"
+    }
+  ],
+  "officialTotalOdds": "3.18",
+  "officialAmount": "10.00",
+  "stake": "1",
+  "officialPotentialReturn": "33.75",
+  "result": "Pendiente",
+  "confidenceByField": { "house": 0.95, "officialTotalOdds": 0.9 }
+}

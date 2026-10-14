@@ -4,6 +4,7 @@ import { AuditModule } from './audit/audit.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { AuthorizationModule } from './authorization/authorization.module.js';
 import { BackupsModule } from './backups/backups.module.js';
+import { BetDraftsModule } from './bet-drafts/bet-drafts.module.js';
 import { BetsModule } from './bets/bets.module.js';
 import { CommonModule } from './common/common.module.js';
 import { ConfigModule } from './config/config.module.js';
@@ -34,6 +35,7 @@ import { UsersModule } from './users/users.module.js';
     ProjectsModule,
     FinanceModule,
     BetsModule,
+    BetDraftsModule,
     DashboardModule,
     ReconciliationsModule,
     IntegrityModule,
