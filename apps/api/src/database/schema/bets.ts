@@ -1,6 +1,15 @@
-import { BET_STATUSES, BET_TYPES } from '@letfer/shared';
+import { BET_STATUSES, BET_TYPES, TOTAL_ODDS_SOURCES } from '@letfer/shared';
 import { sql } from 'drizzle-orm';
-import { boolean, check, index, pgEnum, pgTable, text, uuid } from 'drizzle-orm/pg-core';
+import {
+  boolean,
+  check,
+  index,
+  pgEnum,
+  pgTable,
+  text,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 import {
   money,
   odds,
@@ -18,6 +27,7 @@ import { stages } from './stages.js';
 import { users } from './users.js';
 
 export const betTypeEnum = pgEnum('bet_type', BET_TYPES);
+export const totalOddsSourceEnum = pgEnum('total_odds_source', TOTAL_ODDS_SOURCES);
 export const betStatusEnum = pgEnum('bet_status', BET_STATUSES);
 
 /**
@@ -52,6 +62,13 @@ export const bets = pgTable(
     /** Monto oficial confirmado (ticket/casa); `null` mientras solo hay un monto calculado. */
     officialAmount: money('official_amount'),
     visibleTotalOdds: odds('visible_total_odds').notNull(),
+    /**
+     * Procedencia de `visible_total_odds` (ADR 0023): oficial, calculada de referencia o desconocida.
+     * Las filas anteriores quedan `UNKNOWN`: nunca se marcan oficiales por suposición.
+     */
+    totalOddsSource: totalOddsSourceEnum('total_odds_source').notNull().default('UNKNOWN'),
+    /** Clave de idempotencia del registro (ADR 0024); `null` en las anteriores y en las importadas. */
+    clientRequestId: uuid('client_request_id'),
     officialPotentialReturn: money('official_potential_return'),
     /**
      * Retorno oficial realizado (ticket/casa). `null` en `PENDING`, en `LOST` (D-B2) y en una
@@ -75,6 +92,8 @@ export const bets = pgTable(
     settledAt: timestamptz('settled_at'),
     settledTimeKnown: boolean('settled_time_known').notNull().default(true),
     reason: text('reason'),
+    /** Referencia visible del ticket de la casa (documental; no identifica nada en LetFer). */
+    externalReference: text('external_reference'),
     ...timestamps(),
     /**
      * Último instante en que cambió un campo con efecto financiero real (casa, etapa, stake,
@@ -95,6 +114,10 @@ export const bets = pgTable(
     index('bets_stage_idx').on(table.stageId),
     index('bets_house_idx').on(table.houseId),
     index('bets_created_by_idx').on(table.createdBy),
+    // Un mismo intento de registro (misma clave del cliente) nunca crea dos apuestas (ADR 0024).
+    uniqueIndex('bets_client_request_unique')
+      .on(table.projectId, table.createdBy, table.clientRequestId)
+      .where(sql`${table.clientRequestId} IS NOT NULL`),
     index('bets_batch_idx')
       .on(table.batchId)
       .where(sql`${table.batchId} IS NOT NULL`),

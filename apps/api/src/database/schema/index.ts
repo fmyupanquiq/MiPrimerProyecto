@@ -15,6 +15,7 @@ export * from './financial-movements.js';
 export * from './withdrawal-requests.js';
 export * from './bets.js';
 export * from './bet-selections.js';
+export * from './bet-drafts.js';
 export * from './reconciliation-checkpoints.js';
 export * from './integrity-check-runs.js';
 export * from './tickets.js';

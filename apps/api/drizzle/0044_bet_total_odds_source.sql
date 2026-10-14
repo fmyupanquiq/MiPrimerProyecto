@@ -1,0 +1,2 @@
+CREATE TYPE "public"."total_odds_source" AS ENUM('OFFICIAL', 'CALCULATED', 'UNKNOWN');--> statement-breakpoint
+ALTER TABLE "bets" ADD COLUMN "total_odds_source" "total_odds_source" DEFAULT 'UNKNOWN' NOT NULL;

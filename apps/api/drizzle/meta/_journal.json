@@ -295,6 +295,34 @@
       "when": 1791312550598,
       "tag": "0041_bet_selection_created_null_odds",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1791938551387,
+      "tag": "0042_bet_leg_structure",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1791938567146,
+      "tag": "0043_bet_leg_odds_rule",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1791954977576,
+      "tag": "0044_bet_total_odds_source",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1791958902012,
+      "tag": "0045_bet_drafts_and_idempotency",
+      "breakpoints": true
     }
   ]
 }
