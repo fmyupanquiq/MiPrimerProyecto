@@ -13,6 +13,10 @@ const dateTimeParts = z.object({ date: text(10), time: text(5) });
 const visibleResult = z.enum(['', 'WON', 'LOST', 'VOID', 'PENDING']);
 
 export const BET_DRAFT_MAX_SELECTIONS = 60;
+
+/** Origen del registro en "Añadir apuesta": ticket leído con IA o datos introducidos a mano. */
+export const BET_ENTRY_MODES = ['AI', 'MANUAL'] as const;
+export type BetEntryMode = (typeof BET_ENTRY_MODES)[number];
 export const BET_DRAFT_SUMMARY_MAX_LENGTH = 200;
 
 export const betDraftSelectionSchema = z.object({
@@ -55,8 +59,25 @@ export const betDraftPayloadSchema = z.object({
   ticketId: z.uuid().nullable(),
   /** Hubo una lectura de IA aplicada al formulario. */
   aiApplied: z.boolean(),
+  /**
+   * Origen elegido en el Paso 1 del asistente: ticket leído con IA o registro manual. Opcional para
+   * que los borradores guardados antes de existir sigan siendo válidos (se deduce con
+   * `draftEntryMode`). No tiene ningún efecto financiero.
+   */
+  entryMode: z.enum(BET_ENTRY_MODES).optional(),
 });
 export type BetDraftPayload = z.infer<typeof betDraftPayloadSchema>;
+
+/**
+ * Origen de un borrador: el guardado o, en un borrador anterior a `entryMode`, el deducido de lo que
+ * contiene (una lectura de IA aplicada o un ticket adjunto lo hacen "con IA"; si no, manual).
+ */
+export function draftEntryMode(
+  payload: Pick<BetDraftPayload, 'entryMode' | 'aiApplied' | 'ticketId'>,
+): BetEntryMode {
+  if (payload.entryMode) return payload.entryMode;
+  return payload.aiApplied || payload.ticketId !== null ? 'AI' : 'MANUAL';
+}
 
 export const saveBetDraftSchema = z.object({
   payload: betDraftPayloadSchema,
