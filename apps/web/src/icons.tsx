@@ -328,3 +328,96 @@ export const ChartBarsIcon = (p: IconProps) => (
     <path d="M5 20v-5M10 20v-9M15 20v-7M20 20V5" strokeWidth={2.6} />
   </Icon>
 );
+
+// --- Asistente "Añadir apuesta" (rediseño de los tres pasos) ---------------------------------------
+
+/** Subir: nube con flecha hacia arriba. */
+export const CloudUploadIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M7 18a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 18 8.5a4 4 0 0 1 .5 7.97" />
+    <path d="M12 12v8M8.5 15.5 12 12l3.5 3.5" />
+  </Icon>
+);
+/** Imagen (marco con montaña y sol). */
+export const ImageIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <rect x="3" y="4" width="18" height="16" rx="2" />
+    <circle cx="9" cy="9.5" r="1.6" />
+    <path d="m21 16-5-5-8 9" />
+  </Icon>
+);
+export const ClipboardIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <rect x="6" y="4.5" width="12" height="16" rx="2" />
+    <path d="M9 4.5V3.8A.8.8 0 0 1 9.8 3h4.4a.8.8 0 0 1 .8.8v.7M9 4.5h6v2H9z" />
+  </Icon>
+);
+export const EyeIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z" />
+    <circle cx="12" cy="12" r="3" />
+  </Icon>
+);
+export const ExternalLinkIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M14 4h6v6M20 4l-9 9" />
+    <path d="M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4" />
+  </Icon>
+);
+export const SearchIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <circle cx="11" cy="11" r="6.5" />
+    <path d="m20 20-4.2-4.2" />
+  </Icon>
+);
+export const FlagIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M5 21V4M5 4h11l-2 4 2 4H5" />
+  </Icon>
+);
+export const CalendarIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <rect x="3.5" y="5" width="17" height="15.5" rx="2" />
+    <path d="M3.5 10h17M8 3v4M16 3v4" />
+  </Icon>
+);
+/** Billete (monto apostado). */
+export const BanknoteIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <rect x="2.5" y="6" width="19" height="12" rx="2" />
+    <circle cx="12" cy="12" r="2.5" />
+    <path d="M6 9v.01M18 15v.01" />
+  </Icon>
+);
+/** Escáner de documento (lectura con IA). */
+export const ScanIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2" />
+    <path d="M8 9h8M8 12h8M8 15h5" />
+  </Icon>
+);
+export const PlusCircleIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <circle cx="12" cy="12" r="8.5" />
+    <path d="M12 8.5v7M8.5 12h7" />
+  </Icon>
+);
+export const MinusCircleIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <circle cx="12" cy="12" r="8.5" />
+    <path d="M8.5 12h7" />
+  </Icon>
+);
+/** Lista con viñetas. */
+export const ListIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M9 6h11M9 12h11M9 18h11" />
+    <path d="M4.5 6h.01M4.5 12h.01M4.5 18h.01" strokeWidth={2.6} />
+  </Icon>
+);
+/** Indicador de trabajo en curso (gira con `animate-spin`; respeta prefers-reduced-motion en CSS). */
+export const SpinnerIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M12 3a9 9 0 1 0 9 9" />
+  </Icon>
+);

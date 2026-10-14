@@ -1,4 +1,9 @@
-import type { BetDraftPayload, BetType } from '@letfer/shared';
+import {
+  draftEntryMode,
+  type BetDraftPayload,
+  type BetEntryMode,
+  type BetType,
+} from '@letfer/shared';
 import type { DateTimeParts } from '../../date-inputs.js';
 import { newSelection, type SelectionDraft } from './bet-selection-drafts.js';
 import type { DraftStatus } from './bet-draft.js';
@@ -31,6 +36,8 @@ export interface FormSnapshot {
   reason: string;
   ticketId: string | null;
   aiApplied: boolean;
+  /** Origen del registro elegido en el Paso 1 (ticket con IA o manual). */
+  entryMode: BetEntryMode;
 }
 
 export function snapshotToPayload(snapshot: FormSnapshot): BetDraftPayload {
@@ -67,6 +74,7 @@ export function snapshotToPayload(snapshot: FormSnapshot): BetDraftPayload {
     reason: snapshot.reason,
     ticketId: snapshot.ticketId,
     aiApplied: snapshot.aiApplied,
+    entryMode: snapshot.entryMode,
   };
 }
 
@@ -103,6 +111,7 @@ export function payloadToSnapshot(payload: BetDraftPayload): FormSnapshot {
     reason: payload.reason,
     ticketId: payload.ticketId,
     aiApplied: payload.aiApplied,
+    entryMode: draftEntryMode(payload),
   };
 }
 

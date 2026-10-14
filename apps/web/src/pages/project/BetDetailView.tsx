@@ -1,4 +1,10 @@
-import { calculateBetReturn, formatPEN, type BetDetail, type TicketSummary } from '@letfer/shared';
+import {
+  calculateBetReturn,
+  formatPEN,
+  type BetDetail,
+  type BetSummary,
+  type TicketSummary,
+} from '@letfer/shared';
 import { Link, useParams } from 'react-router';
 import { betsApi } from '../../api/bets.js';
 import { formatStake, moneyTone, signedPEN } from '../../format.js';
@@ -12,6 +18,7 @@ import { BetStatusBadge } from './BetStatusBadge.js';
 import {
   DigitalTicket,
   totalOddsFigures,
+  type DigitalTicketProps,
   type TicketFact,
   type TicketFigure,
 } from './DigitalTicket.js';
@@ -123,6 +130,55 @@ export function BetDetailView() {
   }
 
   const bet: BetDetail = detail.data;
+  const tickets = can('tickets.view') ? bet.tickets : [];
+  const parts = digitalTicketParts(bet);
+
+  return (
+    <>
+      <PageHeader
+        title="Ver apuesta"
+        description={`${bet.houseName} · ${BET_TYPE_LABELS[bet.betType]}`}
+        actions={back}
+      />
+
+      {bet.deletedAt && <Notice tone="warning">Esta apuesta está en la papelera.</Notice>}
+
+      <div className={tickets.length > 0 ? 'grid items-start gap-4 lg:grid-cols-5' : ''}>
+        <div className="lg:col-span-3">
+          <DigitalTicket
+            {...parts}
+            status={<BetStatusBadge status={bet.status} />}
+            footnote={
+              <>
+                Registrada por {bet.createdBy.name} · {formatDateTime(bet.createdAt)}
+                {bet.reason ? ` · ${bet.reason}` : ''}
+              </>
+            }
+          />
+        </div>
+
+        <div className="lg:sticky lg:top-4 lg:col-span-2">
+          <TicketSection projectId={project.id} tickets={tickets} />
+        </div>
+      </div>
+    </>
+  );
+}
+
+/** Retorno potencial de una apuesta registrada: el oficial o, si no hay, monto × cuota visible. */
+export function potentialReturnOf(bet: BetSummary): string {
+  return (
+    bet.officialPotentialReturn ?? calculateBetReturn(bet.effectiveAmount, bet.visibleTotalOdds)
+  );
+}
+
+/**
+ * Datos del ticket digital de una apuesta REGISTRADA, solo desde su `BetDetail` (lo usan "Ver
+ * apuesta" y "Registro completado"): estructura, hechos y cifras con su procedencia.
+ */
+export function digitalTicketParts(
+  bet: BetDetail,
+): Omit<DigitalTicketProps, 'status' | 'footnote' | 'label'> {
   const legs = groupBetLegs(bet.selections, bet.betType, bet.visibleTotalOdds);
   const structureTitle =
     bet.betType === 'MULTIPLE'
@@ -132,10 +188,8 @@ export function BetDetailView() {
         : 'Simple';
   // Mismo cálculo compartido de siempre (monto × cuota visible): se rotula "(calculado)" si no hay
   // un retorno potencial oficial.
-  const potentialReturn =
-    bet.officialPotentialReturn ?? calculateBetReturn(bet.effectiveAmount, bet.visibleTotalOdds);
+  const potentialReturn = potentialReturnOf(bet);
   const realized = bet.effectiveReturn ?? (bet.status === 'LOST' ? '0.00' : null);
-  const tickets = can('tickets.view') ? bet.tickets : [];
 
   const facts: TicketFact[] = [
     { label: 'Fecha', value: formatDate(bet.placedAt) },
@@ -176,39 +230,12 @@ export function BetDetailView() {
     },
   ];
 
-  return (
-    <>
-      <PageHeader
-        title="Ver apuesta"
-        description={`${bet.houseName} · ${BET_TYPE_LABELS[bet.betType]}`}
-        actions={back}
-      />
-
-      {bet.deletedAt && <Notice tone="warning">Esta apuesta está en la papelera.</Notice>}
-
-      <div className={tickets.length > 0 ? 'grid items-start gap-4 lg:grid-cols-5' : ''}>
-        <div className="lg:col-span-3">
-          <DigitalTicket
-            houseName={bet.houseName}
-            structureTitle={structureTitle}
-            status={<BetStatusBadge status={bet.status} />}
-            facts={facts}
-            legs={legs}
-            selectionsCount={bet.selections.length}
-            figures={figures}
-            footnote={
-              <>
-                Registrada por {bet.createdBy.name} · {formatDateTime(bet.createdAt)}
-                {bet.reason ? ` · ${bet.reason}` : ''}
-              </>
-            }
-          />
-        </div>
-
-        <div className="lg:sticky lg:top-4 lg:col-span-2">
-          <TicketSection projectId={project.id} tickets={tickets} />
-        </div>
-      </div>
-    </>
-  );
+  return {
+    houseName: bet.houseName,
+    structureTitle,
+    facts,
+    legs,
+    selectionsCount: bet.selections.length,
+    figures,
+  };
 }

@@ -10,7 +10,11 @@ import {
   normalizeMoneyInput,
   resolveTicketOdds,
   subtractMoney,
+  draftEntryMode,
+  ErrorCode,
+  type BetDetail,
   type BetDraftDetail,
+  type BetEntryMode,
   type BetType,
   type HouseSummary,
   type TicketAnalysisSummary,
@@ -21,23 +25,31 @@ import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { betDraftsApi } from '../../api/betDrafts.js';
 import { betsApi } from '../../api/bets.js';
-import { ApiError } from '../../api/client.js';
+import { ApiError, ticketFileUrl } from '../../api/client.js';
 import { describeApiError } from '../../api/errors.js';
 import { ticketsApi } from '../../api/tickets.js';
 import { fromDateTimeParts, nowDateTimeParts, type DateTimeParts } from '../../date-inputs.js';
-import { formatStake, signedPEN } from '../../format.js';
+import { formatStake } from '../../format.js';
 import { Help } from '../../glossary.js';
 import { getDisplayTimeZone } from '../../time-zone.js';
 import {
+  ArrowRightIcon,
   ChartBarsIcon,
   CheckCircleIcon,
   CheckIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
   CloseIcon,
-  MenuIcon,
+  ImageIcon,
+  ListIcon,
   PencilIcon,
+  PlusCircleIcon,
+  PlusIcon,
   SaveIcon,
   SparkleIcon,
+  SpinnerIcon,
   TicketIcon,
+  TrashIcon,
   TrophyIcon,
   XCircleIcon,
   DocumentIcon,
@@ -45,6 +57,9 @@ import {
 } from '../../icons.js';
 import { BET_TYPE_LABELS, TOTAL_ODDS_SOURCE_LABELS } from '../../labels.js';
 import { Badge, btn, btnPrimary, hintClass, Notice } from '../../ui.js';
+import { BetEntryAside, BetEntryMain, type AnalysisState } from './BetEntryStep.js';
+import { BetRegisteredAside, BetRegisteredMain } from './BetRegisteredView.js';
+import { CLIPBOARD_EMPTY_MESSAGE, readClipboardImage, ticketFileProblem } from './ticket-files.js';
 import { useIsNarrow } from '../AppShell.js';
 import { allowsProfitOverride, betDraftFigures, type DraftStatus } from './bet-draft.js';
 import { collectCompleteIndividualOdds, deriveStakeFromAmount } from './ticket-prefill.js';
@@ -70,18 +85,18 @@ import {
 } from './bet-selection-drafts.js';
 import { LegsEditor } from './LegsEditor.js';
 import { useProject } from './ProjectContext.js';
-import { DigitalTicket, totalOddsFigures } from './DigitalTicket.js';
 import {
   draftPreviewLegs,
-  draftReviewWarnings,
   draftStructureIssues,
   legOddsProduct,
   resolveTotalOddsSource,
 } from './draft-ticket-preview.js';
-import { TicketPanel } from './TicketPanel.js';
 import {
   AiDetectedBadge,
   NestedDialog,
+  Pill,
+  Strip,
+  wizardButton,
   SelectionsTable,
   SummaryCard,
   TicketOriginalCard,
@@ -100,11 +115,14 @@ import {
 } from './bet-draft-state.js';
 
 /*
- * Formulario "Añadir apuesta" (Fase 11.1, rediseño UX/UI del alta): asistente de 3 pasos (Origen,
- * Apuesta, Confirmar) dentro de `<Modal>` (`ui.tsx`), con un resumen financiero en vivo en una
- * columna derecha a partir de `lg:`. Los pasos son orientación, nunca una validación: se puede
- * saltar libremente entre ellos (`StepIndicator`) y "Registrar apuesta" sigue siendo el único
- * momento en que algo se valida y se envía de verdad — igual que en el formulario de siempre.
+ * Formulario "Añadir apuesta" dentro de `<Modal variant="wizard">` (rediseño de los tres pasos, ADR
+ * 0024):
+ *   1. Añadir apuesta — solo el ORIGEN (ticket con IA o manual) y el archivo (`BetEntryStep`).
+ *   2. Verificar datos — TODO el formulario, editable. "Confirmar apuesta" es el ÚNICO punto que valida
+ *      y registra (nada más envía: ni Enter, ni el stepper, ni "Continuar"). Si falla, se queda aquí.
+ *   3. Confirmar — "Registro completado" (`BetRegisteredView`), de solo lectura y pintado con el
+ *      `BetDetail` que devuelve la API; ya no se puede volver a los pasos anteriores.
+ * Entre 1 y 2 se va y vuelve sin perder nada: los pasos se ocultan, nunca se desmontan.
  *
  * La etapa nunca se elige aquí: toda apuesta nueva va a la etapa activa del proyecto (§1); para
  * cambiarla después está "Mover de etapa" (`bets.move_stage`, con reautenticación). Solo organiza
@@ -179,31 +197,42 @@ const DRAFT_STATUS_OPTIONS: DraftStatus[] = ['PENDING', 'WON', 'LOST', 'VOID', '
 const QUICK_STAKES = [10, 20, 30, 40, 50] as const;
 
 /**
- * Las tres etapas del asistente: 1 Añadir apuesta (ticket/IA y datos), 2 Verificar datos (todo lo
- * recopilado, editable) y 3 Confirmar (ticket reconstruido y registro definitivo).
+ * Las tres etapas del asistente: 1 Añadir apuesta (origen y archivo), 2 Verificar datos (todo el
+ * formulario; aquí se registra) y 3 Confirmar ("Registro completado", con la respuesta de la API).
  */
 const STEP_LABELS = ['Añadir apuesta', 'Verificar datos', 'Confirmar'] as const;
-
-const STEP_SUBTITLES = [
-  'Sube el ticket o introduce los datos de tu apuesta.',
-  null, // depende de si hubo lectura de IA o es un registro manual
-  'Comprueba el ticket reconstruido y registra la apuesta.',
-] as const;
 
 // --- Formulario ---------------------------------------------------------------------------------
 
 export function NewBetForm({
   houses,
-  onDone,
+  onRegistered,
   onCancel,
+  onRegisterAnother,
+  onViewHistory,
+  onGoDashboard,
+  initialMode,
   initialDraft,
   onDirtyChange,
   registerSaveDraft,
   onDraftsChanged,
 }: {
   houses: HouseSummary[];
-  onDone: (message: string, betId: string) => void;
+  /**
+   * La apuesta quedó registrada (la API respondió): quien contiene el formulario recarga la lista,
+   * las casas y los borradores AHORA, sin cerrar el modal (el asistente pasa a "Registro completado").
+   */
+  onRegistered: (bet: BetDetail, message: string, mode: BetEntryMode) => void;
+  /** Cerrar (✕, Escape, "Cancelar", "Cerrar"). */
   onCancel: () => void;
+  /** "Registrar otra apuesta": reiniciar el asistente vacío. */
+  onRegisterAnother?: () => void;
+  /** "Ver historial": cerrar y destacar la apuesta en la lista. */
+  onViewHistory?: (betId: string) => void;
+  /** "Volver al dashboard". */
+  onGoDashboard?: () => void;
+  /** Origen con el que empieza un formulario nuevo (el usado la última vez). */
+  initialMode?: BetEntryMode;
   /** Borrador que se retoma (ADR 0024); sin él, un formulario nuevo y vacío. */
   initialDraft?: BetDraftDetail;
   /** Avisa si hay cambios sin guardar ni registrar (para confirmar antes de cerrar). */
@@ -239,9 +268,37 @@ export function NewBetForm({
   // Edición de un leg desde "Verificar datos" (`eventGroup` del leg abierto, o ninguno).
   const [editingLeg, setEditingLeg] = useState<number | null>(null);
 
-  // Asistente de 3 pasos (Fase 11.1): puramente de navegación, nunca de validación — se puede
-  // saltar libremente entre pasos con `StepIndicator`; solo "Registrar apuesta" valida de verdad.
+  // Paso visible (0 Añadir, 1 Verificar datos, 2 Registro completado). Entre 0 y 1 se va y vuelve
+  // libremente; al 2 solo se llega registrando y desde él ya no se vuelve.
   const [step, setStep] = useState(0);
+  // La apuesta tal como la devolvió la API al registrar: el Paso 3 se pinta SOLO con ella.
+  const [registered, setRegistered] = useState<BetDetail | null>(null);
+
+  // Origen del registro: con IA solo si se puede subir Y analizar; si no, manual (deshabilitado).
+  const aiAllowed = can('tickets.upload') && can('tickets.analyze');
+  const [entryMode, setEntryMode] = useState<BetEntryMode>(() => {
+    const wanted = initialDraft
+      ? draftEntryMode(initialDraft.payload)
+      : (initialMode ?? (aiAllowed ? 'AI' : 'MANUAL'));
+    return wanted === 'AI' && !aiAllowed ? 'MANUAL' : wanted;
+  });
+  // Subida del archivo (Paso 1): estado, error seguro y vista previa local (URL de objeto) o remota.
+  const [uploading, setUploading] = useState(false);
+  const [fileError, setFileError] = useState<string | null>(null);
+  const [localPreview, setLocalPreview] = useState<{ ticketId: string; url: string } | null>(null);
+  const [imageSize, setImageSize] = useState<{ width: number; height: number } | null>(null);
+  // Análisis con IA del Paso 1: solo con "Analizar y continuar", nunca al subir (D-T4).
+  const [analysis, setAnalysis] = useState<AnalysisState>({ kind: 'idle' });
+  // Ticket cuya lectura ya está aplicada al formulario: "Continuar" no vuelve a gastar un análisis.
+  const [analyzedTicketId, setAnalyzedTicketId] = useState<string | null>(
+    initialDraft?.payload.aiApplied ? initialDraft.payload.ticketId : null,
+  );
+
+  // La URL de objeto de la vista previa se libera al cambiar de archivo o al cerrar.
+  useEffect(() => {
+    if (!localPreview) return;
+    return () => URL.revokeObjectURL(localPreview.url);
+  }, [localPreview]);
 
   // Creación: fecha y hora actuales por defecto (convención de la Fase 10.3), editables.
   const [placed, setPlaced] = useState<DateTimeParts>(() => init?.placed ?? nowDateTimeParts());
@@ -332,6 +389,7 @@ export function NewBetForm({
     reason,
     ticketId: ticket?.id ?? null,
     aiApplied: appliedNotice,
+    entryMode,
   };
 
   /** Guarda el borrador (crea o actualiza). No registra nada financiero. Devuelve si se guardó. */
@@ -479,19 +537,153 @@ export function NewBetForm({
   }
 
   /**
-   * Quita la imagen (o la cambia por otra, que es lo mismo: esa zona vive en el paso Origen). Si ya
-   * se había aplicado una lectura de IA, esos datos NO se atribuyen en silencio al ticket nuevo: se
-   * deja de rotular "Analizado por IA" y se pregunta si descartarlos o conservarlos como manuales.
+   * Quita la imagen (o la cambia por otra, que es lo mismo). Si ya se había aplicado una lectura de
+   * IA, esos datos NO se atribuyen en silencio al ticket nuevo: se deja de rotular "Analizado por IA" y
+   * se pregunta si descartarlos o conservarlos como manuales.
    */
   function detachTicket() {
     setTicket(null);
+    setLocalPreview(null);
+    setImageSize(null);
+    setFileError(null);
+    setAnalysis({ kind: 'idle' });
+    setAnalyzedTicketId(null);
     setDirty(true);
     setStep(0);
     if (appliedNotice) {
       setAppliedNotice(false);
+      setStatusFromAi(false);
       setPendingAnalysis(null);
       setStaleAiData(true);
     }
+  }
+
+  /**
+   * Sube un archivo como ticket (o como respaldo en modo Manual): valida tipo y tamaño en el cliente
+   * con el mismo criterio del backend y NO lo analiza (D-T4). Si ya había uno, lo reemplaza.
+   */
+  async function uploadTicketFile(file: File) {
+    const problem = ticketFileProblem(file);
+    if (problem) {
+      setFileError(problem);
+      return;
+    }
+    setUploading(true);
+    setFileError(null);
+    try {
+      const uploaded = await ticketsApi.upload(project.id, file);
+      if (ticket) detachTicket();
+      setDirty(true);
+      setTicket(uploaded);
+      setImageSize(null);
+      setAnalysis({ kind: 'idle' });
+      // Vista previa local inmediata (sin volver a descargar la imagen); si el navegador no ofrece
+      // URLs de objeto, se usa el archivo del servidor.
+      setLocalPreview(
+        file.type.startsWith('image/') && typeof URL.createObjectURL === 'function'
+          ? { ticketId: uploaded.id, url: URL.createObjectURL(file) }
+          : null,
+      );
+    } catch (caught) {
+      setFileError(describeApiError(caught));
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function pasteFromClipboard() {
+    setFileError(null);
+    const file = await readClipboardImage();
+    if (file) await uploadTicketFile(file);
+    else setFileError(CLIPBOARD_EMPTY_MESSAGE);
+  }
+
+  /**
+   * Cambia el origen. El archivo NUNCA se borra: con IA → Manual pasa a ser un respaldo; con Manual →
+   * IA queda listo para analizar. Si ya se había aplicado una lectura de IA y se pasa a Manual, los
+   * datos se conservan como manuales y se avisa (misma decisión que al cambiar la imagen).
+   */
+  function chooseMode(next: BetEntryMode) {
+    if (next === entryMode) return;
+    if (next === 'AI' && !aiAllowed) return;
+    setEntryMode(next);
+    setDirty(true);
+    setAnalysis({ kind: 'idle' });
+    if (next === 'MANUAL' && appliedNotice) {
+      setAppliedNotice(false);
+      setStatusFromAi(false);
+      setPendingAnalysis(null);
+      setStaleAiData(true);
+    }
+  }
+
+  /**
+   * "Analizar y continuar": UNA llamada a la IA por pulsación. Una lectura completa (o parcial) se
+   * aplica con la lógica de siempre y se pasa a "Verificar datos"; un fallo deja a la persona en el
+   * Paso 1 con "Reintentar" o "Continuar en modo Manual". Nunca se llama en modo Manual.
+   */
+  async function analyzeTicket() {
+    if (!ticket || entryMode !== 'AI' || analysis.kind === 'analyzing') return;
+    setAnalysis({ kind: 'analyzing' });
+    try {
+      const result = await ticketsApi.analyze(project.id, ticket.id);
+      if (result.status !== 'COMPLETED') {
+        setAnalysis({
+          kind: 'failed',
+          message: 'No pudimos leer el ticket. Revisa la imagen e inténtalo nuevamente.',
+        });
+        return;
+      }
+      handleAnalyzed(result);
+      setAnalyzedTicketId(ticket.id);
+      setAnalysis({ kind: 'analyzed' });
+      setStep(1);
+    } catch (caught) {
+      // Un fallo de la IA tiene un motivo seguro conocido; nunca se muestra texto técnico del proveedor.
+      setAnalysis({
+        kind: 'failed',
+        message:
+          caught instanceof ApiError && caught.code === ErrorCode.INTERNAL_ERROR
+            ? 'No pudimos leer el ticket. Revisa la imagen e inténtalo nuevamente.'
+            : describeApiError(caught),
+      });
+    }
+  }
+
+  /** Tras un fallo del análisis: sigue a mano, con la imagen como respaldo (sin volver a analizar). */
+  function continueManually() {
+    chooseMode('MANUAL');
+    setAnalysis({ kind: 'idle' });
+  }
+
+  /**
+   * "Añadir selección" (Verificar datos): abre el editor sobre un leg nuevo. Si la única fila está
+   * vacía, se edita esa; una Simple completa pasa a Múltiple; en una Creada se añade una condición.
+   * Siempre con las funciones puras de `bet-selection-drafts.ts`.
+   */
+  function addSelectionFromReview() {
+    const blank = (row: SelectionDraft) => row.event.trim() === '' && row.selection.trim() === '';
+    if (selections.length === 1 && blank(selections[0]!)) {
+      setEditingLeg(selections[0]!.eventGroup);
+      return;
+    }
+    markTouched();
+    if (format === 'CREATED') {
+      const group = selections[0]?.eventGroup ?? 0;
+      setSelections(addCondition(selections, group));
+      setEditingLeg(group);
+      return;
+    }
+    const base = format === 'SIMPLE' ? restructure('MULTIPLE', selections, 'SIMPLE') : selections;
+    if (format === 'SIMPLE') setFormat('MULTIPLE');
+    // Pasar de Simple a Múltiple ya crea un leg vacío; si no, se añade uno.
+    const hasBlankLeg = base.some((row) => row.position === 0 && blank(row));
+    const next = hasBlankLeg ? base : addLeg(base);
+    setSelections(next);
+    const target =
+      next.find((row) => row.position === 0 && blank(row))?.eventGroup ??
+      Math.max(...next.map((row) => row.eventGroup));
+    setEditingLeg(target);
   }
 
   /** Vuelve el formulario a su estado inicial: sin stake, sin cuota, sin importes, sin estado. */
@@ -585,9 +777,8 @@ export function NewBetForm({
     const normalizedPotential = readMoney(extraction.officialPotentialReturn, 'Retorno potencial');
     if (normalizedAmount) setOfficialAmount(normalizedAmount);
     if (normalizedPotential) setOfficialPotentialReturn(normalizedPotential);
-    // Fase 11.1: si la IA rellenó algo de "Datos opcionales", el panel se abre solo — nunca debe
-    // quedar un dato ya escrito escondido detrás de un "Mostrar" sin que la persona lo sepa.
-    if (normalizedAmount || normalizedPotential) setShowOptional(true);
+    // El retorno potencial leído se ve en la tesela "Monto potencial · Oficial" de Verificar datos:
+    // no hace falta abrir "Datos opcionales" (que haría desplazar la verificación).
 
     const items = extraction.selections ?? [];
 
@@ -712,19 +903,21 @@ export function NewBetForm({
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    // Solo el botón "Registrar apuesta" del Paso 3 registra: Enter en un campo, "Siguiente", "Atrás"
-    // o "Editar" nunca envían nada. Y un único envío a la vez (doble clic).
-    if (step < 2 || submitLock.current) return;
+    // Solo "Confirmar apuesta" (Paso 2, Verificar datos) registra: Enter en un campo, "Continuar",
+    // "Atrás", "Editar ticket" o el stepper nunca envían nada. Y un único envío a la vez (doble clic).
+    // Cualquier problema deja a la persona en este paso, con el error visible y nada perdido.
+    if (step !== 1 || submitLock.current) return;
+    // Un envío que no venga del botón "Confirmar apuesta" (Enter implícito, script) no registra.
+    const submitter = (event.nativeEvent as SubmitEvent).submitter;
+    if (!(submitter instanceof HTMLElement) || submitter.dataset['action'] !== 'register') return;
     setError(null);
     if (houseId === '') {
       setError('Elige una casa.');
-      setStep(0);
       return;
     }
     const placedAt = fromDateTimeParts(placed);
     if (placedAt === null) {
       setError('Indica la fecha y la hora de colocación.');
-      setStep(0);
       return;
     }
     const usesOfficialAmountValue = officialAmount.trim() !== '';
@@ -749,7 +942,6 @@ export function NewBetForm({
       if (derived) stakeToSend = derived.stake;
       else {
         setError('Indica el stake o el monto oficial para determinar el importe apostado.');
-        setStep(2);
         return;
       }
     }
@@ -757,7 +949,6 @@ export function NewBetForm({
       setError(
         'Indica si la cuota total la muestra la casa (oficial) o es una referencia calculada.',
       );
-      setStep(2);
       return;
     }
     const parsed = createBetSchema.safeParse({
@@ -798,11 +989,17 @@ export function NewBetForm({
         }
       }
       setDirty(false);
-      onDone(
+      // "Registro completado" se pinta con la respuesta de la API, nunca con el formulario. El
+      // cerrojo queda puesto: esta apuesta ya no se vuelve a enviar.
+      setRegistered(registered);
+      setStep(2);
+      setSubmitting(false);
+      onRegistered(
+        registered,
         settles
           ? 'Apuesta registrada correctamente (ya liquidada).'
           : 'Apuesta registrada correctamente.',
-        registered.id,
+        entryMode,
       );
     } catch (caught) {
       setError(describeApiError(caught));
@@ -910,9 +1107,6 @@ export function NewBetForm({
           </span>
         )}
       </div>
-      {!multi && oddsIsCalculated && calculatedOdds && step !== 1 && (
-        <p className="text-xs text-slate-500">{calculatedOdds.note}</p>
-      )}
     </div>
   );
 
@@ -922,14 +1116,6 @@ export function NewBetForm({
       ? (deriveStakeFromAmount(figures.amount, unitStake, QUICK_STAKES)?.stake ?? null)
       : null;
   const previewLegs = draftPreviewLegs(selections, format, visibleTotalOdds);
-  const reviewWarnings = draftReviewWarnings({
-    houseChosen: houseId !== '',
-    selections,
-    format,
-    totalOdds: visibleTotalOdds,
-    amount: figures.amount,
-    totalOddsSourceMissing: totalOddsSource === null,
-  });
 
   // --- Presentación del asistente (3 pasos) ---------------------------------------------------------
 
@@ -941,19 +1127,24 @@ export function NewBetForm({
   if (figures.amount === null) missingForReview.push('el monto o el stake');
   if (visibleTotalOdds.trim() === '') missingForReview.push('la cuota total');
   if (canSettle && !statusChosen) missingForReview.push('el resultado');
-  const bannerKind: BannerKind = aiApplied
+  const isManual = entryMode === 'MANUAL';
+  // Solo se dice "leído por IA" si de verdad se aplicó una lectura y el origen sigue siendo IA.
+  const aiRead = aiApplied && !isManual;
+  const bannerKind: BannerKind = aiRead
     ? missingForReview.length > 0
       ? 'ai-partial'
       : 'ai-complete'
-    : ticket
+    : !isManual && ticket
       ? 'ticket-unanalyzed'
       : 'manual';
   const subtitle =
-    step === 1
-      ? aiApplied
-        ? 'Revisa los datos extraídos por IA y confirma que la información sea correcta.'
-        : 'Revisa los datos introducidos antes de continuar.'
-      : STEP_SUBTITLES[step]!;
+    step === 0
+      ? 'Carga tu ticket o registra una apuesta manualmente.'
+      : step === 1
+        ? aiRead
+          ? 'Revisa los datos extraídos por IA y confirma que la información sea correcta.'
+          : 'Completa los datos de tu apuesta y confirma que la información sea correcta.'
+        : 'La apuesta ha sido confirmada y registrada en tu historial.';
 
   const officialPotential =
     officialPotentialReturn.trim() !== '' && isMoneyString(officialPotentialReturn.trim())
@@ -987,7 +1178,7 @@ export function NewBetForm({
       ? 'Simple'
       : format === 'CREATED'
         ? `Creada (${selections.length} pronósticos)`
-        : `Múltiple (${legCount} ${legCount === 1 ? 'leg' : 'legs'})`;
+        : `Múltiple (${legCount} ${legCount === 1 ? 'selección' : 'selecciones'})`;
 
   const stakeSelectValue = customStake
     ? 'custom'
@@ -1031,7 +1222,7 @@ export function NewBetForm({
   const analysisPill =
     missingForReview.length > 0 || structureProblems.length > 0 ? (
       <Badge tone="amber">Revisión pendiente</Badge>
-    ) : aiApplied ? (
+    ) : aiRead ? (
       <span
         className={`${pill} border-green-300 bg-green-50 text-xs text-green-700`}
         title="Validación de la estructura (legs, condiciones y cuotas), no de la lectura de la imagen."
@@ -1039,10 +1230,8 @@ export function NewBetForm({
         <CheckCircleIcon className="h-4 w-4" />
         Estructura validada
       </span>
-    ) : ticket ? (
-      <Badge tone="slate">Ticket sin analizar</Badge>
     ) : (
-      <Badge tone="slate">Registro manual</Badge>
+      <Badge tone="slate">Ticket sin analizar</Badge>
     );
 
   const summaryRows: SummaryRow[] = [
@@ -1076,23 +1265,99 @@ export function NewBetForm({
       note: potentialValue === null ? undefined : officialPotential ? 'Oficial' : 'Calculado',
     },
     { label: 'Resultado', value: resultPill },
-    { label: 'Estado del análisis', value: analysisPill },
+    isManual
+      ? {
+          label: 'Origen',
+          value: (
+            <Pill tone="blue" icon={<DocumentIcon />}>
+              Manual
+            </Pill>
+          ),
+        }
+      : { label: 'Estado del análisis', value: analysisPill },
   ];
 
+  // Columna derecha de "Verificar datos": la imagen (original leída por IA o respaldo manual) y el
+  // resumen. Sin imagen, un estado vacío que lleva al Paso 1 para adjuntarla.
+  const backToEntry = (label: string) => (
+    <div className="flex min-h-40 flex-1 flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-slate-300 px-3 py-6 text-center text-sm text-slate-500">
+      <ImageIcon className="h-8 w-8 text-slate-400" />
+      <span className="font-medium text-slate-700">
+        {isManual ? 'Sin ticket de respaldo' : 'Sin ticket cargado'}
+      </span>
+      <button
+        type="button"
+        className="text-sm font-medium text-violet-700 hover:underline"
+        onClick={() => setStep(0)}
+      >
+        {label}
+      </button>
+    </div>
+  );
   const ticketCard = (
     <TicketOriginalCard
       projectId={project.id}
       ticket={ticket}
-      capturedByAi={aiApplied}
-      onChange={ticket && step === 0 ? detachTicket : undefined}
+      title={isManual ? 'Ticket de respaldo' : 'Ticket original'}
+      subtitle={
+        isManual
+          ? 'No analizado por IA'
+          : aiRead
+            ? 'Capturado por IA'
+            : (ticket?.originalFileName ?? 'Sin analizar')
+      }
+      empty={backToEntry(isManual ? 'Adjuntar respaldo' : 'Cargar ticket')}
       fill={!narrow}
     />
   );
   const summaryCard = <SummaryCard icon={<TicketIcon />} rows={summaryRows} />;
+  const entryProps = {
+    projectId: project.id,
+    mode: entryMode,
+    onModeChange: chooseMode,
+    aiAllowed,
+    canUpload: can('tickets.upload'),
+    ticket,
+    previewUrl: ticket
+      ? localPreview?.ticketId === ticket.id
+        ? localPreview.url
+        : ticketFileUrl(project.id, ticket.id)
+      : null,
+    imageSize,
+    onImageSize: setImageSize,
+    uploading,
+    fileError,
+    onFile: (file: File) => void uploadTicketFile(file),
+    onPasteFromClipboard: () => void pasteFromClipboard(),
+    onRemove: detachTicket,
+    analysis:
+      analysis.kind === 'idle' && ticket && analyzedTicketId === ticket.id && aiRead
+        ? ({ kind: 'analyzed' } as const)
+        : analysis,
+    onRetryAnalysis: () => void analyzeTicket(),
+    onManualFallback: continueManually,
+  };
+  const registeredProps = registered && {
+    projectId: project.id,
+    bet: registered,
+    origin: entryMode,
+    canViewTickets: can('tickets.view'),
+    onViewHistory: () => onViewHistory?.(registered.id),
+    onRegisterAnother: () => onRegisterAnother?.(),
+    onGoDashboard: () => onGoDashboard?.(),
+  };
+  // Igual que la columna principal, las columnas derechas de los Pasos 1 y 2 quedan montadas y solo
+  // se ocultan (nada se pierde al ir y volver); la del Paso 3 aparece al registrar.
   const asideContent = (
     <>
-      {(ticket !== null || step === 1) && ticketCard}
-      {step < 2 && <div className="shrink-0">{summaryCard}</div>}
+      <div className={step === 0 ? 'contents' : 'hidden'}>
+        <BetEntryAside {...entryProps} />
+      </div>
+      <div className={step === 1 ? 'contents' : 'hidden'}>
+        {ticketCard}
+        <div className="shrink-0">{summaryCard}</div>
+      </div>
+      {step === 2 && registeredProps && <BetRegisteredAside {...registeredProps} />}
     </>
   );
 
@@ -1119,7 +1384,24 @@ export function NewBetForm({
       icon={<DocumentIcon />}
       title="Datos de la apuesta"
       ariaLabel="Datos de la apuesta"
-      aside={aiApplied ? <AiDetectedBadge /> : undefined}
+      dense
+      aside={
+        <div className="flex flex-wrap items-center gap-2">
+          {aiRead && <AiDetectedBadge />}
+          <button
+            type="button"
+            className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-violet-700 hover:bg-violet-50 focus-visible:outline-2 focus-visible:outline-violet-500"
+            aria-expanded={showOptional}
+            aria-controls="bet-optional-data"
+            onClick={() => setShowOptional((open) => !open)}
+          >
+            Datos opcionales
+            <ChevronDownIcon
+              className={`h-3.5 w-3.5 transition-transform ${showOptional ? 'rotate-180' : ''}`}
+            />
+          </button>
+        </div>
+      }
     >
       <div className="grid gap-x-3 gap-y-2 @lg:grid-cols-2 @[44rem]:grid-cols-[minmax(0,1fr)_minmax(0,1.12fr)_minmax(0,1.05fr)]">
         <div className="flex flex-col gap-1">
@@ -1194,29 +1476,6 @@ export function NewBetForm({
           </select>
         </div>
       </div>
-      {!verifying && (
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
-          <label className="flex items-center gap-1.5">
-            <input
-              type="checkbox"
-              checked={!placedTimeKnown}
-              onChange={(event) => {
-                markTouched();
-                setPlacedTimeKnown(!event.target.checked);
-              }}
-              className="h-3.5 w-3.5 accent-violet-600"
-            />
-            No conozco la hora exacta
-          </label>
-          {zone && <span>{`Hora del proyecto (${zone}).`}</span>}
-          {house && (
-            <span className="sm:ml-auto">
-              Disponible: <strong className="text-slate-800">{formatPEN(house.available)}</strong>
-            </span>
-          )}
-        </div>
-      )}
-
       <div className="grid items-start gap-x-3 gap-y-2 @lg:grid-cols-2 @[44rem]:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)_minmax(0,0.8fr)_minmax(0,1.2fr)]">
         <div className="flex flex-col gap-1">
           <span className={`flex items-center gap-1 ${fieldLabel}`} aria-hidden="true">
@@ -1366,16 +1625,79 @@ export function NewBetForm({
               Usar el producto de las cuotas ({oddsProduct}) como referencia
             </button>
           )}
-          {oddsIsCalculated && calculatedOdds && !verifying ? (
-            <span className="basis-full text-xs text-slate-500">{calculatedOdds.note}</span>
-          ) : (
-            <span className="sr-only">
-              Si el ticket no muestra la cuota total, no la marques como oficial: el producto de las
-              cuotas es solo una referencia.
+          <span className="sr-only">
+            Si el ticket no muestra la cuota total, no la marques como oficial: el producto de las
+            cuotas es solo una referencia.
+          </span>
+        </div>
+      )}
+      {/* Cuota calculada por LetFer: siempre se dice de dónde sale (nunca pasa por oficial). Solo
+          aparece cuando la cuota es calculada, así que la verificación de una cuota oficial no crece. */}
+      {oddsIsCalculated && calculatedOdds && (
+        <p className="text-xs text-slate-500">{calculatedOdds.note}</p>
+      )}
+
+      {/* "Datos opcionales": siempre montados (un valor que la IA ya puso aquí nunca desaparece ni
+          deja de enviarse porque el panel esté cerrado); se abre solo si la IA rellenó algo. */}
+      <div
+        id="bet-optional-data"
+        className={
+          showOptional
+            ? 'flex flex-col gap-2 rounded-lg border border-slate-200 bg-surface-2 p-3'
+            : 'hidden'
+        }
+      >
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
+          <label className="flex items-center gap-1.5">
+            <input
+              type="checkbox"
+              checked={!placedTimeKnown}
+              onChange={(event) => {
+                markTouched();
+                setPlacedTimeKnown(!event.target.checked);
+              }}
+              className="h-3.5 w-3.5 accent-violet-600"
+            />
+            No conozco la hora exacta
+          </label>
+          {zone && <span>{`Hora del proyecto (${zone}).`}</span>}
+          {house && (
+            <span className="sm:ml-auto">
+              Disponible: <strong className="text-slate-800">{formatPEN(house.available)}</strong>
             </span>
           )}
         </div>
-      )}
+        <div className="grid grid-cols-1 gap-x-3 gap-y-1.5 @lg:grid-cols-2">
+          <div className="flex flex-col gap-1">
+            <label htmlFor="bet-official-potential-return" className={fieldLabel}>
+              Retorno potencial (opcional)
+            </label>
+            <input
+              id="bet-official-potential-return"
+              value={officialPotentialReturn}
+              onChange={(event) => {
+                markTouched();
+                setOfficialPotentialReturn(event.target.value);
+              }}
+              className={field}
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label htmlFor="bet-reason" className={fieldLabel}>
+              Motivo / observaciones (opcional)
+            </label>
+            <input
+              id="bet-reason"
+              value={reason}
+              onChange={(event) => {
+                markTouched();
+                setReason(event.target.value);
+              }}
+              className={field}
+            />
+          </div>
+        </div>
+      </div>
 
       {amountMismatch && calculatedOnlyAmount !== null && (
         <Notice tone="warning">
@@ -1418,19 +1740,45 @@ export function NewBetForm({
   const editedLegRows =
     editingLeg === null ? [] : selections.filter((r) => r.eventGroup === editingLeg);
   const editedLeg = previewLegs.find((leg) => leg.eventGroup === editingLeg) ?? null;
+  // Un leg se puede quitar si la estructura lo admite: en una Múltiple quedan al menos dos.
+  const canRemoveEditedLeg = format === 'MULTIPLE' && previewLegs.length > 2;
+  const completeLegs = previewLegs.filter((leg) =>
+    leg.selections.some((row) => row.event.trim() !== '' && row.selection.trim() !== ''),
+  );
 
-  const outlineButton =
-    'inline-flex min-h-[2.4rem] items-center justify-center gap-2 rounded-lg border border-slate-300 bg-surface px-4 text-sm font-medium text-slate-800 transition-colors hover:border-violet-400 hover:bg-violet-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500 disabled:opacity-50';
-  const violetOutlineButton =
-    'inline-flex min-h-[2.4rem] items-center justify-center gap-2 rounded-lg border border-violet-500 bg-surface px-4 text-sm font-medium text-violet-700 transition-colors hover:bg-violet-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500 disabled:opacity-50';
   const mobileHalf = 'max-sm:min-w-0 max-sm:flex-1 max-sm:basis-[calc(50%-0.25rem)] max-sm:px-2';
-  const primaryButton =
-    'inline-flex min-h-[2.4rem] items-center justify-center gap-2 rounded-lg bg-violet-600 px-5 text-sm font-semibold text-white shadow-[0_0_22px_-4px_rgba(101,8,255,0.75)] transition-colors hover:bg-violet-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-400 disabled:opacity-60';
+  const alreadyAnalyzed =
+    entryMode === 'AI' && ticket !== null && analyzedTicketId === ticket.id && aiRead;
+  const analyzing = analysis.kind === 'analyzing';
+
+  // "Añadir selección": en la verificación de una lectura de IA, un botón de icono en la cabecera (la
+  // tabla debe caber sin desplazarse); en manual o sin selecciones, el botón completo bajo la tabla.
+  const addSelectionButton = (compact: boolean) =>
+    compact ? (
+      <button
+        type="button"
+        onClick={addSelectionFromReview}
+        aria-label="Añadir selección"
+        title="Añadir selección"
+        className={`${wizardButton.small} w-8 shrink-0 border-violet-400 px-0 text-violet-700`}
+      >
+        <PlusIcon />
+      </button>
+    ) : (
+      <button
+        type="button"
+        onClick={addSelectionFromReview}
+        className={`${wizardButton.violet} self-start`}
+      >
+        <PlusIcon />
+        Añadir selección
+      </button>
+    );
 
   return (
     <form
       onSubmit={(event) => void onSubmit(event)}
-      // Enter dentro de un campo nunca envía ni avanza: solo "Registrar apuesta" (Paso 3) registra.
+      // Enter dentro de un campo nunca envía ni avanza: solo "Confirmar apuesta" (Paso 2) registra.
       onKeyDown={(event) => {
         if (event.key === 'Enter' && event.target instanceof HTMLInputElement) {
           event.preventDefault();
@@ -1441,319 +1789,161 @@ export function NewBetForm({
       noValidate
     >
       <WizardHeader subtitle={subtitle} onClose={onCancel} disabled={submitting} />
-      <WizardStepper labels={STEP_LABELS} current={step} onSelect={setStep} />
+      <WizardStepper
+        labels={STEP_LABELS}
+        current={step}
+        onSelect={setStep}
+        // "Confirmar" solo se alcanza registrando; tras registrar ya no se vuelve atrás.
+        canSelect={(index) => step < 2 && index < 2 && !analyzing && !submitting}
+      />
 
+      {step === 2 && registered && (
+        <div className="px-4 pb-2 sm:px-6">
+          <Strip tone="success" live>
+            <strong className="font-semibold">Apuesta registrada correctamente.</strong>{' '}
+            {isManual
+              ? 'El registro manual fue guardado en tu historial.'
+              : 'El ticket leído por IA fue guardado en tu historial.'}
+          </Strip>
+        </div>
+      )}
       {step === 1 && (
         <div className="pb-2">
           <WizardBanner
             kind={bannerKind}
             legs={legCount}
-            conditions={selections.length}
             hasResult={statusChosen && statusFromAi}
             missing={missingForReview}
           />
         </div>
       )}
 
-      {(pendingAnalysis ||
-        staleAiData ||
-        (appliedNotice && !pendingAnalysis && step !== 1) ||
-        unreadableMoneyFields.length > 0) && (
-        <div className="flex flex-col gap-2 px-4 pb-3 sm:px-6">
-          {staleAiData && (
-            <Notice tone="warning">
-              <p>
-                Quitaste el ticket, pero los datos del formulario vienen de su lectura. No se
-                atribuyen a otra imagen: ¿los descartas o los conservas como datos manuales?
-              </p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                <button type="button" className={btnPrimary} onClick={resetForm}>
-                  Descartar los datos leídos
-                </button>
-                <button type="button" className={btn} onClick={() => setStaleAiData(false)}>
-                  Conservar como datos manuales
-                </button>
+      {step < 2 &&
+        (pendingAnalysis ||
+          staleAiData ||
+          (aiRead && !pendingAnalysis && step === 0) ||
+          unreadableMoneyFields.length > 0) && (
+          <div className="flex flex-col gap-2 px-4 pb-3 sm:px-6">
+            {staleAiData && (
+              <Notice tone="warning">
+                <p>
+                  Los datos del formulario vienen de una lectura de IA que ya no se usa (cambiaste
+                  la imagen o el origen). No se atribuyen a otra imagen: ¿los descartas o los
+                  conservas como datos manuales?
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <button type="button" className={btnPrimary} onClick={resetForm}>
+                    Descartar los datos leídos
+                  </button>
+                  <button type="button" className={btn} onClick={() => setStaleAiData(false)}>
+                    Conservar como datos manuales
+                  </button>
+                </div>
+              </Notice>
+            )}
+            {pendingAnalysis && (
+              <Notice tone="warning">
+                <p>
+                  Volvimos a leer el ticket, pero ya habías corregido algunos datos a mano.
+                  ¿Reemplazar el formulario con esta nueva lectura?
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className={btnPrimary}
+                    onClick={() => applyExtraction(pendingAnalysis.extraction)}
+                  >
+                    Reemplazar con esta lectura
+                  </button>
+                  <button type="button" className={btn} onClick={() => setPendingAnalysis(null)}>
+                    Mantener mis cambios
+                  </button>
+                </div>
+              </Notice>
+            )}
+            {aiRead && !pendingAnalysis && step === 0 && (
+              <div
+                role="status"
+                className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-1.5 text-xs font-medium text-green-800"
+              >
+                <CheckIcon className="h-4 w-4 shrink-0" />
+                Datos aplicados desde el ticket. Revísalos en «Verificar datos» antes de registrar.
               </div>
-            </Notice>
-          )}
-          {pendingAnalysis && (
-            <Notice tone="warning">
-              <p>
-                Volvimos a leer el ticket, pero ya habías corregido algunos datos a mano.
-                ¿Reemplazar el formulario con esta nueva lectura?
-              </p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  className={btnPrimary}
-                  onClick={() => applyExtraction(pendingAnalysis.extraction)}
-                >
-                  Reemplazar con esta lectura
-                </button>
-                <button type="button" className={btn} onClick={() => setPendingAnalysis(null)}>
-                  Mantener mis cambios
-                </button>
-              </div>
-            </Notice>
-          )}
-          {appliedNotice && !pendingAnalysis && step !== 1 && (
-            <div
-              role="status"
-              className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-1.5 text-xs font-medium text-green-800"
-            >
-              <CheckIcon className="h-4 w-4 shrink-0" />
-              Datos aplicados desde el ticket. Revísalos antes de registrar.
-            </div>
-          )}
-          {unreadableMoneyFields.length > 0 && !pendingAnalysis && (
-            <Notice tone="warning">
-              {unreadableMoneyFields.join(' y ')} detectado en el ticket no pudo interpretarse
-              automáticamente. Revísalo antes de registrar la apuesta.
-            </Notice>
-          )}
-        </div>
-      )}
+            )}
+            {unreadableMoneyFields.length > 0 && !pendingAnalysis && (
+              <Notice tone="warning">
+                {unreadableMoneyFields.join(' y ')} detectado en el ticket no pudo interpretarse
+                automáticamente. Revísalo antes de registrar la apuesta.
+              </Notice>
+            )}
+          </div>
+        )}
 
-      {/* ~70 % datos / ~30 % ticket y resumen desde `lg:`. UNA sola zona con desplazamiento para las
-          dos columnas (nunca dos barras paralelas): la cabecera, el progreso y la barra de acciones
-          quedan fijas. En la verificación, a 1672 × 941, todo cabe sin desplazar. Por debajo de `lg:`
-          (`narrow`) todo va en una sola columna: el ticket y el resumen siguen a mano, sin perder
-          ningún dato ni acción. */}
+      {/* ~70 % datos / ~30 % ticket y resumen. UNA sola zona con desplazamiento para las dos columnas
+          (nunca dos barras paralelas): la cabecera, el progreso y la barra de acciones quedan fijas.
+          Por debajo de `lg:` (`narrow`) todo va en una sola columna: la derecha, después. */}
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-3 sm:px-6">
         <div
           className={`grid gap-x-4 gap-y-3 ${
             narrow ? 'grid-cols-1' : 'grid-cols-[minmax(0,1fr)_minmax(17rem,29%)]'
           }`}
         >
-          <div className="@container flex min-w-0 flex-col gap-2">
-            {/* Los pasos quedan siempre montados (nunca se pierde lo escrito al cambiar de paso): solo
-              se oculta lo que no toca. `contents` deja que sus hijos formen parte de la misma columna. */}
+          <div className="@container flex min-w-0 flex-col gap-3">
+            {/* Los pasos 1 y 2 quedan siempre montados (nunca se pierde lo escrito al ir y volver):
+                solo se oculta lo que no toca. `contents` deja que sus hijos formen parte de la columna. */}
             <div className={step === 0 ? 'contents' : 'hidden'}>
-              {/* Fase 11.1, §7: el ticket es la vía más rápida y va primero, con peso visual propio. */}
-              <section
-                aria-label="Completa con IA"
-                className="flex flex-col gap-3 rounded-xl border border-violet-300/70 bg-violet-50/40 px-3 py-3 sm:px-4"
-              >
-                <div className="flex items-center gap-3">
-                  <span
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-violet-100 text-violet-700 ring-1 ring-violet-300/50"
-                    aria-hidden="true"
-                  >
-                    <SparkleIcon className="h-[18px] w-[18px]" />
-                  </span>
-                  <div className="min-w-0">
-                    <p className="text-[0.98rem] font-semibold text-slate-900">Completa con IA</p>
-                    <p className="text-xs text-slate-500">
-                      Sube el ticket y LetFer rellena el formulario entero. Tú revisas y confirmas
-                      antes de registrar. También puedes registrar la apuesta a mano.
-                    </p>
-                  </div>
-                </div>
-                {(can('tickets.upload') || ticket) && (
-                  <TicketPanel
-                    projectId={project.id}
-                    tickets={ticket ? [ticket] : []}
-                    onUploaded={(uploaded) => {
-                      setDirty(true);
-                      setTicket(uploaded);
-                    }}
-                    onAnalyzed={handleAnalyzed}
-                    canUpload={can('tickets.upload') && !ticket}
-                    canAnalyze={can('tickets.analyze')}
-                    onRemoveDraft={detachTicket}
-                  />
-                )}
-              </section>
-            </div>
-
-            <div className={step === 2 ? 'hidden' : 'contents'}>
-              {datosCard}
-              {resultCard}
-            </div>
-
-            <div className={step === 0 ? 'contents' : 'hidden'}>
-              <LegsEditor
-                format={format}
-                selections={selections}
-                onPatch={updateSelection}
-                onAddLeg={addLegCard}
-                onAddCondition={addConditionTo}
-                onRemoveRow={removeSelection}
-                onRemoveLeg={removeLegCard}
-              />
-              <div className="flex flex-col gap-3 rounded-xl bg-slate-50/60 p-3">
-                <button
-                  type="button"
-                  className="flex items-center justify-between text-left"
-                  aria-expanded={showOptional}
-                  onClick={() => setShowOptional((v) => !v)}
-                >
-                  <Caption>Datos opcionales</Caption>
-                  <span className="text-xs text-violet-700 underline">
-                    {showOptional ? 'Ocultar' : 'Mostrar'}
-                  </span>
-                </button>
-                {/* Siempre montados, solo ocultos visualmente: un valor que la IA ya puso aquí no
-                  desaparece ni deja de enviarse porque el panel esté cerrado. */}
-                <div
-                  className={
-                    showOptional ? 'grid grid-cols-1 gap-x-3 gap-y-1.5 sm:grid-cols-2' : 'hidden'
-                  }
-                >
-                  <label htmlFor="bet-official-potential-return" className="text-sm font-medium">
-                    Retorno potencial (opcional)
-                  </label>
-                  <label htmlFor="bet-reason" className="text-sm font-medium">
-                    Motivo / observaciones (opcional)
-                  </label>
-                  <input
-                    id="bet-official-potential-return"
-                    value={officialPotentialReturn}
-                    onChange={(event) => {
-                      markTouched();
-                      setOfficialPotentialReturn(event.target.value);
-                    }}
-                    className={field}
-                  />
-                  <input
-                    id="bet-reason"
-                    value={reason}
-                    onChange={(event) => {
-                      markTouched();
-                      setReason(event.target.value);
-                    }}
-                    className={field}
-                  />
-                </div>
-              </div>
+              <BetEntryMain {...entryProps} />
             </div>
 
             <div className={step === 1 ? 'contents' : 'hidden'}>
-              <WizardCard
-                icon={<MenuIcon />}
-                title={
-                  aiApplied
-                    ? `Selecciones detectadas (${legCount})`
-                    : `Selecciones de la apuesta (${legCount})`
-                }
-                ariaLabel="Selecciones de la apuesta"
-                aside={
-                  <p className="max-w-[23rem] text-[0.7rem] leading-4 text-slate-500">
-                    Cada fila representa un leg del ticket. Las apuestas creadas agrupan varios
-                    pronósticos dentro de un mismo leg.
-                  </p>
-                }
-              >
-                <SelectionsTable legs={previewLegs} onEdit={setEditingLeg} />
-              </WizardCard>
+              <div className="flex flex-col gap-2">
+                {datosCard}
+                {resultCard}
+                <WizardCard
+                  icon={<ListIcon />}
+                  dense
+                  title={
+                    aiRead
+                      ? `Selecciones detectadas (${legCount})`
+                      : `Selecciones de la apuesta (${legCount})`
+                  }
+                  ariaLabel="Selecciones de la apuesta"
+                  aside={
+                    <div className="flex items-center gap-3">
+                      <p className="max-w-[21rem] text-[0.7rem] leading-4 text-slate-500">
+                        Cada fila representa una selección del ticket. Las apuestas creadas agrupan
+                        varios pronósticos dentro de una sola selección.
+                      </p>
+                      {!isManual && completeLegs.length > 0 && addSelectionButton(true)}
+                    </div>
+                  }
+                >
+                  {completeLegs.length === 0 ? (
+                    <div className="flex flex-col items-start gap-3 rounded-lg border border-dashed border-slate-300 p-4">
+                      <p className="text-sm text-slate-500">
+                        Aún no hay selecciones. Añade la primera para continuar.
+                      </p>
+                      {addSelectionButton(false)}
+                    </div>
+                  ) : (
+                    <>
+                      <SelectionsTable legs={previewLegs} onEdit={setEditingLeg} />
+                      {isManual && addSelectionButton(false)}
+                    </>
+                  )}
+                </WizardCard>
+              </div>
             </div>
 
-            {step === 2 && (
-              <section aria-label="Revisión del ticket" className="flex flex-col gap-3">
-                <h4 className="text-base font-semibold text-slate-900">
-                  Ticket digital reconstruido por LetFer
-                </h4>
-                <p className="text-xs text-slate-500">
-                  {ticket
-                    ? 'Compáralo con el ticket original antes de registrar. Para corregir algo, vuelve al paso anterior: no se pierde nada.'
-                    : 'Así quedará guardada la apuesta. Para corregir algo, vuelve al paso anterior: no se pierde nada.'}
-                </p>
-                {reviewWarnings.length > 0 && (
-                  <Notice tone="warning">
-                    <ul className="list-disc pl-4">
-                      {reviewWarnings.map((warning) => (
-                        <li key={warning}>{warning}</li>
-                      ))}
-                    </ul>
-                  </Notice>
-                )}
-                <DigitalTicket
-                  label="Vista previa del ticket de LetFer"
-                  houseName={house?.name ?? 'Casa sin elegir'}
-                  structureTitle={
-                    format === 'SIMPLE'
-                      ? 'Simple'
-                      : format === 'CREATED'
-                        ? `Creada · ${selections.length} selecciones`
-                        : `Múltiple de ${previewLegs.length}`
-                  }
-                  status={
-                    <Badge tone="slate">
-                      {statusChosen ? RESULT_BUTTON_LABELS[status] : 'Sin definir'}
-                    </Badge>
-                  }
-                  facts={[
-                    {
-                      label: 'Fecha',
-                      value: placed.date === '' ? '—' : placed.date.split('-').reverse().join('/'),
-                    },
-                    { label: 'Hora', value: placedTimeKnown ? placed.time || '—' : 'Desconocida' },
-                    { label: 'Tipo de apuesta', value: BET_TYPE_LABELS[format] },
-                    { label: 'Etapa', value: stage.name },
-                  ]}
-                  legs={previewLegs}
-                  selectionsCount={selections.length}
-                  figures={[
-                    {
-                      label: 'Stake',
-                      value: stakeShown ?? '—',
-                      note: stake.trim() === '' && derivedStake !== null ? '(derivado)' : undefined,
-                    },
-                    {
-                      label: 'Importe apostado',
-                      value: figures.amount === null ? '—' : formatPEN(figures.amount),
-                      note:
-                        figures.amount === null
-                          ? undefined
-                          : usesOfficialAmount
-                            ? '(oficial)'
-                            : '(calculado)',
-                    },
-                    ...totalOddsFigures(totalOddsSource ?? 'UNKNOWN', visibleTotalOdds),
-                    {
-                      label: 'Retorno potencial',
-                      value: potentialValue === null ? '—' : formatPEN(potentialValue),
-                      note:
-                        potentialValue === null
-                          ? undefined
-                          : officialPotential
-                            ? '(oficial)'
-                            : '(calculado)',
-                    },
-                    ...(statusChosen && status !== 'PENDING'
-                      ? [
-                          {
-                            label: 'Retorno realizado',
-                            value:
-                              figures.returnValue === null ? '—' : formatPEN(figures.returnValue),
-                            note: figures.officialRealizedReturn ? '(oficial)' : '(calculado)',
-                          },
-                          {
-                            label: 'Ganancia o pérdida',
-                            value: figures.profit === null ? '—' : signedPEN(figures.profit),
-                          },
-                        ]
-                      : []),
-                  ]}
-                />
-              </section>
-            )}
+            {step === 2 && registeredProps && <BetRegisteredMain {...registeredProps} />}
 
             {narrow && <div className="flex flex-col gap-3">{asideContent}</div>}
           </div>
 
           {!narrow && (
-            // En la verificación se estira al alto de la columna de datos (el ticket ocupa el espacio
-            // libre). En los Pasos 1 y 3, cuya columna izquierda es larga, queda fija arriba con el alto
-            // visible del panel: el ticket sigue a la vista mientras se edita o se compara.
-            <aside
-              aria-label="Ticket y resumen"
-              className={`flex min-w-0 flex-col gap-3 ${
-                step === 1
-                  ? ''
-                  : 'sticky top-0 h-[max(24rem,min(42rem,calc(97dvh-15rem)))] self-start'
-              }`}
-            >
+            // En "Verificar datos" se estira al alto de la columna de datos (el ticket ocupa el espacio
+            // libre). En los Pasos 1 y 3 se ajusta a su contenido.
+            <aside aria-label="Ticket y resumen" className="flex min-w-0 flex-col gap-3">
               {asideContent}
             </aside>
           )}
@@ -1766,28 +1956,38 @@ export function NewBetForm({
         </div>
       )}
       <footer className="flex flex-wrap items-center gap-2 border-t border-slate-200/70 bg-slate-50 px-4 pt-2 pb-2.5 sm:px-6">
-        {step > 0 ? (
+        {step === 0 && (
           <button
             type="button"
-            className={`${outlineButton} ${mobileHalf}`}
-            onClick={() => setStep(step - 1)}
-            disabled={submitting}
-          >
-            Atrás
-          </button>
-        ) : (
-          <button
-            type="button"
-            className={`${outlineButton} ${mobileHalf}`}
+            className={`${wizardButton.text} ${mobileHalf}`}
             onClick={onCancel}
-            disabled={submitting}
+            disabled={analyzing}
           >
             Cancelar
           </button>
         )}
+        {step === 1 && (
+          <button
+            type="button"
+            className={`${wizardButton.outline} ${mobileHalf}`}
+            onClick={() => setStep(0)}
+            disabled={submitting}
+          >
+            Atrás
+          </button>
+        )}
+        {step === 2 && (
+          <button
+            type="button"
+            className={`${wizardButton.outline} ${mobileHalf}`}
+            onClick={onCancel}
+          >
+            Cerrar
+          </button>
+        )}
         {/* En móvil los botones forman una rejilla de dos por fila (nunca tres filas de pie). */}
         <div className="flex flex-wrap items-center justify-end gap-2 max-sm:contents sm:ml-auto">
-          {draftMessage && (
+          {draftMessage && step < 2 && (
             <span
               role="status"
               className="text-xs text-green-700 max-sm:order-first max-sm:basis-full"
@@ -1795,60 +1995,106 @@ export function NewBetForm({
               {draftMessage}
             </span>
           )}
-          {step === 2 && figures.amount !== null && (
+          {step === 1 && figures.amount !== null && (
+            // Transparencia financiera: qué hará el registro, justo antes de confirmarlo.
             <span className="text-xs text-slate-500 max-sm:order-first max-sm:basis-full">
-              {status === 'PENDING'
+              {status === 'PENDING' || !statusChosen
                 ? `Reservará ${formatPEN(figures.amount)} en ${house?.name ?? 'la casa elegida'}.`
                 : `Se registrará ya liquidada como ${RESULT_BUTTON_LABELS[status].toLowerCase()}.`}
             </span>
           )}
-          <button
-            type="button"
-            className={`${outlineButton} ${mobileHalf}`}
-            onClick={() => void saveDraft()}
-            disabled={submitting || savingDraft}
-          >
-            <SaveIcon className="h-4 w-4" />
-            {savingDraft ? 'Guardando…' : 'Guardar borrador'}
-          </button>
-          {step === 1 && (
+          {step < 2 && (
             <button
               type="button"
-              className={`${violetOutlineButton} ${mobileHalf}`}
-              onClick={() => setStep(0)}
+              className={`${wizardButton.outline} ${mobileHalf}`}
+              onClick={() => void saveDraft()}
+              disabled={submitting || savingDraft || analyzing || uploading}
             >
-              <PencilIcon className="h-4 w-4" />
+              <SaveIcon />
+              {savingDraft ? 'Guardando…' : 'Guardar borrador'}
+            </button>
+          )}
+          {step === 0 && entryMode === 'AI' && alreadyAnalyzed && (
+            <button
+              type="button"
+              className={`${wizardButton.text} ${mobileHalf}`}
+              onClick={() => void analyzeTicket()}
+              disabled={analyzing}
+            >
+              <SparkleIcon />
+              Volver a analizar
+            </button>
+          )}
+          {step === 0 &&
+            (entryMode === 'AI' && !alreadyAnalyzed ? (
+              <button
+                key="analyze"
+                type="button"
+                className={`${wizardButton.primary} ${mobileHalf}`}
+                onClick={() => void analyzeTicket()}
+                disabled={!ticket || uploading || analyzing}
+              >
+                {analyzing ? <SpinnerIcon className="animate-spin" /> : <SparkleIcon />}
+                {analyzing ? 'Analizando…' : 'Analizar y continuar'}
+                {!analyzing && <ChevronRightIcon />}
+              </button>
+            ) : (
+              <button
+                key="continue"
+                type="button"
+                className={`${wizardButton.primary} ${mobileHalf}`}
+                onClick={() => setStep(1)}
+                disabled={uploading}
+              >
+                {entryMode === 'AI' ? 'Continuar' : 'Continuar a verificar datos'}
+                <ArrowRightIcon />
+              </button>
+            ))}
+          {step === 1 && ticket && (
+            <button
+              type="button"
+              className={`${wizardButton.violet} ${mobileHalf}`}
+              onClick={() => setStep(0)}
+              disabled={submitting}
+            >
+              <PencilIcon />
               Editar ticket
             </button>
           )}
-          {step === 2 ? (
-            // `key` distinto a propósito: los botones de paso y este ocupan la misma posición con
-            // distinto `type` ("button" vs "submit"); sin `key`, React reutilizaría el nodo y un
-            // clic en curso podría disparar el envío (bug real, visto en el QA visual).
+          {step === 1 && (
+            // `key` distinto a propósito: el botón de avance del Paso 1 y este ocupan la misma
+            // posición con distinto `type`; sin `key`, React reutilizaría el nodo y un clic en curso
+            // podría disparar el envío.
             <button
               key="submit"
               type="submit"
+              data-action="register"
               disabled={submitting}
-              className={`${primaryButton} ${mobileHalf}`}
+              className={`${wizardButton.primary} ${mobileHalf}`}
             >
-              {submitting ? 'Registrando…' : 'Registrar apuesta'}
+              {submitting ? <SpinnerIcon className="animate-spin" /> : <CheckIcon />}
+              {submitting ? 'Registrando…' : 'Confirmar apuesta'}
             </button>
-          ) : (
-            <button
-              key="next"
-              type="button"
-              className={`${primaryButton} ${mobileHalf}`}
-              onClick={() => setStep(step + 1)}
-            >
-              {step === 1 ? (
-                <>
-                  <CheckIcon className="h-4 w-4" />
-                  Confirmar apuesta
-                </>
-              ) : (
-                'Siguiente'
-              )}
-            </button>
+          )}
+          {step === 2 && registered && (
+            <>
+              <button
+                type="button"
+                className={`${wizardButton.violet} ${mobileHalf}`}
+                onClick={() => onViewHistory?.(registered.id)}
+              >
+                <ListIcon />
+                Ver historial
+              </button>
+              <button
+                type="button"
+                className={`${wizardButton.primary} ${mobileHalf}`}
+                onClick={() => onRegisterAnother?.()}
+              >
+                <PlusCircleIcon />
+                Registrar otra apuesta
+              </button>
+            </>
           )}
         </div>
       </footer>
@@ -1858,9 +2104,30 @@ export function NewBetForm({
           title={`Editar leg ${editedLeg.number}`}
           onClose={() => setEditingLeg(null)}
           footer={
-            <button type="button" className={primaryButton} onClick={() => setEditingLeg(null)}>
-              Listo
-            </button>
+            <>
+              {canRemoveEditedLeg ? (
+                <button
+                  type="button"
+                  className={`${wizardButton.danger} mr-auto`}
+                  onClick={() => {
+                    removeLegCard(editedLeg.eventGroup);
+                    setEditingLeg(null);
+                  }}
+                >
+                  <TrashIcon />
+                  Eliminar leg
+                </button>
+              ) : (
+                <span />
+              )}
+              <button
+                type="button"
+                className={wizardButton.primary}
+                onClick={() => setEditingLeg(null)}
+              >
+                Listo
+              </button>
+            </>
           }
         >
           <LegsEditor

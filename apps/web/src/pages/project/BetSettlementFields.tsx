@@ -498,6 +498,7 @@ export function SettlementSection({
         icon={<TrophyIcon />}
         title="Resultado de la apuesta"
         ariaLabel="Resultado y ganancia"
+        dense
       >
         {children}
       </WizardCard>
@@ -576,7 +577,7 @@ export function SettlementSection({
                         onStatus(option);
                         onProfitOverride(null);
                       }}
-                      className={`flex min-h-10 items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500 ${
+                      className={`flex min-h-[2.4rem] items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500 ${
                         isSelected ? look.selected : look.idle
                       }`}
                     >

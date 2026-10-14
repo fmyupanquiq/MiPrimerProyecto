@@ -560,7 +560,7 @@ function SingleEventLegs({
             onClick={() => onAddCondition(head?.eventGroup ?? 0)}
           >
             <PlusIcon className="h-4 w-4" />
-            Añadir selección
+            Añadir otra selección
           </button>
         )}
       </FormStep>

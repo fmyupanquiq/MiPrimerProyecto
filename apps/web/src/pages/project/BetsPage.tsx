@@ -5,14 +5,15 @@ import {
   TOTAL_ODDS_SOURCES,
   updateBetSchema,
   type BetDraftDetail,
+  type BetEntryMode,
   type BetStatus,
   type BetSummary,
   type HouseSummary,
   type TicketSummary,
   type TotalOddsSource,
 } from '@letfer/shared';
-import { type FormEvent, type ReactNode, useRef, useState } from 'react';
-import { Link, useSearchParams } from 'react-router';
+import { type FormEvent, type ReactNode, useEffect, useRef, useState } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router';
 import { betDraftsApi } from '../../api/betDrafts.js';
 import { betsApi } from '../../api/bets.js';
 import { housesApi, stagesApi } from '../../api/finance.js';
@@ -112,6 +113,28 @@ export function BetsPage() {
   const [registeredId, setRegisteredId] = useState<string | null>(null);
   const [filter, setFilter] = useState<'ALL' | BetStatus>('ALL');
   const [query, setQuery] = useState('');
+  // "Registrar otra apuesta" reinicia el asistente (nuevo formulario, nueva clave de idempotencia)
+  // con el mismo origen que se usó la última vez.
+  const [formKey, setFormKey] = useState(0);
+  const [lastMode, setLastMode] = useState<BetEntryMode | undefined>(undefined);
+  // Apuesta recién registrada a destacar unos segundos en la lista ("Ver historial").
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+  const navigate = useNavigate();
+  useEffect(() => {
+    if (!highlightId) return;
+    const timer = window.setTimeout(() => setHighlightId(null), 4000);
+    return () => window.clearTimeout(timer);
+  }, [highlightId]);
+
+  // El asistente ya registró (está en "Registro completado"): cerrar nunca pregunta.
+  const [formRegistered, setFormRegistered] = useState(false);
+  const closeForm = () => {
+    setShowForm(false);
+    setActiveDraft(null);
+    setFormDirty(false);
+    setFormRegistered(false);
+  };
+  const requestClose = () => (formDirty && !formRegistered ? setConfirmClose(true) : closeForm());
 
   const reload = () => {
     bets.reload();
@@ -175,7 +198,7 @@ export function BetsPage() {
           )
         }
       />
-      {notice && (
+      {notice && !showForm && (
         <Notice
           tone="success"
           action={
@@ -261,7 +284,7 @@ export function BetsPage() {
       {showForm && (
         <Modal
           variant="wizard"
-          onClose={() => (formDirty ? setConfirmClose(true) : setShowForm(false))}
+          onClose={requestClose}
           ariaLabel="Añadir apuesta"
           // Espacio de trabajo ancho y de alto estable desde `lg:` (≈1104 px a 1672 × 941, como la
           // referencia): el ticket necesita alto para compararse con los datos y el panel no "salta"
@@ -269,23 +292,45 @@ export function BetsPage() {
           widthClassName="sm:max-w-[69rem] md:max-h-[96vh] lg:h-[min(60rem,97.5vh)] lg:max-h-none"
         >
           <NewBetForm
-            key={activeDraft?.id ?? 'nuevo'}
+            key={`${activeDraft?.id ?? 'nuevo'}:${formKey}`}
             houses={houses.data ?? []}
             initialDraft={activeDraft ?? undefined}
+            initialMode={lastMode}
             onDirtyChange={setFormDirty}
             registerSaveDraft={(save) => {
               saveDraftRef.current = save;
             }}
             onDraftsChanged={drafts.reload}
-            onDone={(message, betId) => {
-              setShowForm(false);
-              setActiveDraft(null);
+            // Registrar NO cierra: el asistente pasa a "Registro completado". La lista, las casas y los
+            // borradores se recargan ya, y el aviso con "Ver apuesta" queda para cuando se cierre.
+            onRegistered={(bet, message, mode) => {
               setNotice(message);
-              setRegisteredId(betId);
+              setRegisteredId(bet.id);
+              setLastMode(mode);
+              setFormRegistered(true);
+              // El borrador activo NO se limpia aquí: cambiaría la `key` del formulario y lo
+              // remontaría vacío en vez de mostrar "Registro completado". Se limpia al cerrar.
               reload();
               drafts.reload();
             }}
-            onCancel={() => (formDirty ? setConfirmClose(true) : setShowForm(false))}
+            onRegisterAnother={() => {
+              setActiveDraft(null);
+              setFormDirty(false);
+              setFormRegistered(false);
+              setFormKey((key) => key + 1);
+            }}
+            onViewHistory={(betId) => {
+              closeForm();
+              setShowTrashed(false);
+              setFilter('ALL');
+              setQuery('');
+              setHighlightId(betId);
+            }}
+            onGoDashboard={() => {
+              closeForm();
+              void navigate(`/projects/${project.id}`);
+            }}
+            onCancel={requestClose}
           />
         </Modal>
       )}
@@ -416,6 +461,7 @@ export function BetsPage() {
             <BetRow
               key={bet.id}
               bet={bet}
+              highlighted={bet.id === highlightId}
               houses={houses.data ?? []}
               showTrashed={showTrashed}
               onChanged={(message) => {
@@ -478,12 +524,19 @@ function BetRow({
   houses,
   showTrashed,
   onChanged,
+  highlighted = false,
 }: {
   bet: BetSummary;
   houses: HouseSummary[];
   showTrashed: boolean;
   onChanged: (message: string) => void;
+  /** Recién registrada desde el asistente ("Ver historial"): se destaca y se lleva a la vista. */
+  highlighted?: boolean;
 }) {
+  const rowRef = useRef<HTMLLIElement>(null);
+  useEffect(() => {
+    if (highlighted) rowRef.current?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+  }, [highlighted]);
   const { project, can } = useProject();
   const { user } = useAuth();
   const runWithReauth = useReauth();
@@ -643,8 +696,14 @@ function BetRow({
 
   return (
     <li
+      ref={rowRef}
       data-bet-row
-      className="rounded-2xl border border-slate-200 bg-surface p-4 transition-colors hover:border-slate-300"
+      data-highlighted={highlighted || undefined}
+      className={`rounded-2xl border bg-surface p-4 transition-colors hover:border-slate-300 ${
+        highlighted
+          ? 'border-violet-500 shadow-[0_0_0_3px_rgba(124,58,237,0.25)]'
+          : 'border-slate-200'
+      }`}
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 flex-1">
