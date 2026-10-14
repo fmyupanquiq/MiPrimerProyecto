@@ -4,11 +4,9 @@ import {
   isOddsString,
   normalizeMoneyInput,
   resolveTicketOdds,
-  TICKET_MIME_TYPES,
   type TicketAnalysisSummary,
   type TicketEffectiveOddsSource,
   type TicketExtraction,
-  type TicketMimeType,
   type TicketSummary,
 } from '@letfer/shared';
 import { useEffect, useRef, useState } from 'react';
@@ -19,20 +17,13 @@ import { formatDateTime, TICKET_FIELD_LABELS } from '../../labels.js';
 import { CheckCircleIcon, ExpandIcon, SparkleIcon, TicketIcon } from '../../icons.js';
 import { Badge, btn, btnPrimary, Lightbox, Notice, Skeleton } from '../../ui.js';
 import { ConfidenceBadge } from './BetSettlementFields.js';
+import {
+  isAcceptedTicketFile,
+  pastedTicketFile,
+  TICKET_ACCEPT,
+  ticketFileProblem,
+} from './ticket-files.js';
 import { collectCompleteIndividualOdds } from './ticket-prefill.js';
-
-const TICKET_ACCEPT = TICKET_MIME_TYPES.join(',');
-
-function extensionForMime(mime: string): string {
-  if (mime === 'image/png') return '.png';
-  if (mime === 'application/pdf') return '.pdf';
-  return '.jpg';
-}
-
-/** ¿Es uno de los formatos que LetFer admite para un ticket (D-T3)? Mismo criterio que el backend. */
-function isAcceptedTicketFile(file: File): file is File & { type: TicketMimeType } {
-  return (TICKET_MIME_TYPES as readonly string[]).includes(file.type);
-}
 
 /**
  * Campos de la extracción (§53) que tienen un campo equivalente en el formulario de apuesta y
@@ -420,8 +411,9 @@ function UploadZone({
   const inputRef = useRef<HTMLInputElement>(null);
 
   function acceptOrReject(file: File) {
-    if (!isAcceptedTicketFile(file)) {
-      setLocalError('Solo se admiten imágenes (JPG, PNG) o PDF.');
+    const problem = ticketFileProblem(file);
+    if (problem) {
+      setLocalError(problem);
       return;
     }
     setLocalError(null);
@@ -451,11 +443,7 @@ function UploadZone({
     event.preventDefault();
     const blob = item.getAsFile();
     if (!blob) return;
-    const name =
-      blob.name && blob.name !== 'image.png'
-        ? blob.name
-        : `ticket-pegado${extensionForMime(item.type)}`;
-    acceptOrReject(new File([blob], name, { type: item.type }));
+    acceptOrReject(pastedTicketFile(blob, item.type));
   }
 
   return (
@@ -567,11 +555,7 @@ export function TicketPanel({
       const blob = item.getAsFile();
       if (!blob || !isAcceptedTicketFile(blob)) return;
       event.preventDefault();
-      const name =
-        blob.name && blob.name !== 'image.png'
-          ? blob.name
-          : `ticket-pegado${extensionForMime(item.type)}`;
-      void uploadFile(new File([blob], name, { type: item.type }));
+      void uploadFile(pastedTicketFile(blob, item.type));
     }
     window.addEventListener('paste', onWindowPaste);
     return () => window.removeEventListener('paste', onWindowPaste);

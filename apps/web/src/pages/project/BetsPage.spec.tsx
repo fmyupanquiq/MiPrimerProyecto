@@ -479,7 +479,7 @@ describe('tickets e IA en el formulario de apuesta (§28-§31, §110)', () => {
       const { form, zone, calls } = await openTicketZone();
       const file = new File(['x'], 'nota.txt', { type: 'text/plain' });
       fireEvent.drop(zone, { dataTransfer: { files: [file] } });
-      expect(await within(form).findByText(/Solo se admiten imágenes/)).toBeTruthy();
+      expect(await within(form).findByText(/Formato no admitido/)).toBeTruthy();
       expect(calls.some((c) => c.method === 'POST' && c.path.includes('/tickets'))).toBe(false);
     });
 
