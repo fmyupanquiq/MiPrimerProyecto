@@ -207,6 +207,35 @@ export class BetsService {
     return this.summariesOf(this.db, rows);
   }
 
+  /**
+   * Resúmenes y selecciones de un conjunto de apuestas del proyecto, para un reporte (§108.11).
+   * Solo lectura; las que no son del proyecto simplemente no aparecen. Tres consultas en total,
+   * sea cual sea el número de apuestas (sin N+1).
+   */
+  async reportDetails(
+    access: ProjectAccess,
+    ids: readonly string[],
+  ): Promise<Map<string, { summary: BetSummary; selections: BetSelectionSummary[] }>> {
+    const details = new Map<string, { summary: BetSummary; selections: BetSelectionSummary[] }>();
+    if (ids.length === 0) return details;
+    const rows = await this.db
+      .select()
+      .from(bets)
+      .where(and(eq(bets.projectId, access.project.id), inArray(bets.id, [...ids])));
+    const [summaries, selectionRows] = await Promise.all([
+      this.summariesOf(this.db, rows),
+      this.db
+        .select()
+        .from(betSelections)
+        .where(inArray(betSelections.betId, [...ids]))
+        .orderBy(betSelections.eventGroup, betSelections.position),
+    ]);
+    for (const summary of summaries) details.set(summary.id, { summary, selections: [] });
+    for (const row of selectionRows)
+      details.get(row.betId)?.selections.push(toSelectionSummary(row));
+    return details;
+  }
+
   async detail(access: ProjectAccess, betId: string): Promise<BetDetail> {
     const bet = await this.findOwned(this.db, access.project.id, betId);
     return this.detailOf(this.db, bet, access);

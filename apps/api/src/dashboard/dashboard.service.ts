@@ -261,6 +261,43 @@ export class DashboardService {
     };
   }
 
+  /**
+   * Apuestas del análisis (§108.11, reportes): EXACTAMENTE las mismas filas que cuenta `analysis`
+   * con esos filtros (misma CTE), con su monto apostado y su ganancia/pérdida según el ledger, para
+   * que la tabla de un reporte sume lo mismo que su resumen. Ordenadas por colocación.
+   */
+  async reportRows(
+    access: ProjectAccess,
+    filters: DashboardFilters,
+  ): Promise<
+    {
+      id: string;
+      status: string;
+      staked: MoneyString;
+      profitLoss: MoneyString;
+      settledAt: Date | null;
+    }[]
+  > {
+    const allWhere = this.filteredBetsCte(access, filters, { settledOnly: false });
+    const result = await this.db.execute<{
+      id: string;
+      status: string;
+      amount: MoneyString;
+      profit_loss: MoneyString;
+      settled_at: string | null;
+    }>(
+      sql`${allWhere} SELECT f.id, f.status, f.amount::text AS amount, f.profit_loss::text AS profit_loss,
+            f.settled_at FROM filtered f JOIN bets b ON b.id = f.id ORDER BY b.placed_at, b.id`,
+    );
+    return result.rows.map((row) => ({
+      id: row.id,
+      status: row.status,
+      staked: roundMoney(row.amount),
+      profitLoss: roundMoney(row.profit_loss),
+      settledAt: row.settled_at ? new Date(row.settled_at) : null,
+    }));
+  }
+
   /** `GET /dashboard/bankroll-chart` (§34, §108.3): evolución de banca real, con todo incluido. */
   async bankrollChart(access: ProjectAccess): Promise<BankrollChart> {
     const executor = this.db;
@@ -464,6 +501,8 @@ export class DashboardService {
     if (filters.betType) conditions.push(sql`b.bet_type = ${filters.betType}::bet_type`);
     if (filters.userId) conditions.push(sql`b.created_by = ${filters.userId}::uuid`);
     if (filters.status) conditions.push(sql`b.status = ${filters.status}::bet_status`);
+    if (filters.origin === 'MANUAL') conditions.push(sql`b.batch_id IS NULL`);
+    if (filters.origin === 'IMPORTED') conditions.push(sql`b.batch_id IS NOT NULL`);
     if (filters.from) {
       conditions.push(sql`COALESCE(b.settled_at, b.placed_at) >= ${new Date(filters.from)}`);
     }

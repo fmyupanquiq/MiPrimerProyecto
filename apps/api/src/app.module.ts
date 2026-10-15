@@ -9,6 +9,7 @@ import { BetsModule } from './bets/bets.module.js';
 import { CommonModule } from './common/common.module.js';
 import { ConfigModule } from './config/config.module.js';
 import { DashboardModule } from './dashboard/dashboard.module.js';
+import { ReportsModule } from './reports/reports.module.js';
 import { DatabaseModule } from './database/database.module.js';
 import { MailModule } from './mail/mail.module.js';
 import { FinanceModule } from './finance/finance.module.js';
@@ -37,6 +38,7 @@ import { UsersModule } from './users/users.module.js';
     BetsModule,
     BetDraftsModule,
     DashboardModule,
+    ReportsModule,
     ReconciliationsModule,
     IntegrityModule,
     ImportsModule,
