@@ -238,3 +238,13 @@ cuerpo si ambos difieren. Si una regla debe cambiar: primero se actualiza la esp
 - **Diseño (revisión 2026-10-14):** referencia `docs/referencias/letfer-ui-referencias/01-OBJETIVO-verificar-datos.png`.
   Colores del modal con `.wizard-skin` (tokens solo dentro del asistente); una sola zona de scroll; rejillas con container
   queries (`@[40rem]`, `@[44rem]`), no `lg:`. A 1672 × 941 el Paso 2 no debe desplazarse: compruébalo con una captura.
+
+## Reportes e informes PDF (ADR 0025, §108.11)
+
+- Solo lectura. `ReportsService` reutiliza `DashboardService.analysis` y `reportRows` (misma CTE, ganancia
+  por apuesta del ledger): la tabla del reporte suma lo mismo que su resumen. Nunca calcules métricas en la
+  plantilla ni en la web; el panel, la vista previa y el PDF usan el mismo estado aplicado.
+- El PDF se genera en el backend con `pdfkit` (`reports/report-pdf.ts`, función pura `ReportData → Buffer`,
+  fuentes estándar Helvetica); se descarga, nunca se guarda. Orden común: `sortReportBets` (`@letfer/shared`).
+- Pruebas: `report-pdf.spec.ts` (con `REPORT_PDF_OUT=<carpeta>` guarda los PDF para revisarlos),
+  `test/reports.e2e-spec.ts` y `ReportsPage.spec.tsx`.

@@ -2616,6 +2616,36 @@ proyecto); el rendimiento de un mes (análisis de ese mes) y la evolución
 de banca (§108.3), cuyo periodo solo elige qué puntos ya calculados se
 ven. El aviso de retornos por confirmar (§112.6) se conserva.
 
+### 108.11 Reportes e informes PDF (2026-10-15)
+
+**Estado:** Implementado en desarrollo, pendiente de aprobación para publicar. Es una **lectura**:
+no crea apuestas, movimientos, liquidaciones ni cambios de saldo, y no introduce fórmulas nuevas.
+
+-   **Alcance:** filtros del análisis (§33): rango de fechas, casa, tipo,
+    resultado, deporte, mercado y etapa, más el **origen del registro**
+    (manual o importada, según pertenezca a un lote §113). El rango usa la
+    semántica del dashboard: una apuesta liquidada cuenta por su fecha de
+    liquidación; una pendiente, por la de colocación (zona del proyecto).
+-   **Un solo alcance:** el panel, su vista previa y el PDF usan los mismos
+    filtros aplicados. Las cifras salen del análisis del dashboard (P/L,
+    Yield, ROI, win rate, cuota media, conteos) y la lista de apuestas sale
+    de la MISMA selección (misma consulta), con la ganancia de cada apuesta
+    según el ledger (§112.6): la suma de la tabla es la ganancia del resumen.
+-   **Conteos:** una apuesta registrada es una apuesta (una Múltiple de 4
+    legs o una Creada cuentan una vez). En el detalle, cada leg muestra su
+    cuota una sola vez y sus condiciones; la cuota total calculada se
+    rotula como tal (ADR 0023).
+-   **Totales:** monto apostado de las liquidadas (= total apostado del
+    análisis), comprometido en pendientes (suma de sus montos efectivos),
+    retornos realizados (monto apostado + ganancia neta) y ganancia neta;
+    los retornos calculados sin confirmar se avisan como provisionales.
+-   **Por tipo de apuesta:** ROI, Yield y win rate del análisis filtrado por
+    ese tipo (sin cálculos aparte).
+-   **PDF:** generado en el servidor al pedirlo (`GET /reports/pdf`), nunca
+    guardado ni con URL pública; mismos permisos que el dashboard (§108.8);
+    las imágenes de tickets solo con `tickets.view`. Máximo 5 000 apuestas
+    por reporte (se pide acotar el periodo).
+
 ## 109. Confianza y recuperación (Fase 5.5)
 
 > **Fase 9 (§113):** La verificación de integridad reconoce los lotes: una apuesta de un lote anulado está eliminada y sin efecto neto en el ledger (§113.8).
