@@ -96,3 +96,40 @@ proyecto.
 - Cuando la Fase 6 (conciliación) exista, el dashboard podrá incorporar el estado "requiere nueva
   conciliación" sin cambiar esta arquitectura, porque ya consulta `houses` para la distribución
   por casa.
+
+## Rediseño 2026-10-15 (alta fidelidad)
+
+Referencia visual: `docs/referencias/Referencias mockups/Dashboard.png` (tema oscuro). Capturas
+del resultado en `docs/referencias/capturas-dashboard/`.
+
+### Métricas nuevas (aprobadas; especificación §108.10)
+
+- **`winRate`** (`DashboardAnalysis`): ganadas ÷ (ganadas + perdidas) × 100, dos decimales; sin
+  pendientes, anuladas ni Cash Out; `null` sin ganadas ni perdidas. Sale de los mismos conteos
+  filtrados del análisis.
+- **`averageOdds`** (`DashboardAnalysis`): promedio simple de `visible_total_odds` de las
+  liquidadas del análisis, redondeado en SQL a la escala de las cuotas (6 decimales); `null` sin
+  liquidadas.
+- **`headline`** (`BetSummary`): `{ market, selection }` de una apuesta de un solo leg (Simple, o
+  Creada de un evento con `market = 'Creada'` y `selection = '{n} pronósticos'`); `null` en
+  Múltiple. Se arma con la consulta de selecciones que la lista ya hacía (sin N+1).
+
+Ninguna otra métrica cambia; sin migraciones.
+
+### Composición
+
+- Encabezado con selector de **rango de fechas** (`?desde`/`?hasta` en la URL; `?rango=todo` para
+  todo el proyecto; por defecto los últimos 30 días). El rango se convierte a instantes en la zona
+  del proyecto y solo afecta a lo rotulado «del rango»: ROI, Yield, total de apuestas y la opción
+  «Rango» de la dona.
+- Tarjeta de capital: capital, disponible y comprometido (`/status`); ROI y ganancia **desde el
+  inicio** (`/analysis` sin filtros); ROI y Yield del rango; stake unitario de la etapa activa.
+- Evolución del capital (7D/30D/3M/1A/Todo, 30D por defecto): filtra puntos ya calculados de
+  `/bankroll-chart`. Estado de apuestas con «Todo» (`/status`) o «Rango» (`/analysis`).
+  Rendimiento del mes: `/analysis` con el mes elegido.
+- Apuestas recientes (5), apuestas pendientes (3) y acciones rápidas.
+- Salen del Dashboard la tarjeta de datos del proyecto (Configuración), el saldo por casa (Casas
+  y Finanzas, que cubre la distribución por casas del §34) y los deportes (Reportes).
+- No se implementan, por no existir los datos o la función: buscador y notificaciones de la
+  cabecera, escudos/banderas de equipos, competición y hora del evento. En su lugar: icono del
+  deporte y «deporte · casa» con la fecha de colocación.

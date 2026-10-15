@@ -2524,6 +2524,11 @@ una pestaña nueva. La tarjeta de datos del proyecto se conserva; debajo
 se añaden el estado financiero actual, los filtros, los indicadores y
 los gráficos.
 
+> **Rediseño del Dashboard (2026-10-15, §108.10):** la tarjeta de datos del proyecto, el saldo por
+> casa y el desglose por deporte salen del Dashboard. Los datos del proyecto siguen en
+> Configuración; la distribución por casas (§33, §34), en Casas y Finanzas, y los desgloses, en
+> Reportes.
+
 ### 108.3 Dos series temporales distintas (D-M3, precisa el §91)
 
 -   **Evolución de banca real**: incluye todo (capital inicial,
@@ -2580,6 +2585,36 @@ temporales y el drawdown), igual que los saldos de casa (D3, Fase 3) y
 los montos/retornos de apuestas (D-B7, Fase 4). No se crea ninguna
 tabla ni columna nueva: el dashboard deriva enteramente de `bets`,
 `bet_selections`, `financial_movements`, `stages` y `houses`.
+
+### 108.10 Win rate, cuota media y rediseño del Dashboard (2026-10-15)
+
+**Estado:** Aprobada. Añade dos métricas a `GET /dashboard/analysis`; no cambia ninguna otra.
+Se calculan en el backend con las mismas apuestas y filtros del análisis (§33):
+
+-   **Win rate** (`winRate`) = ganadas ÷ (ganadas + perdidas) × 100, con
+    dos decimales. No cuentan pendientes, anuladas ni Cash Out. `null`
+    si no hay ninguna ganada ni perdida (la razón no está definida, no
+    es 0 %). La web lo acompaña de «{ganadas} de {ganadas + perdidas}
+    apuestas decididas».
+-   **Cuota media** (`averageOdds`) = promedio simple de la cuota total
+    visible (`visible_total_odds`) de las apuestas **liquidadas** del
+    análisis (sin pendientes), redondeado a la escala de las cuotas (6
+    decimales; se presenta con 2). `null` si no hay ninguna liquidada.
+
+Además, cada apuesta de la lista (`BetSummary`) trae `headline`, de
+solo lectura: mercado y pronóstico cuando la apuesta tiene **un solo
+leg** (Simple, o Creada de un solo evento: entonces el mercado es
+«Creada» y el pronóstico «{n} pronósticos»); `null` en una Múltiple. Se
+obtiene en la misma consulta de selecciones de la lista, sin consultas
+por fila.
+
+El Dashboard rediseñado (ADR 0015, «Rediseño 2026-10-15») solo presenta
+cifras del backend: capital, disponible, comprometido y la ganancia/ROI
+desde el inicio (análisis sin filtros); ROI, Yield y total de apuestas
+del **rango de fechas** elegido (análisis con `from`/`to` en la zona del
+proyecto); el rendimiento de un mes (análisis de ese mes) y la evolución
+de banca (§108.3), cuyo periodo solo elige qué puntos ya calculados se
+ven. El aviso de retornos por confirmar (§112.6) se conserva.
 
 ## 109. Confianza y recuperación (Fase 5.5)
 
