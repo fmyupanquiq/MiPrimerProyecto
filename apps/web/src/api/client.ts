@@ -110,6 +110,42 @@ export async function apiUpload<T>(
   return payload as T;
 }
 
+/**
+ * Descarga un archivo binario de la API (p. ej. el PDF de un reporte, §108.11) como `Blob`. Los
+ * errores llegan como JSON con la misma forma que en `apiFetch`. Comprueba el tipo esperado: nunca
+ * se da por bueno un archivo que no lo es.
+ */
+export async function apiBlob(path: string, expectedType: string): Promise<Blob> {
+  const response = await fetch(`/api${path}`, { credentials: 'same-origin' });
+  if (!response.ok) {
+    let payload: unknown;
+    try {
+      payload = await response.json();
+    } catch {
+      payload = undefined;
+    }
+    throw new ApiError(
+      response.status,
+      isApiErrorBody(payload)
+        ? payload
+        : {
+            statusCode: response.status,
+            code: ErrorCode.INTERNAL_ERROR,
+            message: 'La respuesta del servidor no es válida.',
+          },
+    );
+  }
+  const blob = await response.blob();
+  if (!(response.headers.get('Content-Type') ?? '').startsWith(expectedType) || blob.size === 0) {
+    throw new ApiError(response.status, {
+      statusCode: response.status,
+      code: ErrorCode.INTERNAL_ERROR,
+      message: 'El servidor no devolvió un archivo válido.',
+    });
+  }
+  return blob;
+}
+
 /** URL del archivo de un ticket (§42): siempre autenticada, nunca pública ni permanente. */
 export function ticketFileUrl(projectId: string, ticketId: string): string {
   return `/api/projects/${projectId}/tickets/${ticketId}/file`;

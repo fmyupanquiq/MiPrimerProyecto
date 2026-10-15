@@ -485,3 +485,26 @@ export const ArrowDownIcon = (p: IconProps) => (
     <path d="M12 5v14M6 13l6 6 6-6" />
   </Icon>
 );
+
+// --- Reportes (§108.11) -------------------------------------------------------------------------------
+
+/** Embudo: filtros. */
+export const FilterIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M3.5 5h17l-6.5 7.5v5.5l-4 2v-7.5Z" />
+  </Icon>
+);
+/** Etiqueta: mercado. */
+export const TagIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M3.5 12.2V4.5a1 1 0 0 1 1-1h7.7l8.3 8.3-8.7 8.7Z" />
+    <circle cx="8" cy="8" r="1.4" />
+  </Icon>
+);
+/** Descarga. */
+export const DownloadIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M12 4v11M7 10.5l5 5 5-5" />
+    <path d="M4.5 19.5h15" />
+  </Icon>
+);
