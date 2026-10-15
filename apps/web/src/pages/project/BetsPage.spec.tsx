@@ -2918,6 +2918,19 @@ describe('lista de apuestas: filtros, búsqueda y lectura (10.3e)', () => {
     expect(calls.length).toBe(before);
   });
 
+  it('?estado=PENDING (Dashboard, «Ver todos» de pendientes) abre la lista ya filtrada', async () => {
+    twoBets();
+    renderApp(`${BETS_URL}?estado=PENDING`);
+    expect(await screen.findByText('Arsenal vs Chelsea')).toBeTruthy();
+    expect(screen.queryByText('Nadal vs Alcaraz')).toBeNull();
+    const filters = screen.getByRole('group', { name: 'Filtrar por estado' });
+    expect(
+      within(filters)
+        .getByRole('button', { name: /Pendientes/ })
+        .getAttribute('aria-pressed'),
+    ).toBe('true');
+  });
+
   it('busca por partido, casa o deporte, y ofrece volver a ver todas', async () => {
     twoBets();
     renderApp(BETS_URL);

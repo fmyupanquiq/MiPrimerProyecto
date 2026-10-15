@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   AUTH_STATE,
@@ -88,13 +88,13 @@ describe('aviso de retornos no confirmados en el dashboard (D-A6, §112.6)', () 
   it('avisa, en el estado y en el análisis, de las ganadas con retorno solo calculado', async () => {
     openDashboard(2, { count: 2, profitLoss: '38.00' });
     renderApp(URL);
-    const alerts = await screen.findAllByText(/con retorno calculado/);
-    expect(alerts.length).toBeGreaterThanOrEqual(2);
+    // Rediseño 2026-10-15: un solo aviso con cuántas (del estado) y qué monto (del análisis).
     expect(
-      screen.getByText(/Hay 2 apuestas ganadas con retorno calculado, sin confirmar/),
+      await screen.findByText(/Hay 2 apuestas ganadas con retorno calculado, sin confirmar/),
     ).toBeTruthy();
-    expect(screen.getByText(/Ya cuentan en la ganancia, el Yield y el ROI/)).toBeTruthy();
-    expect(screen.getByText(/ganancia provisional de S\/ 38\.00/)).toBeTruthy();
+    const notice = screen.getByRole('status');
+    await waitFor(() => expect(notice.textContent).toMatch(/ganancia provisional de S\/ 38\.00/));
+    expect(notice.textContent).toMatch(/Ya cuentan en la ganancia, el Yield y el ROI/);
     const link = screen.getByRole('link', { name: 'Ver retornos por confirmar' });
     expect(link.getAttribute('href')).toBe(`${URL}/returns`);
   });
@@ -110,7 +110,7 @@ describe('aviso de retornos no confirmados en el dashboard (D-A6, §112.6)', () 
   it('sin retornos provisionales no muestra ningún aviso', async () => {
     openDashboard(0, { count: 0, profitLoss: '0.00' });
     renderApp(URL);
-    await screen.findByLabelText('Ganancia total');
+    await screen.findByLabelText('Ganancia / Pérdida total');
     expect(screen.queryByText(/con retorno calculado/)).toBeNull();
   });
 });

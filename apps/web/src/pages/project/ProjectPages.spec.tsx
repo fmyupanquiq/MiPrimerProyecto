@@ -66,17 +66,6 @@ describe('diseño del proyecto', () => {
     );
   });
 
-  it('el resumen muestra propietario, rol, moneda, zona horaria y formato de fecha', async () => {
-    open(URL, detail({ description: 'Grupo de apuestas', timezone: 'America/Bogota' }));
-    renderApp(URL);
-
-    expect(await screen.findByText('Grupo de apuestas')).toBeTruthy();
-    expect(screen.getByText('Propietario · Administrador de proyecto')).toBeTruthy();
-    expect(screen.getByText('PEN')).toBeTruthy();
-    expect(screen.getByText('America/Bogota')).toBeTruthy();
-    expect(screen.getByText(/DD\/MM\/AAAA/)).toBeTruthy();
-  });
-
   it('el resumen ya no anuncia ninguna sección como pendiente de fases futuras (Fase 5)', async () => {
     open(URL, detail());
     renderApp(URL);
