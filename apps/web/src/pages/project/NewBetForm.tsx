@@ -1976,7 +1976,9 @@ export function NewBetForm({
               </div>
             </div>
 
-            {step === 2 && !registered && <div className="flex flex-col gap-2">{confirmReview}</div>}
+            {step === 2 && !registered && (
+              <div className="flex flex-col gap-2">{confirmReview}</div>
+            )}
             {step === 2 && registeredProps && <BetRegisteredMain {...registeredProps} />}
 
             {narrow && <div className="flex flex-col gap-3">{asideContent}</div>}
