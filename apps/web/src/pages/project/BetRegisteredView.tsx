@@ -39,12 +39,10 @@ import { DigitalTicket } from './DigitalTicket.js';
 import { CardIcon, WizardCard } from './WizardCard.js';
 
 /*
- * Paso 3 "Confirmar" del asistente, DESPUÉS de registrar (rediseño de los tres pasos, ADR 0024;
- * corrección 2026-10-14): "Registro completado". Antes de pulsar "Registrar apuesta" el mismo paso
- * muestra el resumen del formulario (`NewBetForm`, `confirmReview`); esta vista solo se monta tras el
- * éxito, y se pinta EXCLUSIVAMENTE con el `BetDetail` que devolvió la API (nunca con el estado del
- * formulario): casa, fecha en la zona del proyecto, tipo, legs, stake, importe, cuota y su
- * procedencia, retorno potencial y estado. Se exporta en dos piezas (principal y columna derecha).
+ * Paso 3 "Confirmar" del asistente (rediseño de los tres pasos, ADR 0024): "Registro completado".
+ * Solo lectura y pintado EXCLUSIVAMENTE con el `BetDetail` que devolvió la API al registrar (nunca con
+ * el estado del formulario): casa, fecha en la zona del proyecto, tipo, legs, stake, importe, cuota y
+ * su procedencia, retorno potencial y estado. Se exporta en dos piezas (principal y columna derecha).
  */
 
 export interface BetRegisteredProps {

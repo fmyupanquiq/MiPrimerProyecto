@@ -151,10 +151,9 @@ export function WizardHeader({
 /**
  * Progreso de los tres pasos: completado (círculo violeta con check y el rótulo con su número),
  * activo (violeta con halo) y pendiente (círculo apagado). La línea es violeta desde el paso activo
- * hacia atrás. Solo se puede ir a los pasos que `canSelect` permite (nunca hacia adelante del paso
- * actual: eso es cosa de "Continuar"/"Registrar apuesta"; una vez registrada la apuesta, a ninguno);
- * un paso no navegable queda deshabilitado pero conserva `aria-current`. En móvil solo el paso activo
- * muestra su rótulo.
+ * hacia atrás. Solo se puede ir a los pasos que `canSelect` permite ("Confirmar" nunca: a él solo se
+ * llega registrando); un paso no navegable queda deshabilitado pero conserva `aria-current`. En móvil
+ * solo el paso activo muestra su rótulo.
  */
 export function WizardStepper({
   labels,
@@ -283,7 +282,7 @@ export function WizardBanner({
 /** Insignia "Detectado por IA. Verifica antes de confirmar." (solo si hubo una lectura aplicada). */
 export function AiDetectedBadge() {
   const explanation =
-    'La IA propuso estos datos a partir del ticket. Compáralos con la imagen: nada se registra hasta que pulses «Registrar apuesta» en el Paso 3.';
+    'La IA propuso estos datos a partir del ticket. Compáralos con la imagen: nada se registra hasta que pulses «Confirmar apuesta».';
   return (
     <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-300/60 bg-violet-100 px-2.5 py-1 text-xs font-medium text-violet-800">
       <StarIcon className="h-3.5 w-3.5 text-violet-700" />

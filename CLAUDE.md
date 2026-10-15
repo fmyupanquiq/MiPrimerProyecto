@@ -216,14 +216,11 @@ cuerpo si ambos difieren. Si una regla debe cambiar: primero se actualiza la esp
 
 ## Convenciones del asistente «Añadir apuesta» (ADR 0024)
 
-- **Tres pasos (rediseño 2026-10, corrección 2026-10-14):** 1 Añadir apuesta (origen IA/Manual + archivo; solo
-  «Analizar y continuar» analiza, Manual nunca), 2 Verificar datos (todo editable; «Continuar» solo avanza, nunca
-  registra), 3 Confirmar (resumen de solo lectura de todo lo que se va a guardar; tras registrar, el MISMO paso pasa a
-  mostrarse solo con el `BetDetail` de la API — «Registro completado»; no se vuelve atrás). **Solo «Registrar apuesta»
-  (Paso 3, `data-action="register"`) registra**; nada más (ni Enter, ni «Continuar» del Paso 2) envía; si falla, se
-  queda en el Paso 3 (puede volver al Paso 2 a corregir). Cada campo existe UNA vez (los pasos se ocultan, no se
-  desmontan). La tabla del Paso 3 y el ticket digital salen de `groupBetLegs`/la estructura real: una Creada dentro de
-  una Múltiple es una fila, con su cuota una vez.
+- **Tres pasos (rediseño 2026-10):** 1 Añadir apuesta (origen IA/Manual + archivo; solo «Analizar y continuar» analiza,
+  Manual nunca), 2 Verificar datos (todo editable), 3 Confirmar («Registro completado», solo lectura, pintado con el
+  `BetDetail` de la API; no se vuelve atrás). **Solo «Confirmar apuesta» (Paso 2, `data-action="register"`) registra**;
+  nada más (ni Enter) envía; si falla, se queda en el Paso 2. Cada campo existe UNA vez (los pasos se ocultan, no se desmontan). La tabla del Paso 2 y el ticket
+  digital salen de `groupBetLegs`/la estructura real: una Creada dentro de una Múltiple es una fila, con su cuota una vez.
 - **Resultado sin definir** hasta que la IA lo lee o alguien lo elige; «detectado por IA» solo si `statusFromAi`.
 - **Borradores** (`bet_drafts`): texto del formulario, sin efecto financiero; solo su dueño los ve (404 a otros); versión,
   borrado lógico, tope de 25 y 64 KB. Al registrar se descartan. Cerrar con cambios pide confirmación.
