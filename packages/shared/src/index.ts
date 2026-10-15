@@ -39,3 +39,4 @@ export * from './stage.js';
 export * from './ticket.js';
 export * from './trash.js';
 export * from './withdrawal.js';
+export * from './report.js';

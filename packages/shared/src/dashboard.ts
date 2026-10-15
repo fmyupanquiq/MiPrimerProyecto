@@ -13,6 +13,10 @@ import type { OddsString } from './odds.js';
 export const DASHBOARD_PERIODS = ['day', 'week', 'month'] as const;
 export type DashboardPeriod = (typeof DASHBOARD_PERIODS)[number];
 
+/** Origen del registro de una apuesta: manual (o con IA) o de un lote de importación (§113). */
+export const BET_ORIGINS = ['MANUAL', 'IMPORTED'] as const;
+export type BetOrigin = (typeof BET_ORIGINS)[number];
+
 /** Filtros del §33: ninguno modifica la realidad financiera (regla crítica 13). */
 export const dashboardFiltersSchema = z.object({
   stageId: z.uuid().optional(),
@@ -24,6 +28,8 @@ export const dashboardFiltersSchema = z.object({
   betType: z.enum(BET_TYPES).optional(),
   userId: z.uuid().optional(),
   status: z.enum(BET_STATUSES).optional(),
+  /** Origen del registro (§108.11, reportes). */
+  origin: z.enum(BET_ORIGINS).optional(),
   period: z.enum(DASHBOARD_PERIODS).default('month'),
 });
 export type DashboardFilters = z.infer<typeof dashboardFiltersSchema>;
