@@ -22,3 +22,24 @@ export function moneyTone(value: string | null): string {
 export function formatStake(value: string): string {
   return value.includes('.') ? value.replace(/\.?0+$/, '') : value;
 }
+
+/**
+ * Porcentaje de la API (dos decimales, p. ej. `"12.85"`) con UN decimal y signo explícito:
+ * `+12.9%`, `-3.4%`, `0.0%`. Redondeo half-up sobre la cadena (sin pasar por coma flotante).
+ */
+export function formatPercent(value: string, { signed = true } = {}): string {
+  const negative = value.startsWith('-');
+  const [integer = '0', fraction = ''] = value.replace(/^[-+]/, '').split('.');
+  const hundredths = BigInt(integer) * 100n + BigInt(`${fraction}00`.slice(0, 2));
+  const tenths = (hundredths + 5n) / 10n;
+  const text = `${tenths / 10n}.${tenths % 10n}`;
+  if (tenths === 0n) return `${text}%`;
+  if (negative) return `-${text}%`;
+  return `${signed ? '+' : ''}${text}%`;
+}
+
+/** Tono de un porcentaje o importe con signo: verde, rojo o neutro (`null` = sin dato). */
+export function signTone(value: string | null): 'positive' | 'negative' | 'neutral' {
+  if (value === null || /^-?0+(\.0+)?$/.test(value)) return 'neutral';
+  return value.startsWith('-') ? 'negative' : 'positive';
+}

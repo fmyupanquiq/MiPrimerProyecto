@@ -22,6 +22,18 @@ export const BET_STATUS_SOFT: Record<BetStatus, string> = {
 };
 
 /**
+ * Píldora del Dashboard (rediseño 2026-10-15, como la referencia): rectángulo redondeado con fondo
+ * tintado; Pendiente en ámbar (en espera), igual que en la dona.
+ */
+export const BET_STATUS_PILL: Record<BetStatus, string> = {
+  PENDING: 'bg-amber-100 text-amber-800 ring-amber-300/60',
+  WON: 'bg-green-100 text-green-800 ring-green-300/60',
+  LOST: 'bg-red-100 text-red-800 ring-red-300/60',
+  VOID: 'bg-slate-100 text-slate-600 ring-slate-300/60',
+  CASHOUT: 'bg-blue-100 text-blue-800 ring-blue-300/60',
+};
+
+/**
  * Color de cada estado en gráficos (mismo significado que las insignias). Ganada/Perdida/Cash
  * out usan los 600 fijos (iguales en claro y oscuro, como los botones, §4); Pendiente/Anulada son
  * neutros y SÍ deben seguir el tema (variables de `index.css`, Fase 11): un hex fijo de gris

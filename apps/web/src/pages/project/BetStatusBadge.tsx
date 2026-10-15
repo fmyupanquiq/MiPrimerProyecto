@@ -2,7 +2,7 @@ import type { BetStatus } from '@letfer/shared';
 import type { ReactNode } from 'react';
 import { BanIcon, CheckCircleIcon, ClockIcon, CoinsIcon, XCircleIcon } from '../../icons.js';
 import { BET_STATUS_LABELS } from '../../labels.js';
-import { BET_STATUS_SOFT } from './bet-status-style.js';
+import { BET_STATUS_PILL, BET_STATUS_SOFT } from './bet-status-style.js';
 
 /** Icono de cada estado: el estado nunca se distingue solo por el color. */
 export function betStatusIcon(status: BetStatus, className = 'h-3.5 w-3.5'): ReactNode {
@@ -20,8 +20,27 @@ export function betStatusIcon(status: BetStatus, className = 'h-3.5 w-3.5'): Rea
   }
 }
 
-/** Insignia de estado de una apuesta: texto + icono + color. */
-export function BetStatusBadge({ status }: { status: BetStatus }) {
+/**
+ * Insignia de estado de una apuesta: texto + icono + color. `pill` es la variante del Dashboard
+ * (rectángulo redondeado con fondo tintado, como la referencia).
+ */
+export function BetStatusBadge({
+  status,
+  variant = 'soft',
+}: {
+  status: BetStatus;
+  variant?: 'soft' | 'pill';
+}) {
+  if (variant === 'pill') {
+    return (
+      <span
+        className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium whitespace-nowrap ring-1 ring-inset ${BET_STATUS_PILL[status]}`}
+      >
+        {betStatusIcon(status)}
+        {BET_STATUS_LABELS[status]}
+      </span>
+    );
+  }
   return (
     <span
       className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium whitespace-nowrap ring-1 ring-inset ${BET_STATUS_SOFT[status]}`}

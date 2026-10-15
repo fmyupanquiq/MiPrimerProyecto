@@ -421,3 +421,67 @@ export const SpinnerIcon = (p: IconProps) => (
     <path d="M12 3a9 9 0 1 0 9 9" />
   </Icon>
 );
+
+// --- Dashboard (rediseño 2026-10-15) ----------------------------------------------------------------
+
+/** Balón de fútbol: deporte de una apuesta. */
+export const SoccerBallIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="m12 7.5 4 2.9-1.5 4.7h-5L8 10.4Z" />
+    <path d="M12 7.5V3.2M16 10.4l4.2-1.4M14.5 15.1l2.6 3.6M9.5 15.1l-2.6 3.6M8 10.4 3.8 9" />
+  </Icon>
+);
+/** Trofeo/medalla genérica: deporte que no es fútbol o sin deporte. */
+export const SportIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M3.5 9.5c3 1 5.5 3.5 6.5 11M20.5 14.5c-3-1-5.5-3.5-6.5-11" />
+  </Icon>
+);
+/** Reloj de arena: apuestas pendientes. */
+export const HourglassIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M6 3h12M6 21h12" />
+    <path d="M7 3v3a5 5 0 0 0 5 5 5 5 0 0 0 5-5V3M7 21v-3a5 5 0 0 1 5-5 5 5 0 0 1 5 5v3" />
+  </Icon>
+);
+/** Rayo: acciones rápidas. */
+export const BoltIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M13 2.5 4.5 13.5H11l-1 8 8.5-11H12Z" />
+  </Icon>
+);
+/** Gráfico de área: evolución del capital. */
+export const AreaChartIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M3.5 4v16.5H20" />
+    <path d="m6.5 16 4-5 3.5 3 5.5-6.5" />
+    <path
+      d="M6.5 16v1.5h13V8l-5.5 6.5-3.5-3Z"
+      fill="currentColor"
+      fillOpacity={0.25}
+      stroke="none"
+    />
+  </Icon>
+);
+/** Gráfico de dona: estado de apuestas. */
+export const DonutIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <circle cx="12" cy="12" r="8.5" />
+    <circle cx="12" cy="12" r="3.5" />
+    <path d="M12 3.5v5M18.5 17.5l-3.6-3.2" />
+  </Icon>
+);
+/** Flecha hacia arriba (variación positiva). */
+export const ArrowUpIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M12 19V5M6 11l6-6 6 6" />
+  </Icon>
+);
+/** Flecha hacia abajo (variación negativa). */
+export const ArrowDownIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M12 5v14M6 13l6 6 6-6" />
+  </Icon>
+);

@@ -12,7 +12,22 @@ export const CHART = {
   axis: 'var(--color-slate-400)',
   marker: 'var(--color-slate-300)',
   markerText: 'var(--color-slate-500)',
+  /** Tooltip oscuro del Dashboard (igual en ambos temas, como en la referencia). */
+  tooltipBg: '#0b1220',
+  tooltipBorder: 'rgba(148, 163, 184, 0.25)',
 };
+
+/**
+ * Colores de la dona «Estado de apuestas» del Dashboard (referencia 2026-10-15): tonos 500, iguales
+ * en claro y oscuro; Anuladas es neutro y sigue el tema.
+ */
+export const DONUT_COLORS = {
+  WON: '#22c55e',
+  LOST: '#ef4444',
+  PENDING: '#eab308',
+  VOID: 'var(--color-slate-400)',
+  CASHOUT: '#3b82f6',
+} as const;
 
 export const chartTooltipStyle: CSSProperties = {
   backgroundColor: 'var(--color-surface)',
