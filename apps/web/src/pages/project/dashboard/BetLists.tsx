@@ -127,7 +127,7 @@ function Cell({
 }
 
 const COLUMNS =
-  '@[44rem]:grid @[44rem]:grid-cols-[5.25rem_minmax(0,1fr)_4.75rem_2.75rem_6.25rem_5.25rem_1.75rem] @[60rem]:grid-cols-[5.25rem_minmax(0,1.7fr)_minmax(0,1.2fr)_4.75rem_2.75rem_6.25rem_5.25rem_1.75rem] @[44rem]:items-center @[44rem]:gap-2.5';
+  '@[44rem]:grid @[44rem]:grid-cols-[5rem_minmax(0,1fr)_4.5rem_2.75rem_6.25rem_5rem_1.5rem] @[80rem]:grid-cols-[5rem_minmax(0,1.8fr)_minmax(0,1.1fr)_4.5rem_2.75rem_6.25rem_5rem_1.5rem] @[44rem]:items-center @[44rem]:gap-2';
 
 /**
  * Apuestas recientes: las cinco últimas por fecha de colocación (como ordena la API). Solo el
@@ -184,7 +184,7 @@ export function RecentBets({
           >
             <span>Fecha</span>
             <span>Partido</span>
-            <span className="hidden @[60rem]:inline">Tipo</span>
+            <span className="hidden @[80rem]:inline">Tipo</span>
             <span>Monto</span>
             <span>Cuota</span>
             <span>Resultado</span>
@@ -195,7 +195,7 @@ export function RecentBets({
             {recent.map((bet) => (
               <li
                 key={bet.id}
-                className={`flex flex-col gap-1.5 rounded-lg px-3 py-3 text-sm transition-colors hover:bg-slate-100/50 @[44rem]:min-h-[52px] @[44rem]:py-1.5 ${COLUMNS}`}
+                className={`flex flex-col gap-1.5 rounded-lg px-3 py-3 text-sm transition-colors hover:bg-slate-100/50 @[44rem]:min-h-11 @[44rem]:py-1 @[44rem]:text-[0.8125rem] ${COLUMNS}`}
               >
                 <div className="flex items-start justify-between gap-2 @[44rem]:block">
                   <span className="text-xs leading-tight text-slate-700">
@@ -222,7 +222,7 @@ export function RecentBets({
                   </Link>
                 </div>
                 {/* «Tipo» solo cuando hay sitio de verdad; en móvil va como línea propia. */}
-                <Cell label="Tipo" className="min-w-0 @[44rem]:hidden @[60rem]:block">
+                <Cell label="Tipo" className="min-w-0 @[44rem]:hidden @[80rem]:block">
                   <span className="block truncate text-xs text-slate-600" title={typeOf(bet)}>
                     {typeOf(bet)}
                   </span>

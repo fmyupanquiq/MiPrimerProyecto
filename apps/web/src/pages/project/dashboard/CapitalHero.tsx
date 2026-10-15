@@ -90,7 +90,7 @@ function Metric({
   children: ReactNode;
 }) {
   return (
-    <div className="flex min-w-0 items-center gap-3.5 py-1 @[60rem]:px-5 @[60rem]:first:pl-0 @[60rem]:last:pr-0">
+    <div className="flex min-w-0 items-center gap-3.5 py-0.5 @[60rem]:px-5 @[60rem]:first:pl-0 @[60rem]:last:pr-0">
       <span
         className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${ICON_TONE[tone]}`}
         aria-hidden="true"
@@ -98,7 +98,7 @@ function Metric({
         {icon}
       </span>
       <div className="min-w-0 flex-1">
-        <p className="flex items-center gap-1 text-sm text-slate-600">
+        <p className="flex items-center gap-1 text-[0.8125rem] text-slate-600">
           {label}
           {term && <Help term={term} />}
         </p>
@@ -123,12 +123,12 @@ function MetricValue({
   return (
     <>
       <p
-        className={`truncate text-xl font-semibold tracking-tight tabular-nums ${VALUE_TONE[tone]}`}
+        className={`truncate text-lg leading-snug font-semibold tracking-tight tabular-nums ${VALUE_TONE[tone]}`}
         aria-label={label}
       >
         {value}
       </p>
-      <p className="truncate text-xs text-slate-500">{caption}</p>
+      <p className="truncate text-[0.6875rem] text-slate-500">{caption}</p>
     </>
   );
 }
@@ -148,7 +148,7 @@ function Sparkline({ bankroll }: { bankroll: BankrollChart | null }) {
   return (
     <div
       aria-hidden="true"
-      className="pointer-events-none absolute top-3 right-[41.5%] left-[48%] hidden h-[5.5rem] [mask-image:linear-gradient(to_right,transparent,black_30%,black_85%,transparent)] @[72rem]:block"
+      className="pointer-events-none absolute top-2 right-[33rem] left-[38rem] hidden h-[5.25rem] [mask-image:linear-gradient(to_right,transparent,black_25%,black_85%,transparent)] @[82rem]:block"
     >
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart data={data} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
@@ -205,7 +205,7 @@ function RangeMetrics({
     </div>
   );
   return (
-    <div className="grid grid-cols-3 divide-x divide-slate-200 rounded-xl border border-slate-200/80 bg-surface/40 px-3 py-3 @[40rem]:px-5">
+    <div className="grid grid-cols-3 divide-x divide-slate-200 rounded-xl border border-slate-200/80 bg-surface/40 px-3 py-2.5 @[40rem]:px-5">
       {ratio('ROI', (a) => a.roi)}
       {ratio('Yield', (a) => a.yield)}
       <div className="min-w-0 px-2.5 @[40rem]:px-5">
@@ -254,11 +254,11 @@ export function CapitalHero({
       className="relative overflow-hidden rounded-2xl border border-violet-200/70 bg-linear-to-r from-violet-50 via-surface to-surface shadow-sm"
     >
       <Sparkline bankroll={bankroll.data} />
-      <div className="relative flex flex-col gap-4 p-5">
+      <div className="relative flex flex-col gap-3.5 px-5 py-4">
         <div className="flex flex-col gap-4 @[72rem]:flex-row @[72rem]:items-center @[72rem]:justify-between">
           <div className="flex min-w-0 items-start gap-4">
             <span
-              className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-violet-100 text-violet-700 shadow-[0_0_24px_-6px_rgba(139,92,246,0.55)]"
+              className="flex h-[3.25rem] w-[3.25rem] shrink-0 items-center justify-center rounded-2xl bg-violet-100 text-violet-700 shadow-[0_0_24px_-6px_rgba(139,92,246,0.55)]"
               aria-hidden="true"
             >
               <WalletIcon className="h-7 w-7" />
@@ -272,7 +272,7 @@ export function CapitalHero({
                 <Value loaded={status} label="Capital actual" skeleton="mt-1 h-12 w-56">
                   {(s) => (
                     <p
-                      className="text-4xl font-bold tracking-tight text-slate-900 tabular-nums @[40rem]:text-5xl"
+                      className="text-4xl leading-tight font-bold tracking-tight text-slate-900 tabular-nums @[40rem]:text-[2.5rem]"
                       aria-label="Capital actual"
                     >
                       {formatPEN(s.capitalActual)}
@@ -321,7 +321,7 @@ export function CapitalHero({
           </div>
         </div>
 
-        <div className="grid gap-4 border-t border-slate-200/80 pt-4 @[34rem]:grid-cols-2 @[60rem]:grid-cols-4 @[60rem]:gap-0 @[60rem]:divide-x @[60rem]:divide-slate-200/80">
+        <div className="grid gap-4 border-t border-slate-200/80 pt-3.5 @[34rem]:grid-cols-2 @[60rem]:grid-cols-4 @[60rem]:gap-0 @[60rem]:divide-x @[60rem]:divide-slate-200/80">
           <Metric label="Disponible" term="available" icon={<BankIcon />} tone="blue">
             <Value loaded={status} label="Disponible" skeleton="mt-1 h-7 w-28">
               {(s) => (

@@ -1,5 +1,5 @@
 import { formatPEN, type BankrollChart, type BankrollPoint } from '@letfer/shared';
-import { useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import {
   Area,
   AreaChart,
@@ -18,6 +18,7 @@ import { formatDate } from '../../../labels.js';
 import { zonedParts } from '../../../time-zone.js';
 import { CHART } from '../chart-theme.js';
 import { CardError, DashboardCard, Skeleton } from './DashboardCard.js';
+import { dayTicks, valueAxis } from './chart-axes.js';
 import { formatCalendarDate } from './date-range.js';
 
 export const CHART_PERIODS = [
@@ -142,6 +143,18 @@ export function CapitalChart({
   const [now] = useState(() => Date.now());
   const gradientId = useId();
   const points = bankroll.data?.points;
+  // Ancho real del gráfico: decide cuántas fechas caben en el eje sin amontonarse.
+  const [plotEl, setPlotEl] = useState<HTMLDivElement | null>(null);
+  const [plotWidth, setPlotWidth] = useState(480);
+  useEffect(() => {
+    const el = plotEl;
+    if (!el) return;
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry) setPlotWidth(Math.round(entry.contentRect.width));
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [plotEl]);
 
   const view = useMemo(() => {
     if (!points) return null;
@@ -154,8 +167,13 @@ export function CapitalChart({
     }));
     const first = opening ?? inWindow[0] ?? null;
     const last = inWindow.at(-1) ?? null;
+    // El eje X cubre el periodo elegido completo (hasta hoy): los puntos quedan en su fecha real,
+    // aunque los movimientos se concentren en pocos días.
+    const start = days === null ? (data[0]?.t ?? now) : now - days * DAY_MS;
     return {
       data,
+      xDomain: [Math.min(start, data[0]?.t ?? start), now] as [number, number],
+      yAxis: valueAxis(data.length > 0 ? data.map((p) => p.value) : [0]),
       summary:
         first && last
           ? `Capital de ${formatPEN(first.balance)} a ${formatPEN(last.balance)} en ${name === 'todo el proyecto' ? 'todo el proyecto' : `los ${name}`}`
@@ -172,7 +190,7 @@ export function CapitalChart({
       className={className}
     >
       {bankroll.loading && !bankroll.data ? (
-        <div aria-busy="true" className="h-48">
+        <div aria-busy="true" className="h-[10.5rem]">
           <span className="sr-only">Cargando la evolución del capital…</span>
           <Skeleton className="h-full w-full" />
         </div>
@@ -182,12 +200,13 @@ export function CapitalChart({
           onRetry={bankroll.reload}
         />
       ) : view.data.length === 0 ? (
-        <div className="flex h-48 items-center justify-center rounded-xl border border-dashed border-slate-200 text-sm text-slate-500">
+        <div className="flex h-[10.5rem] items-center justify-center rounded-xl border border-dashed border-slate-200 text-sm text-slate-500">
           Aún no hay movimientos en este periodo.
         </div>
       ) : (
         <div
-          className="h-48 w-full"
+          ref={setPlotEl}
+          className="h-[10.5rem] w-full"
           role="img"
           aria-label={view.summary ?? 'Gráfico de evolución del capital'}
         >
@@ -209,14 +228,15 @@ export function CapitalChart({
                 dataKey="t"
                 type="number"
                 scale="time"
-                domain={['dataMin', 'dataMax']}
+                domain={view.xDomain}
+                ticks={dayTicks(view.xDomain[0], view.xDomain[1], plotWidth - 60)}
+                interval={0}
                 tickFormatter={(t: number) =>
                   formatCalendarDate(zonedParts(new Date(t)).date, false)
                 }
                 fontSize={11}
                 tickLine={false}
                 axisLine={false}
-                minTickGap={28}
                 stroke={CHART.axis}
                 tickMargin={8}
               />
@@ -226,8 +246,9 @@ export function CapitalChart({
                 tickLine={false}
                 axisLine={false}
                 stroke={CHART.axis}
-                tickCount={5}
-                domain={['auto', 'auto']}
+                domain={view.yAxis.domain}
+                ticks={view.yAxis.ticks}
+                interval={0}
                 tickFormatter={axisMoney}
               />
               <Tooltip

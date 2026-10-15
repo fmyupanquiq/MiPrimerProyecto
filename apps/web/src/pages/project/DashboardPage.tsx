@@ -46,7 +46,7 @@ export function DashboardPage() {
   const setRange = (next: DateRange) => setSearchParams(rangeToSearch(next, today));
 
   return (
-    <div className="@container flex flex-col gap-4">
+    <div data-page="dashboard" className="@container flex flex-col gap-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
           <h2 className="text-3xl font-bold tracking-tight text-slate-900">Dashboard</h2>
@@ -169,13 +169,13 @@ function DashboardContent({ range, today }: { range: DateRange; today: string })
         unitStake={project.activeStage?.unitStake ?? null}
       />
 
-      <div className="grid gap-4 @[40rem]:grid-cols-2 @[72rem]:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)_minmax(0,1.15fr)]">
+      <div className="grid gap-4 @[40rem]:grid-cols-2 @[72rem]:grid-cols-[minmax(0,1.85fr)_minmax(20.75rem,1.05fr)_minmax(22.5rem,1fr)]">
         <CapitalChart bankroll={bankroll} className="@[40rem]:col-span-2 @[72rem]:col-span-1" />
         <BetStatusDonut status={status} range={ranged} addBetPath={addBetPath} />
         <MonthPerformance month={month} months={months} onMonth={setMonth} analysis={monthly} />
       </div>
 
-      <div className="grid gap-4 @[72rem]:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+      <div className="grid gap-4 @[72rem]:grid-cols-[minmax(0,1.8fr)_minmax(22rem,1fr)]">
         <RecentBets bets={bets} projectPath={base} addBetPath={addBetPath} />
         <div className="grid content-start gap-4 @[40rem]:grid-cols-2 @[72rem]:grid-cols-1">
           <PendingBets

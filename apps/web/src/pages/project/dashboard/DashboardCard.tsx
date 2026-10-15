@@ -16,6 +16,7 @@ export function DashboardCard({
   action,
   children,
   className = '',
+  flush = false,
 }: {
   title: string;
   subtitle?: ReactNode;
@@ -25,25 +26,29 @@ export function DashboardCard({
   action?: ReactNode;
   children: ReactNode;
   className?: string;
+  /** Sin caja (borde, fondo ni sombra): un bloque ligero, como «Acciones rápidas» en la referencia. */
+  flush?: boolean;
 }) {
   const headingId = useId();
   return (
     <section
       aria-labelledby={headingId}
-      className={`flex min-w-0 flex-col gap-4 rounded-2xl border border-slate-200/70 bg-surface p-5 shadow-sm ${className}`}
+      className={`flex min-w-0 flex-col gap-3.5 rounded-2xl ${
+        flush ? 'px-1 py-1' : 'border border-slate-200/70 bg-surface p-4 shadow-sm'
+      } ${className}`}
     >
-      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-2">
         {/* El título cede (se trunca) antes que los controles: solo bajan de línea sin espacio. */}
-        <div className="flex min-w-[11rem] flex-1 basis-0 items-center gap-3">
+        <div className="flex min-w-[9.5rem] flex-1 basis-0 items-center gap-2.5">
           <span
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-violet-100 text-violet-700 [&>svg]:h-5 [&>svg]:w-5"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-violet-100 text-violet-700 [&>svg]:h-[1.125rem] [&>svg]:w-[1.125rem]"
             aria-hidden="true"
           >
             {icon}
           </span>
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <h2 id={headingId} className="truncate text-base font-semibold text-slate-900">
+              <h2 id={headingId} className="truncate text-sm font-semibold text-slate-900">
                 {title}
               </h2>
               {titleExtra}

@@ -29,7 +29,7 @@ export function quickActions(
     actions.push({
       to: `${base}/bets?nueva=1`,
       label: 'Añadir apuesta',
-      icon: <PlusIcon className="h-4 w-4" />,
+      icon: <PlusIcon className="h-3.5 w-3.5" />,
       primary: true,
     });
   }
@@ -37,20 +37,20 @@ export function quickActions(
     actions.push({
       to: `${base}/imports/new`,
       label: 'Importar apuestas',
-      icon: <UploadIcon className="h-4 w-4" />,
+      icon: <UploadIcon className="h-3.5 w-3.5" />,
     });
   }
   if (can('bets.view')) {
     actions.push({
       to: `${base}/bets`,
       label: 'Ver historial',
-      icon: <ClockIcon className="h-4 w-4" />,
+      icon: <ClockIcon className="h-3.5 w-3.5" />,
     });
   }
   actions.push({
     to: `${base}/finance`,
     label: 'Gestionar casas',
-    icon: <BankIcon className="h-4 w-4" />,
+    icon: <BankIcon className="h-3.5 w-3.5" />,
   });
   return actions;
 }
@@ -59,21 +59,24 @@ export function quickActions(
 export function QuickActions({ actions }: { actions: QuickAction[] }) {
   if (actions.length === 0) return null;
   return (
-    <DashboardCard title="Acciones rápidas" icon={<BoltIcon />}>
+    <DashboardCard title="Acciones rápidas" icon={<BoltIcon />} flush>
+      {/* Una sola fila cuando cabe (como la referencia); si no, los botones bajan de línea sin
+          cortarse y se reparten el ancho. */}
       <div className="@container">
-        <ul className="grid grid-cols-2 gap-2.5 @[30rem]:grid-cols-4" aria-label="Acciones rápidas">
+        <ul className="flex flex-wrap gap-1.5" aria-label="Acciones rápidas">
           {actions.map((action) => (
-            <li key={action.to} className="min-w-0">
+            <li key={action.to} className="min-w-0 grow basis-auto">
               <Link
                 to={action.to}
-                className={`flex h-11 w-full items-center justify-center gap-1.5 rounded-lg px-2 text-xs font-medium whitespace-nowrap transition-colors ${focusRing} ${
+                className={`flex h-10 w-full items-center justify-center gap-1 rounded-lg px-2 text-[0.6875rem] font-medium whitespace-nowrap transition-colors ${focusRing} ${
                   action.primary
                     ? 'bg-violet-600 text-white shadow-[0_0_18px_-6px_rgba(124,58,237,0.9)] hover:bg-violet-500'
-                    : 'border border-slate-200 text-slate-700 hover:border-violet-300 hover:text-violet-700'
+                    : 'border border-slate-200 bg-surface text-slate-700 hover:border-violet-300 hover:text-violet-700'
                 }`}
               >
-                {action.icon}
-                <span className="truncate">{action.label}</span>
+                {/* Sin sitio para los cuatro con icono, el icono cede antes que el texto. */}
+                <span className="hidden @[30rem]:inline-flex">{action.icon}</span>
+                <span>{action.label}</span>
               </Link>
             </li>
           ))}

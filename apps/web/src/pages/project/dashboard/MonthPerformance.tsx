@@ -27,15 +27,15 @@ function Tile({
   caption: ReactNode;
 }) {
   return (
-    <div className="flex min-w-0 flex-col rounded-xl border border-slate-200/70 bg-surface-2 px-3.5 py-3">
-      <p className="text-sm text-slate-600">{label}</p>
+    <div className="flex min-w-0 flex-col rounded-xl border border-slate-200/70 bg-surface-2 px-2.5 py-2.5">
+      <p className="text-[0.8125rem] text-slate-600">{label}</p>
       <p
-        className={`mt-0.5 truncate text-2xl font-bold tracking-tight tabular-nums ${valueClass}`}
+        className={`truncate text-xl leading-snug font-bold tracking-tight tabular-nums ${valueClass}`}
         aria-label={`${label} del mes`}
       >
         {value}
       </p>
-      <p className="mt-0.5 line-clamp-2 text-xs text-slate-500">{caption}</p>
+      <p className="line-clamp-2 text-[0.6875rem] text-slate-500">{caption}</p>
     </div>
   );
 }
@@ -75,10 +75,10 @@ export function MonthPerformance({
       }
     >
       {analysis.loading && !a ? (
-        <div aria-busy="true" className="grid grid-cols-2 gap-3">
+        <div aria-busy="true" className="grid grid-cols-2 gap-2.5">
           <span className="sr-only">Cargando el rendimiento del mes…</span>
           {[0, 1, 2, 3].map((i) => (
-            <Skeleton key={i} className="h-[5.5rem] w-full rounded-xl" />
+            <Skeleton key={i} className="h-[4.75rem] w-full rounded-xl" />
           ))}
         </div>
       ) : !a ? (
@@ -87,7 +87,7 @@ export function MonthPerformance({
           onRetry={analysis.reload}
         />
       ) : (
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-2.5">
           <Tile
             label="Win rate"
             value={a.winRate === null ? '—' : formatPercent(a.winRate, { signed: false })}

@@ -138,7 +138,7 @@ export function AppShell() {
         <aside
           id="app-sidebar"
           aria-label="Barra lateral"
-          className={`fixed inset-y-0 left-0 z-40 flex w-64 shrink-0 flex-col bg-sidebar text-sidebar-text transition-transform lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 ${
+          className={`fixed inset-y-0 left-0 z-40 flex w-[13.5rem] shrink-0 flex-col bg-sidebar text-sidebar-text transition-transform lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 ${
             drawerOpen ? 'translate-x-0' : 'max-lg:invisible -translate-x-full'
           }`}
         >
@@ -164,7 +164,7 @@ export function AppShell() {
               <CloseIcon />
             </button>
           </div>
-          <nav aria-label="Principal" className="flex flex-col gap-1 px-3">
+          <nav aria-label="Principal" className="flex flex-col gap-1 px-2.5">
             <SidebarLink to="/" end icon={<FolderIcon />}>
               Mis proyectos
             </SidebarLink>
@@ -243,7 +243,9 @@ export function AppShell() {
           </header>
           <main
             id="main-content"
-            className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-4 p-4 sm:p-6"
+            // El Dashboard y Reportes (`data-page`) usan casi todo el ancho útil, como sus diseños de
+            // referencia; el resto de pantallas conserva su ancho máximo de lectura.
+            className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-4 p-4 sm:p-6 has-[[data-page=dashboard]]:max-w-[110rem] has-[[data-page=reports]]:max-w-[110rem]"
           >
             <Outlet />
           </main>

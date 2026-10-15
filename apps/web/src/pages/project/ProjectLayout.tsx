@@ -82,7 +82,7 @@ export function ProjectLayout() {
     <>
       <nav
         aria-label="Proyecto"
-        className="flex flex-col gap-4 border-t border-sidebar-border px-3 pt-4"
+        className="flex flex-col gap-4 border-t border-sidebar-border px-2.5 pt-4"
       >
         <div className="flex flex-col gap-1">
           <SidebarLink to={base} end icon={<HomeIcon />}>
