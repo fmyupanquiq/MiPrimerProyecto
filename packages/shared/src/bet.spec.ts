@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  betHeadline,
   createBetSchema,
   isStakeString,
   moveBetStageSchema,
@@ -213,5 +214,41 @@ describe('correctSettlementSchema (§112.3, D-A8)', () => {
     expect(restoreBetSchema.parse({ reason: ' Era correcta ' })).toEqual({
       reason: 'Era correcta',
     });
+  });
+});
+
+describe('betHeadline (§108.10)', () => {
+  const row = (eventGroup: number, position: number, market: string | null, selection: string) => ({
+    eventGroup,
+    position,
+    market,
+    selection,
+  });
+
+  it('Simple: mercado y pronóstico de su única selección', () => {
+    expect(betHeadline('SIMPLE', [row(0, 0, '1X2', 'Real Madrid')])).toEqual({
+      market: '1X2',
+      selection: 'Real Madrid',
+    });
+  });
+
+  it('sin mercado indicado, el mercado queda vacío (no se inventa)', () => {
+    expect(betHeadline('SIMPLE', [row(0, 0, null, 'Real Madrid')])).toEqual({
+      market: '',
+      selection: 'Real Madrid',
+    });
+  });
+
+  it('Creada de un solo evento: «Creada» y la cantidad de pronósticos', () => {
+    expect(
+      betHeadline('CREATED', [row(0, 0, '1X2', 'Real Madrid'), row(0, 1, 'Goles', 'Más de 2.5')]),
+    ).toEqual({ market: 'Creada', selection: '2 pronósticos' });
+  });
+
+  it('Múltiple (o varios legs, o sin selecciones): sin titular', () => {
+    expect(betHeadline('MULTIPLE', [row(0, 0, '1X2', 'A'), row(1, 0, '1X2', 'B')])).toBeNull();
+    expect(betHeadline('MULTIPLE', [row(0, 0, '1X2', 'A')])).toBeNull();
+    expect(betHeadline('SIMPLE', [row(0, 0, '1X2', 'A'), row(1, 0, '1X2', 'B')])).toBeNull();
+    expect(betHeadline('SIMPLE', [])).toBeNull();
   });
 });

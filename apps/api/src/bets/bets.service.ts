@@ -13,9 +13,11 @@ import {
   BET_TRASH_LIMITS,
   ErrorCode,
   PROJECT_TRASH_RETENTION_DAYS,
+  betHeadline,
   ZERO_MONEY,
   type AmountSource,
   type BetDetail,
+  type BetHeadline,
   type BetReturnsReportQuery,
   type ImportBatchStatus,
   type BetLedgerHistory,
@@ -151,6 +153,7 @@ interface SummaryContext {
   events: string[];
   sports: string[];
   ticketCount: number;
+  headline: BetHeadline | null;
 }
 
 function toSelectionSummary(row: BetSelectionRow): BetSelectionSummary {
@@ -1291,6 +1294,7 @@ export class BetsService {
       events: ctx.events,
       sports: ctx.sports,
       ticketCount: ctx.ticketCount,
+      headline: ctx.headline,
       createdAt: bet.createdAt.toISOString(),
       updatedAt: bet.updatedAt.toISOString(),
       deletedAt: bet.deletedAt ? bet.deletedAt.toISOString() : null,
@@ -1385,6 +1389,10 @@ export class BetsService {
             betId: betSelections.betId,
             event: betSelections.event,
             sport: betSelections.sport,
+            eventGroup: betSelections.eventGroup,
+            position: betSelections.position,
+            market: betSelections.market,
+            selection: betSelections.selection,
           })
           .from(betSelections)
           .where(inArray(betSelections.betId, betIds))
@@ -1397,7 +1405,9 @@ export class BetsService {
       ]);
     const eventsByBet = new Map<string, string[]>();
     const sportsByBet = new Map<string, string[]>();
+    const selectionsByBet = new Map<string, (typeof selectionRows)[number][]>();
     for (const row of selectionRows) {
+      selectionsByBet.set(row.betId, [...(selectionsByBet.get(row.betId) ?? []), row]);
       const events = eventsByBet.get(row.betId) ?? [];
       if (!events.includes(row.event)) events.push(row.event);
       eventsByBet.set(row.betId, events);
@@ -1422,6 +1432,7 @@ export class BetsService {
           events: eventsByBet.get(bet.id) ?? [],
           sports: sportsByBet.get(bet.id) ?? [],
           ticketCount: ticketCountByBet.get(bet.id) ?? 0,
+          headline: betHeadline(bet.betType, selectionsByBet.get(bet.id) ?? []),
         },
       ]),
     );

@@ -4,6 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { stages, type UserRow } from '../src/database/schema/index.js';
 import { createTestApp, login, sessionCookie, type TestApp } from './support/create-app.js';
 import { insertMember, insertProject } from './support/factories.js';
+import { assertFinancialInvariant } from './support/financial-invariant.js';
 
 type Actor = 'owner' | 'admin' | 'collab' | 'reader' | 'stranger';
 
@@ -303,6 +304,126 @@ describe('dashboard y métricas (e2e, PostgreSQL real, §33, §34, §108)', () =
         counts: { total: number };
       };
       expect(onlySport.counts.total).toBe(0); // "Futbol" (sin tilde) no coincide con "Fútbol"
+    });
+  });
+
+  describe('win rate y cuota media (§108.10)', () => {
+    /** Coloca una Simple con esa cuota y, si se indica, la liquida en esa fecha. */
+    async function betWith(
+      odds: string,
+      settle?: { status: string; settledAt: string; officialRealizedReturn?: string },
+    ) {
+      const created = (
+        await createBet(
+          'collab',
+          simpleBet({
+            visibleTotalOdds: odds,
+            selections: [{ ...simpleBet().selections[0], visibleOdds: odds }],
+          }),
+        ).expect(201)
+      ).body as BetBody;
+      if (settle) {
+        await settleBet('admin', created.id, {
+          ...settle,
+          settledTimeKnown: true,
+          version: created.version,
+        }).expect(200);
+      }
+    }
+
+    type Metrics = { winRate: string | null; averageOdds: string | null };
+
+    it('sin apuestas decididas ni liquidadas, ambas son null (no 0)', async () => {
+      await betWith('5.00'); // pendiente: no cuenta en ninguna
+      const body = (await analysis('owner').expect(200)).body as Metrics;
+      expect(body.winRate).toBeNull();
+      expect(body.averageOdds).toBeNull();
+    });
+
+    it('win rate solo con ganadas y perdidas; cuota media de las liquidadas, sin pendientes', async () => {
+      await betWith('1.95', {
+        status: 'WON',
+        officialRealizedReturn: '39.00',
+        settledAt: '2026-06-02T22:00:00.000Z',
+      });
+      await betWith('2.10', { status: 'LOST', settledAt: '2026-06-03T22:00:00.000Z' });
+      await betWith('3.333333', { status: 'LOST', settledAt: '2026-06-04T22:00:00.000Z' });
+      await betWith('1.50', { status: 'VOID', settledAt: '2026-06-05T22:00:00.000Z' });
+      await betWith('2.00', {
+        status: 'CASHOUT',
+        officialRealizedReturn: '15.00',
+        settledAt: '2026-06-06T22:00:00.000Z',
+      });
+      await betWith('5.00'); // pendiente
+
+      const all = (await analysis('owner').expect(200)).body as Metrics;
+      // 1 ganada de 3 decididas: anuladas, Cash Out y pendientes no cuentan.
+      expect(all.winRate).toBe('33.33');
+      // (1.95 + 2.10 + 3.333333 + 1.50 + 2.00) / 5 = 2.1766666 → 6 decimales.
+      expect(all.averageOdds).toBe('2.176667');
+
+      // Con el rango de fechas del análisis: solo la ganada y la primera perdida.
+      const from = encodeURIComponent('2026-06-02T00:00:00.000Z');
+      const to = encodeURIComponent('2026-06-03T23:59:59.999Z');
+      const ranged = (await analysis('owner', `?from=${from}&to=${to}`).expect(200))
+        .body as Metrics;
+      expect(ranged.winRate).toBe('50.00');
+      expect(ranged.averageOdds).toBe('2.025000');
+
+      // Solo anuladas y Cash Out en el rango: sin decididas (null), pero sí con cuota media.
+      const lateFrom = encodeURIComponent('2026-06-05T00:00:00.000Z');
+      const late = (await analysis('owner', `?from=${lateFrom}`).expect(200)).body as Metrics;
+      expect(late.winRate).toBeNull();
+      expect(late.averageOdds).toBe('1.750000');
+
+      await assertFinancialInvariant(ctx, { projectId, cookie: cookies.owner });
+    });
+  });
+
+  describe('titular de la apuesta en la lista (§108.10)', () => {
+    it('Simple y Creada de un evento tienen titular; Múltiple no', async () => {
+      const leg = simpleBet().selections[0];
+      await createBet('collab', simpleBet({ placedAt: '2026-06-01T18:00:00.000Z' })).expect(201);
+      await createBet(
+        'collab',
+        simpleBet({
+          placedAt: '2026-06-01T19:00:00.000Z',
+          selections: [
+            leg,
+            {
+              ...leg,
+              position: 1,
+              market: 'Goles',
+              selection: 'Más de 2.5',
+              visibleOdds: undefined,
+            },
+          ],
+        }),
+      ).expect(201);
+      await createBet(
+        'collab',
+        simpleBet({
+          placedAt: '2026-06-01T20:00:00.000Z',
+          visibleTotalOdds: '2.535',
+          selections: [
+            { ...leg, visibleOdds: '1.95' },
+            { ...leg, eventGroup: 1, event: 'Alcaraz vs. Sinner', visibleOdds: '1.30' },
+          ],
+        }),
+      ).expect(201);
+
+      const list = (
+        await request(ctx.server)
+          .get(`/api/projects/${projectId}/bets`)
+          .set('Cookie', cookies.owner)
+          .expect(200)
+      ).body as { betType: string; headline: unknown }[];
+      // La lista viene de la más reciente a la más antigua.
+      expect(list.map((b) => [b.betType, b.headline])).toEqual([
+        ['MULTIPLE', null],
+        ['CREATED', { market: 'Creada', selection: '2 pronósticos' }],
+        ['SIMPLE', { market: '1X2', selection: 'Real Madrid gana' }],
+      ]);
     });
   });
 

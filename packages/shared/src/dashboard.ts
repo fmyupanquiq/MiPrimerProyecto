@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { BET_STATUSES, BET_TYPES } from './bet.js';
 import type { MoneyString } from './money.js';
+import type { OddsString } from './odds.js';
 
 /**
  * Dashboard y métricas (§33, §34, §59 a §60, §91, §92, §108). Nada se guarda: todo se calcula en
@@ -78,6 +79,16 @@ export interface DashboardAnalysis {
   /** P/L ÷ capital invertido × 100 (D-M1): banca inicial + depósitos netos del periodo. */
   roi: MoneyString | null;
   totalStaked: MoneyString;
+  /**
+   * Ganadas ÷ (ganadas + perdidas) × 100, con dos decimales (§108.10). No cuentan pendientes,
+   * anuladas ni Cash Out; `null` si no hay ninguna ganada ni perdida.
+   */
+  winRate: MoneyString | null;
+  /**
+   * Promedio simple de la cuota total visible de las liquidadas del análisis (§108.10), a la escala
+   * de las cuotas (6 decimales); `null` si no hay ninguna liquidada.
+   */
+  averageOdds: OddsString | null;
   /**
    * Aviso de retornos provisionales (§112.6, D-A6): las ganadas del análisis cuyo retorno es solo el
    * calculado, y su ganancia provisional. Ya cuentan en `profitLoss`, `yield` y `roi`.

@@ -3,6 +3,7 @@ import {
   addMoney,
   compareMoney,
   isPositiveMoney,
+  ODDS_SCALE,
   percentageOf,
   roundMoney,
   subtractMoney,
@@ -17,6 +18,7 @@ import {
   type DashboardPeriod,
   type DashboardStatus,
   type MoneyString,
+  type OddsString,
   type PerformanceChart,
   type PerformancePoint,
 } from '@letfer/shared';
@@ -164,10 +166,17 @@ export class DashboardService {
       byPeriod,
       capital,
     ] = await Promise.all([
-      executor.execute<{ profit_loss: MoneyString; total_staked: MoneyString }>(
+      executor.execute<{
+        profit_loss: MoneyString;
+        total_staked: MoneyString;
+        average_odds: OddsString | null;
+      }>(
+        // Cuota media (§108.10): promedio simple de la cuota visible de las liquidadas, a la escala
+        // de las cuotas (6 decimales); NULL si no hay ninguna.
         sql`${settledWhere} SELECT
                 COALESCE(SUM(profit_loss), 0)::text AS profit_loss,
-                COALESCE(SUM(amount), 0)::text AS total_staked
+                COALESCE(SUM(amount), 0)::text AS total_staked,
+                ROUND(AVG(odds), ${ODDS_SCALE}::int)::text AS average_odds
               FROM filtered`,
       ),
       executor.execute<{ total: string; profit_loss: MoneyString }>(
@@ -218,15 +227,23 @@ export class DashboardService {
       this.periodCapital(executor, projectId, filters),
     ]);
 
-    const totals = totalsResult.rows[0] ?? { profit_loss: ZERO_MONEY, total_staked: ZERO_MONEY };
+    const totals = totalsResult.rows[0] ?? {
+      profit_loss: ZERO_MONEY,
+      total_staked: ZERO_MONEY,
+      average_odds: null,
+    };
     const profitLoss = roundMoney(totals.profit_loss);
     const totalStaked = roundMoney(totals.total_staked);
+    const counts = this.countsFromRows(countRows.rows);
 
     return {
       profitLoss,
       yield: percentageOf(profitLoss, totalStaked),
       roi: percentageOf(profitLoss, capital.capitalInvested),
       totalStaked,
+      // Win rate (§108.10): solo las decididas (ganadas y perdidas); `null` si no hay ninguna.
+      winRate: percentageOf(String(counts.won), String(counts.won + counts.lost)),
+      averageOdds: totals.average_odds,
       unconfirmedReturns: {
         count: Number(unconfirmedResult.rows[0]?.total ?? 0),
         profitLoss: roundMoney(unconfirmedResult.rows[0]?.profit_loss ?? ZERO_MONEY),
@@ -235,7 +252,7 @@ export class DashboardService {
       deposits: capital.deposits,
       withdrawals: capital.withdrawals,
       extraordinary: capital.extraordinary,
-      counts: this.countsFromRows(countRows.rows),
+      counts,
       byHouse: byHouse.rows.map(toBreakdownItem),
       byStage: byStage.rows.map(toBreakdownItem),
       bySport: bySport.rows.map(toBreakdownItem),
@@ -473,6 +490,7 @@ export class DashboardService {
       SELECT
         b.id,
         b.status,
+        b.visible_total_odds AS odds,
         s.name AS stage_name,
         h.name AS house_name,
         COALESCE(l.staked, 0) AS amount,

@@ -390,6 +390,40 @@ export interface BetSummary {
   sports: string[];
   /** Tickets vinculados (§110): la lista sabe si hay uno que ver sin cargar el detalle. */
   ticketCount: number;
+  /**
+   * Mercado y pronóstico de una apuesta de un solo leg (§108.10): Simple, o Creada de un solo evento
+   * (`market` «Creada», `selection` «{n} pronósticos»). `null` en una Múltiple. Solo para leerla.
+   */
+  headline: BetHeadline | null;
+}
+
+export interface BetHeadline {
+  /** Mercado del leg; vacío si la selección no lo indica. */
+  market: string;
+  selection: string;
+}
+
+/**
+ * `headline` de una apuesta (§108.10) a partir de sus selecciones: solo si todas pertenecen a un
+ * único leg (`eventGroup`). Una fila: su mercado y su pronóstico; varias (Creada): «Creada» y
+ * «{n} pronósticos». Una Múltiple, o una apuesta sin selecciones, no tiene titular.
+ */
+export function betHeadline(
+  betType: BetType,
+  selections: readonly {
+    eventGroup: number;
+    position: number;
+    market: string | null;
+    selection: string;
+  }[],
+): BetHeadline | null {
+  if (betType === 'MULTIPLE' || selections.length === 0) return null;
+  if (new Set(selections.map((s) => s.eventGroup)).size !== 1) return null;
+  if (selections.length === 1) {
+    const [only] = selections;
+    return { market: only!.market ?? '', selection: only!.selection };
+  }
+  return { market: 'Creada', selection: `${selections.length} pronósticos` };
 }
 
 export interface BetDetail extends BetSummary {
