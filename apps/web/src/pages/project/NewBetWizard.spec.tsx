@@ -15,10 +15,14 @@ import {
 import { clickLegButton, closeLegDialog, fieldFor } from './wizard-test-helpers.js';
 
 /*
- * Asistente de tres pasos de "Añadir apuesta": Paso 1 Añadir, Paso 2 Verificar datos, Paso 3 Confirmar
- * (ver ADR 0024). Las pruebas de campos y cifras viven en `BetsPage.spec.tsx`; aquí se comprueba el
- * recorrido completo: el caso real de Betano (Combinada de 4 con un leg creado), la edición de un leg
- * desde la verificación, el origen del resultado (IA o persona), los borradores y el registro seguro.
+ * Asistente de tres pasos de "Añadir apuesta" (ver ADR 0024, flujo definitivo 2026-10-15): Paso 1
+ * Añadir (origen y archivo), Paso 2 Verificar datos (todo editable; "Continuar a confirmar" valida en
+ * el cliente y avanza, sin escribir nada) y Paso 3 Confirmar, la revisión final de solo lectura
+ * pintada con el payload validado; solo ahí "Registrar apuesta" registra. Si tiene éxito, el mismo
+ * paso pasa a "Registro completado" pintado con la respuesta de la API. Las pruebas de campos y cifras viven en
+ * `BetsPage.spec.tsx`; aquí se comprueba el recorrido completo: el caso real de Betano (Combinada de 4
+ * con un leg creado), la edición de un leg desde la verificación, el origen del resultado (IA o
+ * persona), los borradores y el registro seguro.
  */
 
 afterEach(() => {
@@ -193,6 +197,21 @@ const change = (scope: HTMLElement, label: string, value: string) =>
   );
 const click = (scope: HTMLElement, name: string | RegExp) =>
   fireEvent.click(within(scope).getByRole('button', { name }));
+/**
+ * Cambia el origen (Paso 1): sigue siendo accesible desde cualquier paso (los pasos se ocultan, nunca
+ * se desmontan). El indicador de pasos nunca salta hacia adelante (ver `WizardStepper`): para avanzar
+ * del Paso 1 hace falta un botón real ("Continuar a verificar datos" en Manual); por eso, cuando el
+ * origen no importa para la prueba, se pasa a Manual antes de avanzar.
+ */
+const toManual = (form: HTMLElement) =>
+  fireEvent.click(within(form).getByRole('radio', { name: /^Manual/ }));
+const toAi = (form: HTMLElement) =>
+  fireEvent.click(within(form).getByRole('radio', { name: /^Ticket con IA/ }));
+/** Avanza del Paso 1 al Paso 2 sin IA: pasa a Manual (si no lo está ya) y pulsa el botón real. */
+const goVerify = (form: HTMLElement) => {
+  toManual(form);
+  click(form, 'Continuar a verificar datos');
+};
 const stepOf = (form: HTMLElement) =>
   ['Añadir apuesta', 'Verificar datos', 'Confirmar'].find(
     (name) => within(form).getByRole('button', { name }).getAttribute('aria-current') === 'step',
@@ -299,7 +318,7 @@ describe('Paso 2 — Verificar datos (caso real Betano, registro manual)', () =>
   it('muestra 4 legs y 5 condiciones: el leg 2 es UNA fila "Creada" con dos pronósticos y la cuota 2.47 una vez', async () => {
     const { form, calls } = await openForm();
     fillBetano(form);
-    click(form, 'Verificar datos');
+    goVerify(form);
     expect(stepOf(form)).toBe('Verificar datos');
 
     // Registro manual: encabezado y banda lo dicen; nada afirma que lo detectó la IA.
@@ -345,7 +364,7 @@ describe('Paso 2 — Verificar datos (caso real Betano, registro manual)', () =>
   it('"Editar" abre solo las dos condiciones del leg 2; al cerrar, la tabla se actualiza y no se pierde nada', async () => {
     const { form, calls } = await openForm();
     fillBetano(form);
-    click(form, 'Verificar datos');
+    goVerify(form);
 
     click(form, 'Editar el leg 2');
     const dialog = screen.getByRole('dialog', { name: 'Editar leg 2' });
@@ -370,8 +389,9 @@ describe('Paso 2 — Verificar datos (caso real Betano, registro manual)', () =>
     expect(calls.some((c) => c.method === 'POST' || c.method === 'PUT')).toBe(false);
   });
 
-  it('"Confirmar apuesta" (Paso 2) registra y el Paso 3 se pinta con la respuesta de la API, no con el formulario', async () => {
-    // La API responde con otra casa y otro stake que los del formulario: el Paso 3 muestra los suyos.
+  it('"Continuar a confirmar" valida sin registrar; la revisión del Paso 3 es la del payload validado; solo "Registrar apuesta" registra y "Registro completado" se pinta con la respuesta de la API', async () => {
+    // La API responde con otra casa y otro stake que los del formulario: "Registro completado"
+    // muestra los suyos, pero la revisión PREVIA (antes de registrar) muestra lo que se enviará.
     const { form, calls } = await openForm({
       [`POST ${BETS_URL}`]: {
         status: 201,
@@ -380,16 +400,64 @@ describe('Paso 2 — Verificar datos (caso real Betano, registro manual)', () =>
     });
     fillBetano(form);
     closeLegDialog();
-    click(form, 'Verificar datos');
+    goVerify(form);
     // La cuota total no la muestra el ticket: se usa el producto SOLO como referencia calculada.
     click(form, /Usar el producto de las cuotas \(8\.42\) como referencia/);
     fireEvent.click(within(form).getByRole('button', { name: 'Perdido' }));
     expect(calls.some((c) => c.method === 'POST')).toBe(false);
 
-    click(form, 'Confirmar apuesta');
+    // "Continuar a confirmar" (type="button") valida y avanza: nunca escribe en la API.
+    click(form, 'Continuar a confirmar');
+    expect(stepOf(form)).toBe('Confirmar');
+    expect(calls.some((c) => c.method !== 'GET')).toBe(false);
+
+    // La revisión es de solo lectura y sale del payload validado (la casa elegida, Betano; no
+    // "Betano Perú", que solo existe en la respuesta simulada de la API).
+    const review = within(form).getByRole('article', { name: 'Vista previa del ticket digital' });
+    expect(within(review).getByRole('heading', { name: 'Betano' })).toBeTruthy();
+    expect(within(review).getByText('Múltiple de 4')).toBeTruthy();
+    // Sin campos editables ni botones de edición: nada se cambia en este paso.
+    expect(within(review).queryAllByRole('textbox')).toHaveLength(0);
+    expect(within(review).queryByRole('button', { name: /Editar/ })).toBeNull();
+    // Legs: la Creada es UN leg con dos condiciones y su cuota UNA sola vez (las condiciones no llevan).
+    expect(within(review).getAllByRole('listitem', { name: /^Leg \d$/ })).toHaveLength(4);
+    const reviewLeg2 = within(review).getByRole('listitem', { name: 'Leg 2' });
+    expect(within(reviewLeg2).getByText(/Leg 2 · Creada/)).toBeTruthy();
+    expect(within(reviewLeg2).getAllByRole('listitem', { name: /del leg 2$/ })).toHaveLength(2);
+    expect(within(reviewLeg2).getAllByText('2.47')).toHaveLength(1);
+    // Resumen financiero con su procedencia: cuota CALCULADA nunca como oficial, monto oficial.
+    const money = within(review).getByRole('region', { name: 'Resumen financiero' });
+    expect(within(money).getByText('Importe apostado').nextElementSibling!.textContent).toBe(
+      'S/ 10.00',
+    );
+    expect(within(money).getByText('Cuota calculada de referencia')).toBeTruthy();
+    expect(within(money).getByText('Cuota total oficial').nextElementSibling!.textContent).toBe(
+      '—',
+    );
+    expect(within(money).getByText('Pérdida').nextElementSibling!.textContent).toBe('-S/ 10.00');
+    expect(
+      within(form).getByRole('region', { name: 'Impacto del registro' }).textContent,
+    ).toContain('Disponible después');
+    // Se puede volver a corregir: el indicador no queda bloqueado hasta que se registre con éxito.
+    expect(
+      within(form).getByRole<HTMLButtonElement>('button', { name: 'Verificar datos' }).disabled,
+    ).toBe(false);
+    expect(
+      within(form).getByRole<HTMLButtonElement>('button', { name: 'Añadir apuesta' }).disabled,
+    ).toBe(false);
+    // Se puede volver a corregir: el indicador no queda bloqueado hasta que se registre con éxito.
+    expect(
+      within(form).getByRole<HTMLButtonElement>('button', { name: 'Verificar datos' }).disabled,
+    ).toBe(false);
+    expect(
+      within(form).getByRole<HTMLButtonElement>('button', { name: 'Añadir apuesta' }).disabled,
+    ).toBe(false);
+
+    // Solo "Registrar apuesta" (Paso 3, antes del éxito) valida y registra.
+    click(form, 'Registrar apuesta');
     expect(await screen.findByRole('heading', { name: 'Registro completado' })).toBeTruthy();
     expect(stepOf(form)).toBe('Confirmar');
-    // Desde el Paso 3 ya no se vuelve: ningún paso del indicador es navegable.
+    // Desde el "Registro completado" ya no se vuelve: ningún paso del indicador es navegable.
     for (const name of ['Añadir apuesta', 'Verificar datos', 'Confirmar']) {
       expect(within(form).getByRole<HTMLButtonElement>('button', { name }).disabled).toBe(true);
     }
@@ -514,7 +582,11 @@ describe('Paso 2 — lectura de IA', () => {
     const file = new File(['contenido'], 'ticket.jpg', { type: 'image/jpeg' });
     fireEvent.change(fieldFor(form, 'Adjuntar ticket'), { target: { files: [file] } });
     await within(form).findByText('Listo para analizar');
-    click(form, 'Verificar datos');
+    // Avanzar sin analizar (nunca se analiza salvo con "Analizar y continuar", D-T4): se pasa a
+    // Manual para llegar a "Verificar datos" y se vuelve a IA, con el ticket intacto y sin leer.
+    toManual(form);
+    click(form, 'Continuar a verificar datos');
+    toAi(form);
     expect(within(form).getByText(/Ticket adjunto sin analizar/)).toBeTruthy();
     expect(within(form).queryByText(/Detectado por IA/)).toBeNull();
     const summary = within(form).getByRole('region', { name: 'Resumen' });
@@ -529,7 +601,7 @@ describe('Paso 2 — lectura de IA', () => {
   it('registro manual sin imagen: la columna del ticket muestra un estado vacío (nunca una imagen de ejemplo)', async () => {
     const { form } = await openForm();
     fireEvent.click(within(form).getByRole('radio', { name: /Manual/ }));
-    click(form, 'Verificar datos');
+    click(form, 'Continuar a verificar datos');
     const backup = within(form).getByRole('region', { name: 'Ticket de respaldo' });
     expect(within(backup).getByText('Sin ticket de respaldo')).toBeTruthy();
     expect(within(backup).queryByRole('img')).toBeNull();
@@ -551,23 +623,25 @@ describe('registro seguro', () => {
       },
     });
     fillBetano(form);
-    click(form, 'Verificar datos');
+    goVerify(form);
     click(form, /Usar el producto de las cuotas/);
+    click(form, 'Continuar a confirmar');
     const keys = () =>
       calls
         .filter((c) => c.method === 'POST' && c.path === BETS_URL)
         .map((c) => (c.body as { clientRequestId: string }).clientRequestId);
 
-    click(form, 'Confirmar apuesta');
+    // Un intento fallido nunca avanza de paso: "Registrar apuesta" sigue en el mismo Paso 3.
+    click(form, 'Registrar apuesta');
     await waitFor(() => expect(keys()).toHaveLength(1));
-    await within(form).findByRole('button', { name: 'Confirmar apuesta' });
-    click(form, 'Confirmar apuesta');
+    await within(form).findByRole('button', { name: 'Registrar apuesta' });
+    click(form, 'Registrar apuesta');
     await waitFor(() => expect(keys()).toHaveLength(2));
     // 500 ⇒ resultado incierto: mismo intento, misma clave.
     expect(keys()[1]).toBe(keys()[0]);
 
-    await within(form).findByRole('button', { name: 'Confirmar apuesta' });
-    click(form, 'Confirmar apuesta');
+    await within(form).findByRole('button', { name: 'Registrar apuesta' });
+    click(form, 'Registrar apuesta');
     await waitFor(() => expect(keys()).toHaveLength(3));
     // 400 ⇒ no se creó nada: el siguiente intento es otro (otra clave).
     expect(keys()[2]).not.toBe(keys()[1]);
@@ -706,7 +780,8 @@ describe('borradores (ADR 0024)', () => {
     await within(form).findByRole('option', { name: 'Betano' });
     expect(fieldFor<HTMLSelectElement>(form, 'Casa de apuestas').value).toBe(HOUSE_A);
     expect(fieldFor<HTMLInputElement>(form, 'Monto apostado').value).toBe('10.00');
-    click(form, 'Verificar datos');
+    // El borrador no tiene ticket: el origen vuelve a ser Manual (`draftEntryMode`), con su botón real.
+    click(form, 'Continuar a verificar datos');
     const leg2 = within(table(form)).getByRole('listitem', { name: 'Leg 2' });
     expect(within(leg2).getByText('2 pronósticos')).toBeTruthy();
     expect(within(leg2).getAllByText('2.47')).toHaveLength(1);
@@ -724,25 +799,31 @@ describe('borradores (ADR 0024)', () => {
     );
   });
 
-  it('al registrar una apuesta retomada de un borrador, el borrador se descarta (y no queda en la lista)', async () => {
+  it('el borrador retomado solo se descarta tras un registro correcto (no al continuar ni si el registro falla)', async () => {
+    let attempts = 0;
     const { calls } = open({
       [`GET ${DRAFTS_URL}`]: { status: 200, body: [summaryOfDraft] },
       [`GET ${DRAFTS_URL}/${DRAFT_ID}`]: { status: 200, body: draftDetail(1) },
       [`DELETE ${DRAFTS_URL}/${DRAFT_ID}`]: { status: 204, body: undefined },
-      [`POST ${BETS_URL}`]: CREATED_BET,
+      [`POST ${BETS_URL}`]: () => (++attempts === 1 ? apiError(500, 'INTERNAL') : CREATED_BET),
     });
+    const discarded = () =>
+      calls.some((c) => c.method === 'DELETE' && c.path === `${DRAFTS_URL}/${DRAFT_ID}`);
     renderApp(BETS_URL);
     const section = await screen.findByRole('region', { name: 'Borradores de apuesta' });
     fireEvent.click(within(section).getByRole('button', { name: /^Retomar el borrador/ }));
     const form = await screen.findByRole('form', { name: 'Añadir apuesta' });
     await within(form).findByRole('option', { name: 'Betano' });
-    click(form, 'Verificar datos');
+    click(form, 'Continuar a verificar datos');
     click(form, /Usar el producto de las cuotas/);
-    click(form, 'Confirmar apuesta');
+    click(form, 'Continuar a confirmar');
+    expect(discarded()).toBe(false);
+    click(form, 'Registrar apuesta');
+    expect(await within(form).findByRole('alert')).toBeTruthy();
+    expect(discarded()).toBe(false);
+    click(form, 'Registrar apuesta');
     expect(await screen.findByText('Apuesta registrada correctamente.')).toBeTruthy();
-    expect(calls.some((c) => c.method === 'DELETE' && c.path === `${DRAFTS_URL}/${DRAFT_ID}`)).toBe(
-      true,
-    );
+    await waitFor(() => expect(discarded()).toBe(true));
   });
 });
 
@@ -764,14 +845,14 @@ describe('rediseño de alta fidelidad del Paso 2 (referencia 01-OBJETIVO)', () =
     await within(form).findByText('Archivo adjunto');
     fillBetano(form);
     closeLegDialog();
-    click(form, 'Verificar datos');
+    click(form, 'Continuar a verificar datos');
     expect(stepOf(form)).toBe('Verificar datos');
 
     click(form, 'Editar ticket');
     expect(stepOf(form)).toBe('Añadir apuesta');
     expect(fieldFor<HTMLInputElement>(form, 'Monto apostado').value).toBe('10.00');
 
-    click(form, 'Verificar datos');
+    click(form, 'Continuar a verificar datos');
     expect(within(table(form)).getAllByRole('listitem', { name: /^Leg \d$/ })).toHaveLength(4);
     click(form, 'Atrás');
     expect(stepOf(form)).toBe('Añadir apuesta');
@@ -866,7 +947,11 @@ describe('rediseño de alta fidelidad del Paso 2 (referencia 01-OBJETIVO)', () =
     fireEvent.change(fieldFor(form, 'Adjuntar ticket'), { target: { files: [file] } });
     fireEvent.click(await within(form).findByRole('button', { name: 'Analizar y continuar' }));
     await within(form).findByText(/No pudimos leer el ticket/);
-    click(form, 'Verificar datos');
+    // El fallo deja el ticket sin leer, en modo IA: para verificar sin perder ese estado se pasa a
+    // Manual, se avanza con su botón real y se vuelve a IA (el ticket sigue sin analizar).
+    toManual(form);
+    click(form, 'Continuar a verificar datos');
+    toAi(form);
     expect(within(form).queryByText(/Ticket leído por IA/)).toBeNull();
     expect(within(form).getByText(/Ticket adjunto sin analizar/)).toBeTruthy();
     expect(within(form).queryByText(/Detectado por IA/)).toBeNull();
@@ -874,35 +959,120 @@ describe('rediseño de alta fidelidad del Paso 2 (referencia 01-OBJETIVO)', () =
     expect(summaryValue(form, 'Monto apostado')).toBe('—');
   });
 
-  it('el Paso 3 es solo de confirmación: ni un nuevo envío ni Enter vuelven a escribir en la API', async () => {
-    const { form, calls } = await openForm({ [`POST ${BETS_URL}`]: CREATED_BET });
+  const writes = (calls: { method: string }[]) => calls.filter((c) => c.method !== 'GET');
+  const reviewMoney = (form: HTMLElement) =>
+    within(
+      within(form).getByRole('article', { name: 'Vista previa del ticket digital' }),
+    ).getByRole('region', { name: 'Resumen financiero' });
+  /** Caso Betano en el Paso 2, con la cuota de referencia declarada y listo para continuar. */
+  async function betanoInVerify(extra: Record<string, Handler> = {}) {
+    const stub = await openForm(extra);
+    fillBetano(stub.form);
+    closeLegDialog();
+    goVerify(stub.form);
+    click(stub.form, /Usar el producto de las cuotas/);
+    return stub;
+  }
+
+  it('Paso 2 → Paso 3 no escribe nada; "Atrás" conserva todo y corregir un dato actualiza la revisión', async () => {
+    const { form, calls } = await betanoInVerify();
+    fireEvent.click(within(form).getByRole('button', { name: 'Perdido' }));
+    click(form, 'Continuar a confirmar');
+    expect(stepOf(form)).toBe('Confirmar');
+    expect(writes(calls)).toHaveLength(0); // ni apuesta, ni movimientos, ni borrador
+    expect(within(reviewMoney(form)).getByText('Pérdida').nextElementSibling!.textContent).toBe(
+      '-S/ 10.00',
+    );
+
+    click(form, 'Atrás');
+    expect(stepOf(form)).toBe('Verificar datos');
+    expect(
+      within(form).queryByRole('article', { name: 'Vista previa del ticket digital' }),
+    ).toBeNull();
+    expect(fieldFor<HTMLInputElement>(form, 'Monto apostado').value).toBe('10.00');
+    expect(within(table(form)).getAllByRole('listitem', { name: /^Leg \d$/ })).toHaveLength(4);
+
+    // Se corrige el resultado: la nueva revisión sale del payload nuevo (10.00 × 8.42).
+    fireEvent.click(within(form).getByRole('button', { name: 'Ganado' }));
+    click(form, 'Continuar a confirmar');
+    const money = reviewMoney(form);
+    expect(within(money).getByText('Retorno realizado').nextElementSibling!.textContent).toBe(
+      'S/ 84.20',
+    );
+    expect(within(money).getByText('Ganancia').nextElementSibling!.textContent).toBe('+S/ 74.20');
+    expect(writes(calls)).toHaveLength(0);
+  });
+
+  it('"Continuar a confirmar" valida: si falta algo se queda en el Paso 2 con el error y sin escribir', async () => {
+    const { form, calls } = await openForm();
     fillBetano(form);
     closeLegDialog();
-    click(form, 'Verificar datos');
-    click(form, /Usar el producto de las cuotas/);
-    click(form, 'Confirmar apuesta');
-    expect(await screen.findByRole('heading', { name: 'Registro completado' })).toBeTruthy();
-    const writes = () => calls.filter((c) => c.method !== 'GET');
-    expect(writes()).toHaveLength(1);
+    goVerify(form);
+    // Falta declarar la procedencia de la cuota total.
+    click(form, 'Continuar a confirmar');
+    expect(stepOf(form)).toBe('Verificar datos');
+    expect(within(form).getByText(/Indica si la cuota total la muestra la casa/)).toBeTruthy();
+    expect(within(form).queryByRole('button', { name: 'Registrar apuesta' })).toBeNull();
+    expect(writes(calls)).toHaveLength(0);
+  });
 
-    // En el Paso 3 no queda ningún botón que registre ni guarde un borrador.
-    expect(within(form).queryByRole('button', { name: 'Confirmar apuesta' })).toBeNull();
-    expect(within(form).queryByRole('button', { name: 'Guardar borrador' })).toBeNull();
-    // Un envío del formulario (Enter, script) desde el Paso 3 no registra otra vez.
+  it('solo "Registrar apuesta" registra: ni Enter ni un envío del formulario en los Pasos 2 y 3; tras el éxito nada más escribe', async () => {
+    const { form, calls } = await betanoInVerify({ [`POST ${BETS_URL}`]: CREATED_BET });
+    fireEvent.keyDown(fieldFor(form, 'Monto apostado'), { key: 'Enter' });
     fireEvent.submit(form);
-    for (const input of within(form).queryAllByRole('textbox').slice(0, 1)) {
-      fireEvent.keyDown(input, { key: 'Enter' });
+    click(form, 'Continuar a confirmar');
+    fireEvent.submit(form); // sin el botón "Registrar apuesta" como origen: no registra
+    await Promise.resolve();
+    expect(writes(calls)).toHaveLength(0);
+
+    click(form, 'Registrar apuesta');
+    expect(within(form).getByRole('button', { name: 'Registrando apuesta…' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Registro completado' })).toBeTruthy();
+    expect(writes(calls)).toHaveLength(1);
+
+    // "Registro completado" no es un cuarto paso, ni vuelve atrás, ni deja nada que escriba.
+    expect(stepOf(form)).toBe('Confirmar');
+    expect(within(form).queryByRole('button', { name: 'Registrar apuesta' })).toBeNull();
+    expect(within(form).queryByRole('button', { name: 'Guardar borrador' })).toBeNull();
+    expect(within(form).queryByRole('button', { name: 'Atrás' })).toBeNull();
+    for (const name of ['Ver apuesta', 'Ver historial', 'Registrar otra apuesta', 'Cerrar']) {
+      expect(within(form).getAllByRole('button', { name }).length).toBeGreaterThan(0);
     }
-    await waitFor(() => expect(writes()).toHaveLength(1));
+    fireEvent.submit(form);
+    await waitFor(() => expect(writes(calls)).toHaveLength(1));
+  });
+
+  it('un fallo de la API deja la revisión y los datos intactos; reintentar (5xx) usa la misma clave y no duplica', async () => {
+    let attempts = 0;
+    const { form, calls } = await betanoInVerify({
+      [`POST ${BETS_URL}`]: () => (++attempts === 1 ? apiError(500, 'INTERNAL') : CREATED_BET),
+    });
+    click(form, 'Continuar a confirmar');
+    click(form, 'Registrar apuesta');
+    expect(await within(form).findByRole('alert')).toBeTruthy();
+    // Sigue en la revisión del Paso 3, con todo: no se afirma ningún registro.
+    expect(stepOf(form)).toBe('Confirmar');
+    expect(
+      within(form).getByRole('article', { name: 'Vista previa del ticket digital' }),
+    ).toBeTruthy();
+    expect(within(form).queryByRole('heading', { name: 'Registro completado' })).toBeNull();
+
+    click(form, 'Registrar apuesta');
+    expect(await screen.findByRole('heading', { name: 'Registro completado' })).toBeTruthy();
+    const posted = calls.filter((c) => c.method === 'POST' && c.path === BETS_URL);
+    expect(posted).toHaveLength(2);
+    const keys = posted.map((c) => (c.body as { clientRequestId: string }).clientRequestId);
+    expect(keys[1]).toBe(keys[0]);
   });
 
   it('tras registrar, el Paso 3 dice "Apuesta registrada correctamente" y, al cerrar, el aviso ofrece "Ver apuesta"', async () => {
     const { form } = await openForm({ [`POST ${BETS_URL}`]: CREATED_BET });
     fillBetano(form);
     closeLegDialog();
-    click(form, 'Verificar datos');
+    goVerify(form);
     click(form, /Usar el producto de las cuotas/);
-    click(form, 'Confirmar apuesta');
+    click(form, 'Continuar a confirmar');
+    click(form, 'Registrar apuesta');
     expect(await within(form).findByText('Apuesta registrada correctamente.')).toBeTruthy();
     fireEvent.click(within(form).getAllByRole('button', { name: 'Cerrar' })[0]!);
     const notice = (await screen.findByText('Apuesta registrada correctamente.')).closest(
@@ -1015,7 +1185,8 @@ describe('rediseño de los tres pasos: Paso 1 (origen y archivo) y Paso 3 (regis
     closeLegDialog();
     click(form, 'Continuar a verificar datos');
     click(form, /Usar el producto de las cuotas/);
-    click(form, 'Confirmar apuesta');
+    click(form, 'Continuar a confirmar');
+    click(form, 'Registrar apuesta');
     await screen.findByRole('heading', { name: 'Registro completado' });
     expect(analyzeCalls(calls)).toHaveLength(0);
     expect(postedBets(calls)[0]!.ticketId).toBe(TICKET_ID);
@@ -1101,7 +1272,13 @@ describe('rediseño de los tres pasos: Paso 1 (origen y archivo) y Paso 3 (regis
     await within(form).findByText('Listo para analizar');
     click(form, 'Analizar y continuar');
     await within(form).findByText('Ticket leído por IA.');
-    click(form, 'Confirmar apuesta');
+    click(form, 'Continuar a confirmar');
+    // Mismo flujo que el registro manual: revisión previa (origen IA) sin escribir, luego registrar.
+    expect(
+      within(form).getByRole('article', { name: 'Vista previa del ticket digital' }).textContent,
+    ).toContain('Ticket con IA');
+    expect(postedBets(calls)).toHaveLength(0);
+    click(form, 'Registrar apuesta');
     await screen.findByRole('heading', { name: 'Registro completado' });
 
     expect(
@@ -1128,7 +1305,8 @@ describe('rediseño de los tres pasos: Paso 1 (origen y archivo) y Paso 3 (regis
     closeLegDialog();
     click(fresh, 'Continuar a verificar datos');
     click(fresh, /Usar el producto de las cuotas/);
-    click(fresh, 'Confirmar apuesta');
+    click(fresh, 'Continuar a confirmar');
+    click(fresh, 'Registrar apuesta');
     await waitFor(() => expect(postedBets(calls)).toHaveLength(2));
     const [first, second] = postedBets(calls);
     expect(second!.clientRequestId).not.toBe(first!.clientRequestId);
@@ -1148,7 +1326,8 @@ describe('rediseño de los tres pasos: Paso 1 (origen y archivo) y Paso 3 (regis
     closeLegDialog();
     click(form, 'Continuar a verificar datos');
     click(form, /Usar el producto de las cuotas/);
-    click(form, 'Confirmar apuesta');
+    click(form, 'Continuar a confirmar');
+    click(form, 'Registrar apuesta');
     await screen.findByRole('heading', { name: 'Registro completado' });
 
     expect(within(form).getByText(/El registro manual fue guardado en tu historial/)).toBeTruthy();
@@ -1183,7 +1362,8 @@ describe('rediseño de los tres pasos: Paso 1 (origen y archivo) y Paso 3 (regis
     closeLegDialog();
     click(form, 'Continuar a verificar datos');
     click(form, /Usar el producto de las cuotas/);
-    click(form, 'Confirmar apuesta');
+    click(form, 'Continuar a confirmar');
+    click(form, 'Registrar apuesta');
     await screen.findByRole('heading', { name: 'Registro completado' });
     click(form, 'Volver al dashboard');
     expect(await screen.findByRole('heading', { name: 'Dashboard' })).toBeTruthy();

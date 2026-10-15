@@ -11,8 +11,10 @@ import {
   resolveTicketOdds,
   subtractMoney,
   draftEntryMode,
+  validateSelectionStructure,
   ErrorCode,
   type BetDetail,
+  type CreateBetInput,
   type BetDraftDetail,
   type BetEntryMode,
   type BetType,
@@ -59,6 +61,8 @@ import { BET_TYPE_LABELS, TOTAL_ODDS_SOURCE_LABELS } from '../../labels.js';
 import { Badge, btn, btnPrimary, hintClass, Notice } from '../../ui.js';
 import { BetEntryAside, BetEntryMain, type AnalysisState } from './BetEntryStep.js';
 import { BetRegisteredAside, BetRegisteredMain } from './BetRegisteredView.js';
+import { BetReviewAside, BetReviewMain } from './BetReviewView.js';
+import { betTypeOfSelections, buildBetReview, samePayload, type BetReview } from './bet-review.js';
 import { CLIPBOARD_EMPTY_MESSAGE, readClipboardImage, ticketFileProblem } from './ticket-files.js';
 import { useIsNarrow } from '../AppShell.js';
 import { allowsProfitOverride, betDraftFigures, type DraftStatus } from './bet-draft.js';
@@ -116,13 +120,19 @@ import {
 
 /*
  * Formulario "Añadir apuesta" dentro de `<Modal variant="wizard">` (rediseño de los tres pasos, ADR
- * 0024):
+ * 0024; flujo definitivo 2026-10-15: se verifica en el Paso 2, se revisa y registra en el Paso 3):
  *   1. Añadir apuesta — solo el ORIGEN (ticket con IA o manual) y el archivo (`BetEntryStep`).
- *   2. Verificar datos — TODO el formulario, editable. "Confirmar apuesta" es el ÚNICO punto que valida
- *      y registra (nada más envía: ni Enter, ni el stepper, ni "Continuar"). Si falla, se queda aquí.
- *   3. Confirmar — "Registro completado" (`BetRegisteredView`), de solo lectura y pintado con el
- *      `BetDetail` que devuelve la API; ya no se puede volver a los pasos anteriores.
- * Entre 1 y 2 se va y vuelve sin perder nada: los pasos se ocultan, nunca se desmontan.
+ *   2. Verificar datos — TODO el formulario, editable. "Continuar a confirmar" valida en el cliente
+ *      (`buildCreatePayload`, las mismas reglas que el registro) y, si todo está bien, congela ese
+ *      payload como `review` y avanza. NUNCA llama a la API ni registra.
+ *   3. Confirmar — revisión final de solo lectura (`BetReviewView`), pintada EXCLUSIVAMENTE con
+ *      `review` (lo que se ve es lo que se envía). "Registrar apuesta" es el ÚNICO punto que registra:
+ *      revalida, comprueba que el payload no cambió y llama a `betsApi.create`. Si falla, se queda
+ *      aquí con los datos intactos ("Atrás" vuelve al Paso 2 a corregir). Si tiene éxito, el MISMO
+ *      paso pasa a "Registro completado" (`BetRegisteredView`), pintado con el `BetDetail` que
+ *      devuelve la API; ya no se puede volver a los pasos anteriores.
+ * Entre 1 y 2, y entre 2 y 3 (antes de registrar), se va y vuelve sin perder nada: los pasos se
+ * ocultan, nunca se desmontan. Volver del Paso 3 descarta `review`: al continuar se vuelve a validar.
  *
  * La etapa nunca se elige aquí: toda apuesta nueva va a la etapa activa del proyecto (§1); para
  * cambiarla después está "Mover de etapa" (`bets.move_stage`, con reautenticación). Solo organiza
@@ -198,7 +208,9 @@ const QUICK_STAKES = [10, 20, 30, 40, 50] as const;
 
 /**
  * Las tres etapas del asistente: 1 Añadir apuesta (origen y archivo), 2 Verificar datos (todo el
- * formulario; aquí se registra) y 3 Confirmar ("Registro completado", con la respuesta de la API).
+ * formulario, editable, sin registrar) y 3 Confirmar (revisión final de solo lectura con
+ * "Registrar apuesta"; tras el éxito, el mismo paso pasa a mostrar "Registro completado" con la
+ * respuesta de la API: no es un cuarto paso).
  */
 const STEP_LABELS = ['Añadir apuesta', 'Verificar datos', 'Confirmar'] as const;
 
@@ -210,6 +222,7 @@ export function NewBetForm({
   onCancel,
   onRegisterAnother,
   onViewHistory,
+  onViewBet,
   onGoDashboard,
   initialMode,
   initialDraft,
@@ -229,6 +242,8 @@ export function NewBetForm({
   onRegisterAnother?: () => void;
   /** "Ver historial": cerrar y destacar la apuesta en la lista. */
   onViewHistory?: (betId: string) => void;
+  /** "Ver apuesta": cerrar y abrir el detalle de la apuesta recién registrada. */
+  onViewBet?: (betId: string) => void;
   /** "Volver al dashboard". */
   onGoDashboard?: () => void;
   /** Origen con el que empieza un formulario nuevo (el usado la última vez). */
@@ -268,11 +283,18 @@ export function NewBetForm({
   // Edición de un leg desde "Verificar datos" (`eventGroup` del leg abierto, o ninguno).
   const [editingLeg, setEditingLeg] = useState<number | null>(null);
 
-  // Paso visible (0 Añadir, 1 Verificar datos, 2 Registro completado). Entre 0 y 1 se va y vuelve
-  // libremente; al 2 solo se llega registrando y desde él ya no se vuelve.
+  // Paso visible (0 Añadir, 1 Verificar datos, 2 Confirmar). Entre 0, 1 y 2 se va y vuelve libremente
+  // mientras no se haya registrado (`registered === null`); una vez registrada, ya no se vuelve.
   const [step, setStep] = useState(0);
-  // La apuesta tal como la devolvió la API al registrar: el Paso 3 se pinta SOLO con ella.
+  // La apuesta tal como la devolvió la API al registrar: mientras sea `null`, el Paso 3 muestra el
+  // resumen del formulario (nada registrado todavía); en cuanto se registra, se pinta SOLO con ella.
   const [registered, setRegistered] = useState<BetDetail | null>(null);
+  // Revisión del Paso 3: el payload ya validado al pulsar "Continuar a confirmar" (y sus cifras).
+  // Es lo ÚNICO con lo que se pinta la revisión y lo que "Registrar apuesta" envía. Volver al
+  // Paso 2 la descarta.
+  const [review, setReview] = useState<BetReview | null>(null);
+  // El registro ya ocurrió: el asistente queda bloqueado hacia adelante y no se vuelve atrás.
+  const confirmed = step === 2 && registered !== null;
 
   // Origen del registro: con IA solo si se puede subir Y analizar; si no, manual (deshabilitado).
   const aiAllowed = can('tickets.upload') && can('tickets.analyze');
@@ -902,35 +924,23 @@ export function NewBetForm({
     else applyExtraction(result.extraction);
   }
 
-  async function onSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    // Solo "Confirmar apuesta" (Paso 2, Verificar datos) registra: Enter en un campo, "Continuar",
-    // "Atrás", "Editar ticket" o el stepper nunca envían nada. Y un único envío a la vez (doble clic).
-    // Cualquier problema deja a la persona en este paso, con el error visible y nada perdido.
-    if (step !== 1 || submitLock.current) return;
-    // Un envío que no venga del botón "Confirmar apuesta" (Enter implícito, script) no registra.
-    const submitter = (event.nativeEvent as SubmitEvent).submitter;
-    if (!(submitter instanceof HTMLElement) || submitter.dataset['action'] !== 'register') return;
-    setError(null);
-    if (houseId === '') {
-      setError('Elige una casa.');
-      return;
-    }
+  /**
+   * Construye y valida en el cliente el payload de `betsApi.create` con el estado actual del
+   * formulario. Lo usan "Continuar a confirmar" (Paso 2) y "Registrar apuesta" (Paso 3): las mismas
+   * reglas en los dos sitios. No llama a la API; la API vuelve a validar todo al registrar.
+   */
+  function buildCreatePayload():
+    { ok: true; data: CreateBetInput } | { ok: false; message: string } {
+    const fail = (message: string) => ({ ok: false as const, message });
+    if (houseId === '') return fail('Elige una casa.');
     const placedAt = fromDateTimeParts(placed);
-    if (placedAt === null) {
-      setError('Indica la fecha y la hora de colocación.');
-      return;
-    }
+    if (placedAt === null) return fail('Indica la fecha y la hora de colocación.');
     const usesOfficialAmountValue = officialAmount.trim() !== '';
     const settles = status !== 'PENDING';
     const settledAt = settles ? fromDateTimeParts(settled) : null;
-    if (settles && settledAt === null) {
-      setError('Indica la fecha y la hora de liquidación.');
-      return;
-    }
+    if (settles && settledAt === null) return fail('Indica la fecha y la hora de liquidación.');
     if (figures.profitOverrideInvalid) {
-      setError('Ingresa una ganancia válida, con hasta 2 decimales.');
-      return;
+      return fail('Ingresa una ganancia válida, con hasta 2 decimales.');
     }
     // El importe se determina con las reglas de siempre (monto oficial, o stake × unidad): si no
     // hay ninguno de los dos, se pide aquí — nunca se supone un stake.
@@ -940,17 +950,15 @@ export function NewBetForm({
         figures.amount !== null && usesOfficialAmountValue
           ? deriveStakeFromAmount(figures.amount, unitStake, QUICK_STAKES)
           : null;
-      if (derived) stakeToSend = derived.stake;
-      else {
-        setError('Indica el stake o el monto oficial para determinar el importe apostado.');
-        return;
+      if (!derived) {
+        return fail('Indica el stake o el monto oficial para determinar el importe apostado.');
       }
+      stakeToSend = derived.stake;
     }
     if (totalOddsSource === null) {
-      setError(
+      return fail(
         'Indica si la cuota total la muestra la casa (oficial) o es una referencia calculada.',
       );
-      return;
     }
     const parsed = createBetSchema.safeParse({
       houseId,
@@ -971,14 +979,67 @@ export function NewBetForm({
           ? { status, officialRealizedReturn: figures.officialRealizedReturn, settledAt }
           : undefined,
     });
-    if (!parsed.success) {
-      setError(parsed.error.issues[0]?.message ?? 'Revisa los datos ingresados.');
+    if (!parsed.success)
+      return fail(parsed.error.issues[0]?.message ?? 'Revisa los datos ingresados.');
+    // La estructura TICKET → LEG → CONDICIÓN, con la misma regla que aplica la API (§114).
+    const structureError = validateSelectionStructure(
+      parsed.data.selections,
+      betTypeOfSelections(parsed.data.selections),
+    );
+    if (structureError) return fail(structureError);
+    return { ok: true, data: parsed.data };
+  }
+
+  /** "Continuar a confirmar" (Paso 2): valida y congela el payload; nunca registra. */
+  function goToReview() {
+    const built = buildCreatePayload();
+    if (!built.ok) {
+      setError(built.message);
       return;
     }
+    setError(null);
+    setReview(buildBetReview(built.data, unitStake));
+    setStep(2);
+  }
+
+  /** Volver desde la revisión (o con el indicador): los datos siguen intactos en el Paso 2. */
+  function leaveReview(target: number) {
+    setReview(null);
+    setError(null);
+    setStep(target);
+  }
+
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    // Solo "Registrar apuesta" (Paso 3, con una revisión vigente y sin registro previo) registra:
+    // Enter en un campo, "Continuar a confirmar", "Atrás", "Editar ticket" o el indicador de pasos
+    // nunca envían nada. Y un único envío a la vez (doble clic). Cualquier problema deja a la
+    // persona en este paso, con el error visible y nada perdido.
+    if (step !== 2 || review === null || registered !== null || submitLock.current) return;
+    // Un envío que no venga del botón "Registrar apuesta" (Enter implícito, script) no registra.
+    const submitter = (event.nativeEvent as SubmitEvent).submitter;
+    if (!(submitter instanceof HTMLElement) || submitter.dataset['action'] !== 'register') return;
+    setError(null);
+    // Revalidación: se reconstruye el payload con las mismas reglas y debe coincidir con lo que se
+    // está mostrando (lo que se ve es lo que se registra). Si no, se actualiza la revisión y se pide
+    // revisarla de nuevo, sin enviar nada.
+    const built = buildCreatePayload();
+    if (!built.ok) {
+      setError(built.message);
+      return;
+    }
+    if (!samePayload(built.data, review.payload)) {
+      setReview(buildBetReview(built.data, unitStake));
+      setError(
+        'Los datos cambiaron: revisa el resumen actualizado y vuelve a pulsar «Registrar apuesta».',
+      );
+      return;
+    }
+    const settles = built.data.settlement !== undefined;
     submitLock.current = true;
     setSubmitting(true);
     try {
-      const registered = await betsApi.create(project.id, parsed.data);
+      const registered = await betsApi.create(project.id, built.data);
       // Solo se avisa del éxito después de que el backend lo confirme. El borrador ya cumplió su
       // función: se descarta (si no se pudiera, queda en la lista y se puede descartar a mano).
       if (draftId) {
@@ -1145,7 +1206,9 @@ export function NewBetForm({
         ? aiRead
           ? 'Revisa los datos extraídos por IA y confirma que la información sea correcta.'
           : 'Completa los datos de tu apuesta y confirma que la información sea correcta.'
-        : 'La apuesta ha sido confirmada y registrada en tu historial.';
+        : registered
+          ? 'La apuesta ha sido confirmada y registrada en tu historial.'
+          : 'Revisa el resumen completo antes de registrar la apuesta.';
 
   const officialPotential =
     officialPotentialReturn.trim() !== '' && isMoneyString(officialPotentialReturn.trim())
@@ -1289,7 +1352,7 @@ export function NewBetForm({
       <button
         type="button"
         className="text-sm font-medium text-violet-700 hover:underline"
-        onClick={() => setStep(0)}
+        onClick={() => leaveReview(0)}
       >
         {label}
       </button>
@@ -1308,10 +1371,30 @@ export function NewBetForm({
             : (ticket?.originalFileName ?? 'Sin analizar')
       }
       empty={backToEntry(isManual ? 'Adjuntar respaldo' : 'Cargar ticket')}
-      fill={!narrow}
+      // Solo en "Verificar datos" ocupa el alto libre; en la revisión va bajo el impacto del registro.
+      fill={!narrow && step === 1}
     />
   );
   const summaryCard = <SummaryCard icon={<TicketIcon />} rows={summaryRows} />;
+  // Paso 3 ANTES de registrar: la revisión final, pintada SOLO con `review` (el payload validado
+  // que se enviará), nunca con el estado suelto del formulario ni con un `BetDetail` que aún no existe.
+  const reviewHouse = review ? (houses.find((h) => h.id === review.payload.houseId) ?? null) : null;
+  const reviewProps = review && {
+    review,
+    houseName: reviewHouse?.name ?? '—',
+    houseAvailable: reviewHouse?.available ?? null,
+    stageName: stage.name,
+    unitStake,
+    origin: entryMode,
+    resultUndefined: !statusChosen,
+    extraWarnings: amountMismatch
+      ? [
+          `El monto oficial (${formatPEN(review.amount)}) no coincide con stake × unidad${
+            calculatedOnlyAmount ? ` (${formatPEN(calculatedOnlyAmount)})` : ''
+          }: se registra el oficial.`,
+        ]
+      : [],
+  };
   const entryProps = {
     projectId: project.id,
     mode: entryMode,
@@ -1344,20 +1427,30 @@ export function NewBetForm({
     origin: entryMode,
     canViewTickets: can('tickets.view'),
     onViewHistory: () => onViewHistory?.(registered.id),
+    onViewBet: () => onViewBet?.(registered.id),
     onRegisterAnother: () => onRegisterAnother?.(),
     onGoDashboard: () => onGoDashboard?.(),
   };
   // Igual que la columna principal, las columnas derechas de los Pasos 1 y 2 quedan montadas y solo
-  // se ocultan (nada se pierde al ir y volver); la del Paso 3 aparece al registrar.
+  // se ocultan (nada se pierde al ir y volver). La revisión del Paso 3 reutiliza la MISMA tarjeta del
+  // ticket original (con su ampliación) y pone debajo el impacto del registro en vez del resumen del
+  // formulario; tras registrar, la columna pasa a la del "Registro completado".
+  const reviewing = step === 2 && !registered && reviewProps;
   const asideContent = (
     <>
       <div className={step === 0 ? 'contents' : 'hidden'}>
         <BetEntryAside {...entryProps} />
       </div>
-      <div className={step === 1 ? 'contents' : 'hidden'}>
+      <div className={step === 1 || reviewing ? 'contents' : 'hidden'}>
         {ticketCard}
-        <div className="shrink-0">{summaryCard}</div>
+        <div className={step === 1 ? 'shrink-0' : 'hidden'}>{summaryCard}</div>
       </div>
+      {reviewing && (
+        // Primero el impacto del registro (lo que hará con el saldo), después el ticket original.
+        <div className="order-first flex flex-col gap-3">
+          <BetReviewAside {...reviewProps} />
+        </div>
+      )}
       {step === 2 && registeredProps && <BetRegisteredAside {...registeredProps} />}
     </>
   );
@@ -1779,7 +1872,7 @@ export function NewBetForm({
   return (
     <form
       onSubmit={(event) => void onSubmit(event)}
-      // Enter dentro de un campo nunca envía ni avanza: solo "Confirmar apuesta" (Paso 2) registra.
+      // Enter dentro de un campo nunca envía ni avanza: solo "Registrar apuesta" (Paso 3) registra.
       onKeyDown={(event) => {
         if (event.key === 'Enter' && event.target instanceof HTMLInputElement) {
           event.preventDefault();
@@ -1793,9 +1886,12 @@ export function NewBetForm({
       <WizardStepper
         labels={STEP_LABELS}
         current={step}
-        onSelect={setStep}
-        // "Confirmar" solo se alcanza registrando; tras registrar ya no se vuelve atrás.
-        canSelect={(index) => step < 2 && index < 2 && !analyzing && !submitting}
+        // Ir a un paso anterior a la revisión la descarta (al continuar se vuelve a validar).
+        onSelect={(index) => (index < 2 ? leaveReview(index) : setStep(index))}
+        // Se puede volver a un paso anterior mientras no se haya registrado; nunca se salta hacia
+        // adelante con el indicador (eso es cosa de "Continuar a confirmar", que valida). Tras
+        // registrar, el asistente queda bloqueado.
+        canSelect={(index) => !confirmed && index <= step && !analyzing && !submitting}
       />
 
       {step === 2 && registered && (
@@ -1936,6 +2032,7 @@ export function NewBetForm({
               </div>
             </div>
 
+            {reviewing && <BetReviewMain {...reviewProps} />}
             {step === 2 && registeredProps && <BetRegisteredMain {...registeredProps} />}
 
             {narrow && <div className="flex flex-col gap-3">{asideContent}</div>}
@@ -1977,7 +2074,17 @@ export function NewBetForm({
             Atrás
           </button>
         )}
-        {step === 2 && (
+        {step === 2 && !registered && (
+          <button
+            type="button"
+            className={`${wizardButton.outline} ${mobileHalf}`}
+            onClick={() => leaveReview(1)}
+            disabled={submitting}
+          >
+            Atrás
+          </button>
+        )}
+        {step === 2 && registered && (
           <button
             type="button"
             className={`${wizardButton.outline} ${mobileHalf}`}
@@ -1988,7 +2095,7 @@ export function NewBetForm({
         )}
         {/* En móvil los botones forman una rejilla de dos por fila (nunca tres filas de pie). */}
         <div className="flex flex-wrap items-center justify-end gap-2 max-sm:contents sm:ml-auto">
-          {draftMessage && step < 2 && (
+          {draftMessage && !confirmed && (
             <span
               role="status"
               className="text-xs text-green-700 max-sm:order-first max-sm:basis-full"
@@ -1996,15 +2103,15 @@ export function NewBetForm({
               {draftMessage}
             </span>
           )}
-          {step === 1 && figures.amount !== null && (
-            // Transparencia financiera: qué hará el registro, justo antes de confirmarlo.
+          {step === 2 && !registered && review && (
+            // Transparencia financiera: qué hará el registro, justo antes de confirmarlo (de la revisión).
             <span className="text-xs text-slate-500 max-sm:order-first max-sm:basis-full">
-              {status === 'PENDING' || !statusChosen
-                ? `Reservará ${formatPEN(figures.amount)} en ${house?.name ?? 'la casa elegida'}.`
-                : `Se registrará ya liquidada como ${RESULT_BUTTON_LABELS[status].toLowerCase()}.`}
+              {review.status === 'PENDING'
+                ? `Comprometerá ${formatPEN(review.amount)} en ${reviewHouse?.name ?? 'la casa elegida'}.`
+                : `Se registrará ya liquidada como ${RESULT_BUTTON_LABELS[review.status].toLowerCase()}.`}
             </span>
           )}
-          {step < 2 && (
+          {!confirmed && (
             <button
               type="button"
               className={`${wizardButton.outline} ${mobileHalf}`}
@@ -2063,7 +2170,20 @@ export function NewBetForm({
             </button>
           )}
           {step === 1 && (
-            // `key` distinto a propósito: el botón de avance del Paso 1 y este ocupan la misma
+            // `type="button"`: nunca envía el formulario. Valida y avanza a la revisión del Paso 3;
+            // el registro ocurre allí, con "Registrar apuesta".
+            <button
+              key="continue-review"
+              type="button"
+              className={`${wizardButton.primary} ${mobileHalf}`}
+              onClick={goToReview}
+            >
+              Continuar a confirmar
+              <ArrowRightIcon />
+            </button>
+          )}
+          {step === 2 && !registered && review && (
+            // `key` distinto a propósito: el botón de avance del Paso 1/2 y este ocupan la misma
             // posición con distinto `type`; sin `key`, React reutilizaría el nodo y un clic en curso
             // podría disparar el envío.
             <button
@@ -2071,14 +2191,23 @@ export function NewBetForm({
               type="submit"
               data-action="register"
               disabled={submitting}
+              aria-busy={submitting}
               className={`${wizardButton.primary} ${mobileHalf}`}
             >
               {submitting ? <SpinnerIcon className="animate-spin" /> : <CheckIcon />}
-              {submitting ? 'Registrando…' : 'Confirmar apuesta'}
+              {submitting ? 'Registrando apuesta…' : 'Registrar apuesta'}
             </button>
           )}
           {step === 2 && registered && (
             <>
+              <button
+                type="button"
+                className={`${wizardButton.outline} ${mobileHalf}`}
+                onClick={() => onViewBet?.(registered.id)}
+              >
+                <TicketIcon />
+                Ver apuesta
+              </button>
               <button
                 type="button"
                 className={`${wizardButton.violet} ${mobileHalf}`}

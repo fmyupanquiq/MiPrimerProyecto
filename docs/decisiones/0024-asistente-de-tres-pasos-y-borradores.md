@@ -1,6 +1,7 @@
 # 0024. Asistente «Añadir apuesta» de tres pasos, borradores y registro idempotente
 
-- **Estado:** Aceptada e implementada en desarrollo y pruebas (no aplicada a producción).
+- **Estado:** Aceptada. En producción está la variante que registra en el Paso 2 (`d6bd05a`); el flujo definitivo
+  (2026-10-15, al final de este documento) está implementado en desarrollo y pendiente de desplegar.
 - **Referencias:** ADR 0019, 0022, 0023; referencia visual `docs/referencias/letfer-referencia-verificar-datos.png`.
 
 ## Contexto
@@ -76,22 +77,41 @@ del punto 1 de la decisión; el resto (borradores, idempotencia, una instancia p
    y «Continuar en modo Manual», que conserva la imagen como respaldo. **Manual nunca llama a `analyze`**; su imagen es
    un respaldo que se vincula con `ticketId`. Sin `tickets.analyze`, el modo IA aparece deshabilitado y se empieza en
    Manual.
-2. **Paso 2 «Verificar datos» = todo el formulario editable, y «Confirmar apuesta» es lo único que registra.** El
-   botón lleva `data-action="register"` y el envío se ignora si no viene de él (Enter, «Atrás», «Editar ticket»,
-   «Guardar borrador» nunca registran). Se conservan el cerrojo de doble clic y el `clientRequestId` (4xx renueva,
-   red/5xx conserva). El pie anticipa el impacto («Reservará S/ X en {casa}» / «Se registrará ya liquidada como …»).
-   Si el registro falla, el asistente sigue en el Paso 2 con el error. Los datos poco frecuentes (hora desconocida,
-   zona, disponible, retorno potencial, motivo) viven en «Datos opcionales», plegado y sin apertura automática.
-3. **Paso 3 «Confirmar» = «Registro completado», de solo lectura.** Se pinta **solo con el `BetDetail` que devuelve la
-   API** (nunca con el formulario): hechos, selecciones registradas (la Creada como una fila con su cuota una vez),
-   ticket original o ticket digital, «Resumen final» y «Próximos pasos». Desde aquí no se vuelve atrás (el indicador
-   deja de ser navegable) y cerrar no pide confirmación. Acciones: *Cerrar*, *Ver historial* (cierra y resalta la
-   apuesta en la lista), *Registrar otra apuesta* (asistente nuevo, otra clave de idempotencia, mismo origen) y
-   *Volver al dashboard*. Al registrar se descarta el borrador y se recargan apuestas, casas y borradores.
-4. **Textos.** Subtítulos: Paso 1 «Carga tu ticket o registra una apuesta manualmente.»; Paso 2 IA «Revisa los datos
+2. **Paso 2 «Verificar datos» = verificar y corregir; «Continuar a confirmar» valida y avanza, nunca registra.** Todo
+   el formulario es editable (casa, fecha y hora, stake e importe, cuotas, resultado, legs y condiciones internas, la
+   Creada dentro de una Múltiple, ticket original y avisos). «Continuar a confirmar» (`type="button"`, sin
+   `data-action`) ejecuta en el cliente las mismas reglas que el registro (`buildCreatePayload`: `createBetSchema` y
+   `validateSelectionStructure`); si falta algo, se queda en el Paso 2 con el error. Si todo está bien, **congela ese
+   payload validado** y avanza. No llama a la API: no crea la apuesta, ni movimientos, ni cambia saldos, ni consume el
+   borrador. Se mantienen «Atrás» (Paso 1), «Editar ticket» y «Guardar borrador». Los datos poco frecuentes viven en
+   «Datos opcionales», plegado y sin apertura automática.
+3. **Paso 3 «Confirmar» = revisar y registrar.** La revisión final es de solo lectura y se pinta **solo con el payload
+   validado** (`bet-review.ts` → `BetReviewView`): lo que se ve es lo que se envía. Muestra el ticket digital de LetFer
+   (`DigitalTicket`): casa, fecha y hora, tipo, resultado, etapa, unidad de stake y origen; todos los legs con partido,
+   mercado, pronóstico, cuota del leg **una sola vez** y condiciones internas (la Creada dentro de la Múltiple como un
+   leg); y el resumen financiero (stake, importe, cuota total con su procedencia ADR 0023, retorno potencial y, si se
+   registra ya liquidada, retorno realizado y ganancia o pérdida), con las fórmulas de la API. A la derecha, el ticket
+   original (ampliable) y el **impacto del registro** (disponible actual, lo comprometido y el disponible después;
+   una pendiente no mueve el ledger hasta liquidarse). Las advertencias relevantes (cuota de referencia, hora
+   desconocida, resultado sin elegir, disponible insuficiente, monto oficial ≠ stake × unidad) nunca bloquean.
+   Botones: **«Atrás»** (vuelve al Paso 2 con todo intacto y descarta la revisión: al continuar se valida de nuevo) y
+   **«Registrar apuesta»**, el **único** que registra. Lleva `data-action="register"` y el envío se ignora si no viene
+   de él (Enter, el indicador o «Atrás» nunca registran). Al pulsarlo se reconstruye el payload y, si no coincide con
+   el revisado (salvo la clave de idempotencia), se actualiza la revisión y se pide revisarla sin enviar nada. Se
+   conservan el cerrojo de doble clic y el `clientRequestId` (4xx renueva, red/5xx conserva). Mientras se envía,
+   «Registrando apuesta…» y el botón deshabilitado. Si falla, se queda en el Paso 3 con un error seguro y los datos
+   intactos; nunca se afirma un registro sin la respuesta del backend.
+4. **Después: «Registro completado».** Solo tras una respuesta correcta de la API, el MISMO Paso 3 (no un cuarto paso
+   del indicador) pasa a mostrarse **solo con el `BetDetail` devuelto** (nunca con el formulario). Desde ahí no se
+   vuelve atrás (el indicador deja de ser navegable) y cerrar no pide confirmación. Acciones: *Ver apuesta* (abre su
+   detalle), *Ver historial* (cierra y resalta la apuesta), *Registrar otra apuesta* (asistente nuevo, otra clave de
+   idempotencia, mismo origen), *Volver al dashboard* y *Cerrar*. El borrador se descarta **solo** tras el registro
+   correcto, y se recargan apuestas, casas y borradores.
+5. **Textos.** Subtítulos: Paso 1 «Carga tu ticket o registra una apuesta manualmente.»; Paso 2 IA «Revisa los datos
    extraídos por IA y confirma que la información sea correcta.»; Paso 2 Manual «Completa los datos de tu apuesta y
-   confirma que la información sea correcta.»; Paso 3 «La apuesta ha sido confirmada y registrada en tu historial.».
-   La banda IA cuenta selecciones = **legs**, nunca condiciones.
+   confirma que la información sea correcta.»; Paso 3 antes de registrar «Revisa el resumen completo antes de
+   registrar la apuesta.»; tras registrar «La apuesta ha sido confirmada y registrada en tu historial.». La banda IA
+   cuenta selecciones = **legs**, nunca condiciones.
 
 **Diferencias deliberadas con las referencias:** el modal mide 69rem en los tres pasos (R1–R4 son más estrechos) para
 no cambiar de tamaño entre pasos; el origen es una tarjeta de selección; «Datos opcionales» agrupa campos que las
@@ -106,5 +126,16 @@ A 1672 × 941 los pasos R1–R7 caben sin scroll; la verificación manual sin ti
 `comparativa-*` junto a cada referencia); no se versionan porque muestran un ticket real.
 
 **Pruebas:** `NewBetWizard.spec.tsx` (análisis una vez, fallo con Reintentar/Manual, Manual sin análisis y con `ticketId`,
-cambio de origen, portapapeles, Paso 3 desde la respuesta de la API, variantes IA/Manual, Registrar otra/Ver
-historial/dashboard), `BetsPage.spec.tsx`, `ticket-files.spec.ts` y `bet-draft-record.spec.ts` (`entryMode`).
+cambio de origen, portapapeles, Paso 2 → Paso 3 sin escribir, «Atrás» conserva y la revisión se actualiza, validación
+al continuar, solo «Registrar apuesta» escribe, fallo de la API y reintento con la misma clave, borrador descartado solo
+tras el éxito, variantes IA/Manual, Registrar otra/Ver apuesta/Ver historial/dashboard), `bet-review.spec.ts` (cifras,
+Creada dentro de Múltiple, impacto), `BetsPage.spec.tsx`, `ticket-files.spec.ts` y `bet-draft-record.spec.ts`.
+
+## Flujo definitivo del registro (2026-10-15)
+
+Aprobado por el usuario el 2026-10-15, sustituye a las variantes anteriores (registro en el Paso 2 con «Confirmar
+apuesta», del rediseño de 2026-10; y la corrección del 2026-10-14, que registraba en el Paso 3 sin validar al continuar
+y con un resumen pintado desde el formulario): **Paso 1 añadir, Paso 2 verificar y corregir, Paso 3 revisar y
+registrar, y después «Registro completado».** Los puntos 2 a 5 de la sección anterior describen el flujo vigente. La
+regla según la cual el Paso 2 registra queda eliminada. No cambia nada en la API, el ledger, los cálculos decimales,
+la procedencia de la cuota, el modelo de legs ni la idempotencia; no hay migraciones.

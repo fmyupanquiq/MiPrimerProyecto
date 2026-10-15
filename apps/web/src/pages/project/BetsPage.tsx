@@ -326,6 +326,10 @@ export function BetsPage() {
               setQuery('');
               setHighlightId(betId);
             }}
+            onViewBet={(betId) => {
+              closeForm();
+              void navigate(`/projects/${project.id}/bets/${betId}`);
+            }}
             onGoDashboard={() => {
               closeForm();
               void navigate(`/projects/${project.id}`);

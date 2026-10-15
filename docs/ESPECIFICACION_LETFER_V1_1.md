@@ -3160,12 +3160,17 @@ queda `UNKNOWN` (nunca se marca oficial por suposición). En Múltiple/Creada la
 Cambiarla es documental: no altera importes, retornos, ganancias ni el ledger. `BetDetail.tickets` solo se
 devuelve a quien tiene `tickets.view`.
 
-**114.8 Asistente de registro (ADR 0024, rediseño 2026-10).** «Añadir apuesta» tiene tres pasos: Añadir apuesta
-(origen *Ticket con IA* o *Manual* y archivo; el análisis solo se ejecuta al pedirlo y el modo Manual nunca analiza),
-Verificar datos (todo editable; **solo «Confirmar apuesta» registra**) y Confirmar («Registro completado», de solo
-lectura, pintado con la respuesta del servidor). El resultado empieza sin definir. Los borradores son el
-estado del formulario, no apuestas: sin movimientos ni reserva de saldo, visibles solo para su dueño. El registro es
-idempotente por `clientRequestId`.
+**114.8 Asistente de registro (ADR 0024, flujo definitivo 2026-10-15).** «Añadir apuesta» tiene tres pasos:
+1 Añadir apuesta (origen *Ticket con IA* o *Manual* y archivo; el análisis solo se ejecuta al pedirlo y el modo Manual
+nunca analiza); 2 Verificar datos (todo editable; «Continuar a confirmar» valida en el cliente con las reglas del
+registro y avanza, pero **nunca registra**: no crea la apuesta, ni movimientos, ni cambia saldos, ni consume el
+borrador); 3 Confirmar (revisión final de solo lectura —ticket digital, legs y condiciones, resumen financiero con su
+procedencia, ticket original e impacto del registro— pintada con el mismo payload validado que se enviará; «Atrás»
+vuelve al Paso 2 sin perder nada y **solo «Registrar apuesta» registra**). Solo tras la respuesta correcta del
+servidor, el mismo paso pasa a «Registro completado», pintado únicamente con esa respuesta (no es un cuarto paso y no
+se vuelve atrás). Si el registro falla, se permanece en el Paso 3 con los datos intactos. El resultado empieza sin
+definir. Los borradores son el estado del formulario, no apuestas: sin movimientos ni reserva de saldo, visibles solo
+para su dueño, y se descartan solo tras un registro correcto. El registro es idempotente por `clientRequestId`.
 
 **114.7 IA.** El contrato de extracción es jerárquico y compatible con las respuestas anteriores:
 `selections[]` son los legs; un leg creado lleva `conditions[]` (2 a 10, sin cuota propia; `selection` del leg

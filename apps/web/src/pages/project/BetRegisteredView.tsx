@@ -26,6 +26,7 @@ import {
   ListIcon,
   MinusCircleIcon,
   PlusCircleIcon,
+  TicketIcon,
   TrophyIcon,
   XCircleIcon,
 } from '../../icons.js';
@@ -39,10 +40,12 @@ import { DigitalTicket } from './DigitalTicket.js';
 import { CardIcon, WizardCard } from './WizardCard.js';
 
 /*
- * Paso 3 "Confirmar" del asistente (rediseño de los tres pasos, ADR 0024): "Registro completado".
- * Solo lectura y pintado EXCLUSIVAMENTE con el `BetDetail` que devolvió la API al registrar (nunca con
- * el estado del formulario): casa, fecha en la zona del proyecto, tipo, legs, stake, importe, cuota y
- * su procedencia, retorno potencial y estado. Se exporta en dos piezas (principal y columna derecha).
+ * Paso 3 "Confirmar" del asistente, DESPUÉS de registrar (ADR 0024, flujo definitivo 2026-10-15):
+ * "Registro completado". Antes de pulsar "Registrar apuesta" el mismo paso muestra la revisión final
+ * (`BetReviewView`); esta vista solo se monta tras el éxito, y se pinta EXCLUSIVAMENTE con el
+ * `BetDetail` que devolvió la API (nunca con el estado del formulario): casa, fecha en la zona del
+ * proyecto, tipo, legs, stake, importe, cuota y su procedencia, retorno potencial y estado. Se
+ * exporta en dos piezas (principal y columna derecha).
  */
 
 export interface BetRegisteredProps {
@@ -52,6 +55,8 @@ export interface BetRegisteredProps {
   /** Puede ver tickets (`tickets.view`): si no, `bet.tickets` llega vacío y no se muestra imagen. */
   canViewTickets: boolean;
   onViewHistory: () => void;
+  /** Abrir el detalle de la apuesta registrada ("Ver apuesta"). */
+  onViewBet: () => void;
   onRegisterAnother: () => void;
   onGoDashboard: () => void;
 }
@@ -317,6 +322,7 @@ export function BetRegisteredAside({
   origin,
   canViewTickets,
   onViewHistory,
+  onViewBet,
   onRegisterAnother,
   onGoDashboard,
 }: BetRegisteredProps) {
@@ -419,6 +425,7 @@ export function BetRegisteredAside({
 
       <WizardCard icon={<FlagIcon />} title="Próximos pasos" dense compact>
         <div className="flex flex-col gap-2">
+          <NextStep icon={<TicketIcon />} label="Ver apuesta" onClick={onViewBet} />
           <NextStep icon={<ListIcon />} label="Ver en historial" onClick={onViewHistory} />
           <NextStep
             icon={<PlusCircleIcon />}
