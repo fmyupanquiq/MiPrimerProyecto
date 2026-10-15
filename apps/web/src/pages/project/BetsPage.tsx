@@ -11,6 +11,7 @@ import {
   type HouseSummary,
   type TicketSummary,
   type TotalOddsSource,
+  BET_STATUSES,
 } from '@letfer/shared';
 import { type FormEvent, type ReactNode, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
@@ -111,7 +112,11 @@ export function BetsPage() {
   const [notice, setNotice] = useState<string | null>(null);
   // Id de la apuesta recién registrada: el aviso ofrece abrirla ("Ver apuesta") de inmediato.
   const [registeredId, setRegisteredId] = useState<string | null>(null);
-  const [filter, setFilter] = useState<'ALL' | BetStatus>('ALL');
+  // `?estado=PENDING` (Dashboard, «Apuestas pendientes» → «Ver todos») abre la lista ya filtrada.
+  const [filter, setFilter] = useState<'ALL' | BetStatus>(() => {
+    const status = searchParams.get('estado');
+    return BET_STATUSES.find((s) => s === status) ?? 'ALL';
+  });
   const [query, setQuery] = useState('');
   // "Registrar otra apuesta" reinicia el asistente (nuevo formulario, nueva clave de idempotencia)
   // con el mismo origen que se usó la última vez.
