@@ -244,7 +244,11 @@ cuerpo si ambos difieren. Si una regla debe cambiar: primero se actualiza la esp
 - Solo lectura. `ReportsService` reutiliza `DashboardService.analysis` y `reportRows` (misma CTE, ganancia
   por apuesta del ledger): la tabla del reporte suma lo mismo que su resumen. Nunca calcules métricas en la
   plantilla ni en la web; el panel, la vista previa y el PDF usan el mismo estado aplicado.
-- El PDF se genera en el backend con `pdfkit` (`reports/report-pdf.ts`, función pura `ReportData → Buffer`,
-  fuentes estándar Helvetica); se descarga, nunca se guarda. Orden común: `sortReportBets` (`@letfer/shared`).
+- El PDF se genera en el backend con `pdfkit` (`reports/report-pdf.ts` → módulos de `reports/pdf/`, función pura
+  `ReportData → Buffer`); se descarga, nunca se guarda. Orden común: `sortReportBets` (`@letfer/shared`).
+- Informe ejecutivo 2.0 (ADR 0026): cinco bloques ligados a las secciones (`segments` y `operations` nuevas);
+  fuente Inter de `@fontsource/inter` incrustada (en pruebas, `fonts: 'standard'` para leer el texto). Las
+  observaciones son reglas fijas de `pdf/insights.ts`: sin IA, sin recomendaciones ni predicciones. Segmentos con
+  Yield (el ROI no se reparte por segmento).
 - Pruebas: `report-pdf.spec.ts` (con `REPORT_PDF_OUT=<carpeta>` guarda los PDF para revisarlos),
   `test/reports.e2e-spec.ts` y `ReportsPage.spec.tsx`.

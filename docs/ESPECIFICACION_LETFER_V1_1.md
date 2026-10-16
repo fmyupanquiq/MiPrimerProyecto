@@ -2645,6 +2645,21 @@ no crea apuestas, movimientos, liquidaciones ni cambios de saldo, y no introduce
     guardado ni con URL pública; mismos permisos que el dashboard (§108.8);
     las imágenes de tickets solo con `tickets.view`. Máximo 5 000 apuestas
     por reporte (se pide acotar el periodo).
+-   **Informe ejecutivo 2.0 (2026-10-16, ADR 0026):** el PDF se organiza en
+    cinco bloques —1. Reporte ejecutivo de rendimiento (indicadores,
+    conclusión del periodo y lectura rápida), 2. Análisis financiero y
+    estadístico (evolución de la ganancia neta acumulada, resultados por
+    estado e indicadores con su significado), 3. Análisis por segmentos
+    (casa, tipo y deporte con Yield; «Otros» con más de 8 filas; varias
+    disciplinas = «Mixto»), 4. Control operativo (exposición, promedio por
+    apuesta, cuota media, mayor ganancia y pérdida, riesgos y
+    observaciones) y 5. Detalle de apuestas (todas, legs y condiciones
+    sangrados, cuota del leg una vez)—, con secciones `segments` y
+    `operations` en el constructor y el atajo «Reporte ejecutivo
+    completo». Las observaciones salen de reglas fijas sobre las cifras
+    del reporte (umbrales en ADR 0026): no usan IA, no recomiendan ni
+    predicen. El ROI no se reparte por segmento (usa el capital invertido
+    del proyecto).
 
 ## 109. Confianza y recuperación (Fase 5.5)
 
