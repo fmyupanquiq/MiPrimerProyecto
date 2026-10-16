@@ -1,9 +1,17 @@
-import type { HouseSummary, ReportSection, StageSummary } from '@letfer/shared';
+import {
+  EXECUTIVE_REPORT_SECTIONS,
+  type HouseSummary,
+  type ReportSection,
+  type StageSummary,
+} from '@letfer/shared';
 import type { ReactNode } from 'react';
 import {
+  AlertIcon,
+  BankIcon,
   CalendarIcon,
   ChartBarsIcon,
   ChevronDownIcon,
+  DocumentIcon,
   FilterIcon,
   LayersIcon,
   ListIcon,
@@ -84,14 +92,32 @@ const SECTION_CARDS: { key: ReportSection; title: string; text: string; icon: Re
   {
     key: 'summary',
     title: 'Resumen ejecutivo',
-    text: 'Métricas principales y resumen del periodo.',
+    text: 'Indicadores clave, conclusión del periodo y lectura rápida.',
     icon: <ChartBarsIcon />,
+  },
+  {
+    key: 'charts',
+    title: 'Gráficos y tendencias',
+    text: 'Evolución de la ganancia neta y resultados por estado.',
+    icon: <TrendIcon />,
   },
   {
     key: 'metrics',
     title: 'Métricas de rendimiento',
-    text: 'ROI, Yield y win rate por tipo; montos por casa.',
+    text: 'ROI, Yield, win rate y cuota media, con su significado.',
     icon: <DonutIcon />,
+  },
+  {
+    key: 'segments',
+    title: 'Análisis por segmentos',
+    text: 'Rendimiento por casa, tipo de apuesta y deporte.',
+    icon: <BankIcon />,
+  },
+  {
+    key: 'operations',
+    title: 'Control operativo',
+    text: 'Exposición, mayor ganancia y pérdida, riesgos y observaciones.',
+    icon: <AlertIcon />,
   },
   {
     key: 'table',
@@ -110,12 +136,6 @@ const SECTION_CARDS: { key: ReportSection; title: string; text: string; icon: Re
     title: 'Tickets adjuntos',
     text: 'Imágenes de los tickets (si están disponibles).',
     icon: <TicketIcon />,
-  },
-  {
-    key: 'charts',
-    title: 'Gráficos y tendencias',
-    text: 'Rendimiento acumulado y distribución por resultado.',
-    icon: <TrendIcon />,
   },
 ];
 
@@ -162,6 +182,10 @@ export function ReportBuilder({
 }) {
   const set = <K extends keyof ReportDraft>(key: K, value: ReportDraft[K]) =>
     onDraft({ ...draft, [key]: value });
+  // El preset marca las siete secciones del informe ejecutivo (los tickets quedan como estaban: no).
+  const executive =
+    options.sections.length === EXECUTIVE_REPORT_SECTIONS.length &&
+    EXECUTIVE_REPORT_SECTIONS.every((s) => options.sections.includes(s));
   const toggle = (key: ReportSection) =>
     onOptions({
       ...options,
@@ -348,11 +372,21 @@ export function ReportBuilder({
 
       {/* 2. Contenido */}
       <div className="flex flex-col gap-3">
-        <StepTitle
-          n={2}
-          title="Contenido del reporte"
-          text="Selecciona las secciones que deseas incluir en el PDF."
-        />
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <StepTitle
+            n={2}
+            title="Contenido del reporte"
+            text="Selecciona las secciones que deseas incluir en el PDF."
+          />
+          <button
+            type="button"
+            onClick={() => onOptions({ ...options, sections: [...EXECUTIVE_REPORT_SECTIONS] })}
+            aria-pressed={executive}
+            className={`inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-sm font-medium ${executive ? 'border-violet-400 bg-violet-50 text-violet-700' : 'border-slate-200 text-slate-700 hover:border-violet-300 hover:text-violet-700'} ${focusRing}`}
+          >
+            <DocumentIcon className="h-4 w-4" /> Reporte ejecutivo completo
+          </button>
+        </div>
         <ul className="grid gap-2.5 @[30rem]:grid-cols-2 @[52rem]:grid-cols-3">
           {SECTION_CARDS.map((card) => {
             const disabled = card.key === 'tickets' && !ticketsAllowed;

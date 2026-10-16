@@ -10,6 +10,7 @@ import {
   YAxis,
 } from 'recharts';
 import { dashboardApi } from '../../../api/dashboard.js';
+import { formatRate } from '../../../format.js';
 import { type GlossaryKey, Help } from '../../../glossary.js';
 import { useLoad } from '../../../hooks/useLoad.js';
 import { ChartIcon } from '../../../icons.js';
@@ -116,7 +117,7 @@ function BreakdownTable({ title, items }: BreakdownTableProps) {
                   >
                     {money(item.profitLoss)}
                   </td>
-                  <td className="py-1.5 pr-2 tabular-nums">{percent(item.yield)}</td>
+                  <td className="py-1.5 pr-2 tabular-nums">{formatRate(item.yield)}</td>
                   <td className="py-1.5 pr-2 tabular-nums">{money(item.totalStaked)}</td>
                   <td className="py-1.5 tabular-nums">{item.count}</td>
                 </tr>
@@ -160,14 +161,14 @@ export function AnalysisBreakdowns({
               label="Yield"
               term="yield"
               primary
-              value={percent(data.yield)}
+              value={formatRate(data.yield)}
               tone={toneOf(data.yield)}
             />
             <StatCard
               label="ROI"
               term="roi"
               primary
-              value={percent(data.roi)}
+              value={formatRate(data.roi)}
               tone={toneOf(data.roi)}
             />
             <StatCard label="Apostado" term="amount" primary value={money(data.totalStaked)} />

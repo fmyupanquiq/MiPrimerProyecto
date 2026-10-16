@@ -182,6 +182,8 @@ const reportBody = (
   analysis,
   totals: {
     bets: bets.length,
+    settledBets: 1,
+    averageStakeSettled: '20.00',
     stakedSettled: '20.00',
     stakedPending: '20.00',
     returns: '39.00',
@@ -189,6 +191,7 @@ const reportBody = (
   },
   byBetType: [],
   cumulative: [],
+  highlights: { best: null, worst: null },
   bets,
 });
 
@@ -453,7 +456,7 @@ describe('reportes: generación del PDF', () => {
     for (const key of ['from', 'to', 'houseId']) expect(q.get(key)).toBe(applied.get(key));
     expect(q.get('orientation')).toBe('landscape');
     expect(q.get('sortBy')).toBe('profit');
-    expect(q.get('sections')).toBe('summary,metrics,table,selections,charts');
+    expect(q.get('sections')).toBe('summary,charts,metrics,segments,operations,table,selections');
     expect(q.get('periodLabel')).toMatch(/^\d{2}\/\d{2}\/\d{4} - \d{2}\/\d{2}\/\d{4}$/);
     expect(click).toHaveBeenCalledTimes(1);
   });
@@ -526,6 +529,8 @@ describe('reportes: generación del PDF', () => {
     for (const name of [
       /Resumen ejecutivo/,
       /Métricas de rendimiento/,
+      /Análisis por segmentos/,
+      /Control operativo/,
       /Tabla de apuestas/,
       /Selecciones detalladas/,
       /Gráficos y tendencias/,
@@ -533,6 +538,31 @@ describe('reportes: generación del PDF', () => {
       fireEvent.click(screen.getByRole('checkbox', { name }));
     }
     expect(screen.getByRole('button', { name: /Generar PDF/ }).hasAttribute('disabled')).toBe(true);
+  });
+
+  it('«Reporte ejecutivo completo» marca las siete secciones del informe y el PDF las pide', async () => {
+    const { pdfQueries } = open();
+    renderApp(REPORTS_URL);
+    await ready();
+    const preset = screen.getByRole('button', { name: 'Reporte ejecutivo completo' });
+    expect(preset.getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(screen.getByRole('checkbox', { name: /Análisis por segmentos/ }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /Control operativo/ }));
+    expect(preset.getAttribute('aria-pressed')).toBe('false');
+    expect(screen.getByText(/Páginas del informe:/).closest('p')!.textContent).not.toContain(
+      'Segmentos',
+    );
+    fireEvent.click(preset);
+    expect(preset.getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByText(/Páginas del informe:/).closest('p')!.textContent).toContain(
+      'Resumen ejecutivo · Análisis financiero · Segmentos · Control operativo · Detalle de apuestas',
+    );
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+    fireEvent.click(screen.getByRole('button', { name: /Generar PDF/ }));
+    await screen.findByRole('button', { name: /PDF listo/ });
+    expect(pdfQueries()[0]!.get('sections')).toBe(
+      'summary,charts,metrics,segments,operations,table,selections',
+    );
   });
 });
 
@@ -546,6 +576,12 @@ describe('reportes: análisis detallado (lo que ya existía)', () => {
     expect(within(section).getByText('S/ 750.00')).toBeTruthy();
     expect(within(section).getByText('S/ 15.00')).toBeTruthy();
     expect(within(section).getByText('S/ 18.50')).toBeTruthy();
+    // ROI y Yield con dos decimales y signo, igual que en el PDF (sin recalcular).
+    expect(within(section).getByText('+2.71 %')).toBeTruthy();
+    expect(within(section).getByText('+95.00 %')).toBeTruthy();
+    expect(within(section).getByText('+75.00 %')).toBeTruthy();
+    const preview = screen.getByRole('img', { name: 'Miniatura de la primera página del PDF' });
+    expect(within(preview).getByText('+2.71 %')).toBeTruthy();
   });
 
   it('con una serie de rendimiento, muestra el drawdown máximo', async () => {

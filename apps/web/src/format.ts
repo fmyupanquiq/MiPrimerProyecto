@@ -38,6 +38,16 @@ export function formatPercent(value: string, { signed = true } = {}): string {
   return `${signed ? '+' : ''}${text}%`;
 }
 
+/**
+ * ROI o Yield de la API (ya con dos decimales) tal cual, con signo explícito: `+16.48 %`, `-3.40 %`,
+ * `0.00 %`; `—` si no está definido. Es el mismo formato que el PDF de reportes (§108.11).
+ */
+export function formatRate(value: string | null): string {
+  if (value === null) return '—';
+  if (value.startsWith('-') || /^0+(\.0+)?$/.test(value)) return `${value} %`;
+  return `+${value} %`;
+}
+
 /** Tono de un porcentaje o importe con signo: verde, rojo o neutro (`null` = sin dato). */
 export function signTone(value: string | null): 'positive' | 'negative' | 'neutral' {
   if (value === null || /^-?0+(\.0+)?$/.test(value)) return 'neutral';

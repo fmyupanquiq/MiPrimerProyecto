@@ -1,6 +1,6 @@
 import { formatPEN, type BetStatus, type ReportData } from '@letfer/shared';
 import { Area, AreaChart, Cell, Pie, PieChart, ResponsiveContainer, YAxis } from 'recharts';
-import { signedPEN } from '../../../format.js';
+import { formatRate, signedPEN } from '../../../format.js';
 import { DocumentIcon, EyeIcon } from '../../../icons.js';
 import { BET_STATUS_LABELS } from '../../../labels.js';
 import { zonedParts } from '../../../time-zone.js';
@@ -83,6 +83,15 @@ export function PdfPreview({
       : 0;
   const generated = data ? zonedParts(new Date(data.generatedAt)) : null;
   const show = (s: ReportOptions['sections'][number]) => options.sections.includes(s);
+  // Bloques del PDF en su orden (§108.11), según las secciones elegidas.
+  const pages = [
+    show('summary') && 'Resumen ejecutivo',
+    (show('charts') || show('metrics')) && 'Análisis financiero',
+    show('segments') && 'Segmentos',
+    show('operations') && 'Control operativo',
+    show('table') && 'Detalle de apuestas',
+    show('tickets') && 'Tickets',
+  ].filter((p): p is string => typeof p === 'string');
 
   return (
     <section
@@ -120,7 +129,7 @@ export function PdfPreview({
           </div>
           <div className="text-right text-[9px] leading-tight" style={{ color: P.muted }}>
             <p className="font-semibold" style={{ color: P.ink }}>
-              Reporte de apuestas
+              Reporte ejecutivo de rendimiento
             </p>
             <p>{period}</p>
             {generated && <p>Generado el {generated.date.split('-').reverse().join('/')}</p>}
@@ -142,7 +151,7 @@ export function PdfPreview({
                 color={toneOf(a?.profitLoss ?? null)}
               />
               <Metric
-                value={a?.roi != null ? `${a.roi}%` : '—'}
+                value={formatRate(a?.roi ?? null)}
                 label="ROI"
                 color={toneOf(a?.roi ?? null)}
               />
@@ -153,7 +162,7 @@ export function PdfPreview({
         {show('charts') && (
           <div className="mt-2.5 grid grid-cols-[1.35fr_1fr] gap-2">
             <div className="rounded-md border p-2" style={{ borderColor: P.line }}>
-              <p className="text-[10px] font-bold">Rendimiento acumulado</p>
+              <p className="text-[10px] font-bold">Evolución de la ganancia neta</p>
               <div className="h-20">
                 {data && data.cumulative.length > 1 ? (
                   <ResponsiveContainer width="100%" height="100%">
@@ -292,6 +301,17 @@ export function PdfPreview({
               </p>
             )}
           </>
+        )}
+        {pages.length > 0 && (
+          <p
+            className="mt-2.5 border-t pt-1.5 text-[8.5px]"
+            style={{ borderColor: P.line, color: P.muted }}
+          >
+            <span className="font-semibold" style={{ color: P.ink }}>
+              Páginas del informe:
+            </span>{' '}
+            {pages.join(' · ')}
+          </p>
         )}
         {options.sections.length === 0 && (
           <p className="py-6 text-center text-xs" style={{ color: P.muted }}>
