@@ -1,6 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
   addMoney,
+  averageMoney,
+  compareMoney,
   BET_TYPES,
   ErrorCode,
   REPORT_MAX_BETS,
@@ -47,6 +49,36 @@ export function legsOf(selections: readonly BetSelectionSummary[]): ReportLeg[] 
         conditions: ordered.map((r) => ({ market: r.market, selection: r.selection })),
       };
     });
+}
+
+/** Etiqueta legible de una apuesta: sus partidos (o «Sin partido»). */
+const betLabel = (bet: ReportBet) => bet.legs.map((l) => l.event).join(' + ') || 'Sin partido';
+
+/**
+ * Mayor ganancia y mayor pérdida (según el ledger) de las apuestas liquidadas del reporte. Solo
+ * selecciona valores existentes; empate: la más antigua.
+ */
+export function highlightsOf(bets: readonly ReportBet[]): ReportData['highlights'] {
+  let best: ReportBet | null = null;
+  let worst: ReportBet | null = null;
+  for (const bet of bets) {
+    if (bet.profitLoss === null) continue;
+    if (
+      compareMoney(bet.profitLoss, ZERO_MONEY) > 0 &&
+      (!best || compareMoney(bet.profitLoss, best.profitLoss!) > 0)
+    )
+      best = bet;
+    if (
+      compareMoney(bet.profitLoss, ZERO_MONEY) < 0 &&
+      (!worst || compareMoney(bet.profitLoss, worst.profitLoss!) < 0)
+    )
+      worst = bet;
+  }
+  const of = (bet: ReportBet | null) =>
+    bet
+      ? { betId: bet.id, profitLoss: bet.profitLoss!, label: betLabel(bet), placedAt: bet.placedAt }
+      : null;
+  return { best: of(best), worst: of(worst) };
 }
 
 /** Nombre de archivo seguro: solo letras, números, guion y guion bajo. */
@@ -143,11 +175,14 @@ export class ReportsService {
       };
     });
 
+    const settledBets = rows.filter((r) => r.status !== 'PENDING').length;
     return {
       generatedAt: this.clock.now().toISOString(),
       analysis,
       totals: {
         bets: bets.length,
+        settledBets,
+        averageStakeSettled: averageMoney(analysis.totalStaked, settledBets),
         stakedSettled: analysis.totalStaked,
         stakedPending: sumMoney(bets.filter((b) => b.status === 'PENDING').map((b) => b.amount)),
         returns: addMoney(analysis.totalStaked, analysis.profitLoss),
@@ -156,10 +191,20 @@ export class ReportsService {
       byBetType: types
         .map((betType, i) => {
           const a = typeAnalyses[i]!;
-          return { betType, bets: a.counts.total, winRate: a.winRate, roi: a.roi, yield: a.yield };
+          return {
+            betType,
+            bets: a.counts.total,
+            settledBets: a.counts.total - a.counts.pending,
+            totalStaked: a.totalStaked,
+            profitLoss: a.profitLoss,
+            winRate: a.winRate,
+            roi: a.roi,
+            yield: a.yield,
+          };
         })
         .filter((row) => row.bets > 0),
       cumulative,
+      highlights: highlightsOf(bets),
       bets,
     };
   }

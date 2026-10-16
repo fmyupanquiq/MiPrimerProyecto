@@ -1,4 +1,4 @@
-import { sumMoney, type ReportData } from '@letfer/shared';
+import { averageMoney, compareMoney, sumMoney, type ReportData } from '@letfer/shared';
 import { count } from 'drizzle-orm';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -191,6 +191,23 @@ describe('reportes e informes PDF (e2e, PostgreSQL real, §108.11)', () => {
     expect(analysis.winRate).toBe('50.00');
     // Curva acumulada: termina en la ganancia neta.
     expect(report.cumulative.at(-1)!.cumulative).toBe(analysis.profitLoss);
+    // Informe ejecutivo: liquidadas, promedio por apuesta, tipos y extremos del mismo alcance.
+    const settled = bets.filter((b) => b.profitLoss !== null);
+    expect(totals.settledBets).toBe(settled.length);
+    expect(totals.settledBets).toBe(analysis.counts.total - analysis.counts.pending);
+    expect(totals.averageStakeSettled).toBe(averageMoney(totals.stakedSettled, totals.settledBets));
+    expect(sumMoney(report.byBetType.map((r) => r.totalStaked))).toBe(analysis.totalStaked);
+    expect(sumMoney(report.byBetType.map((r) => r.profitLoss))).toBe(analysis.profitLoss);
+    expect(report.byBetType.reduce((n, r) => n + r.settledBets, 0)).toBe(totals.settledBets);
+    const byProfit = [...settled].sort((a, b) => compareMoney(a.profitLoss!, b.profitLoss!));
+    expect(report.highlights.best).toMatchObject({
+      betId: byProfit.at(-1)!.id,
+      profitLoss: byProfit.at(-1)!.profitLoss,
+    });
+    expect(report.highlights.worst).toMatchObject({
+      betId: byProfit[0]!.id,
+      profitLoss: byProfit[0]!.profitLoss,
+    });
   });
 
   it('estructuras: Creada con 3 condiciones y Múltiple con Creada interna (4 legs, 5 condiciones, 2.47 una vez)', async () => {
@@ -256,7 +273,7 @@ describe('reportes e informes PDF (e2e, PostgreSQL real, §108.11)', () => {
     const to = encodeURIComponent('2026-07-01T04:59:59.999Z');
     const res = await api('owner')
       .get(
-        `/reports/pdf?from=${from}&to=${to}&sections=summary,metrics,table,selections,charts&groupBy=house`,
+        `/reports/pdf?from=${from}&to=${to}&sections=summary,charts,metrics,segments,operations,table,selections&groupBy=house&orientation=landscape`,
       )
       .buffer(true)
       .parse(binary)
