@@ -135,6 +135,16 @@ export function percentageOf(
   return roundMoney(toDecimal(numerator).dividedBy(denominatorDecimal).times(100));
 }
 
+/**
+ * Media de un importe entre `count` elementos, redondeada a 2 decimales (`ROUND_HALF_UP`). Para
+ * presentar promedios (p. ej. el monto medio por apuesta de un reporte, §108.11); `null` si
+ * `count` es 0.
+ */
+export function averageMoney(total: MoneyString | Decimal, count: number): MoneyString | null {
+  if (!Number.isInteger(count) || count <= 0) return null;
+  return roundMoney(toDecimal(total).dividedBy(count));
+}
+
 /** Decimales de un stake (`NUMERIC(10,4)`, igual que `bets.stake_amount`; §12, D-X19). */
 const STAKE_SCALE = 4;
 

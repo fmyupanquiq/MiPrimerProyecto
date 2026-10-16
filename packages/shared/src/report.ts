@@ -24,15 +24,25 @@ export const REPORT_SECTIONS = [
   'selections',
   'tickets',
   'charts',
+  'segments',
+  'operations',
 ] as const;
 export type ReportSection = (typeof REPORT_SECTIONS)[number];
+/**
+ * «Reporte ejecutivo completo» (§108.11): portada ejecutiva, análisis financiero (gráficos e
+ * indicadores interpretados), segmentos, control operativo y detalle de apuestas con sus selecciones.
+ * Es también el contenido por defecto. Los tickets se añaden aparte (requieren permiso).
+ */
 export const DEFAULT_REPORT_SECTIONS: readonly ReportSection[] = [
   'summary',
+  'charts',
   'metrics',
+  'segments',
+  'operations',
   'table',
   'selections',
-  'charts',
 ];
+export const EXECUTIVE_REPORT_SECTIONS = DEFAULT_REPORT_SECTIONS;
 
 export const REPORT_GROUP_BY = ['none', 'date', 'house', 'status', 'betType'] as const;
 export type ReportGroupBy = (typeof REPORT_GROUP_BY)[number];
@@ -124,6 +134,10 @@ export interface ReportBet {
 /** Totales de la tabla del reporte (salen de las mismas filas que el análisis). */
 export interface ReportTotals {
   bets: number;
+  /** Apuestas liquidadas (todas menos las pendientes). */
+  settledBets: number;
+  /** Monto apostado medio de las liquidadas (`stakedSettled ÷ settledBets`); `null` sin liquidadas. */
+  averageStakeSettled: MoneyString | null;
   /** Monto apostado de las liquidadas (= `analysis.totalStaked`). */
   stakedSettled: MoneyString;
   /** Monto comprometido por las pendientes (suma de sus montos efectivos). */
@@ -136,9 +150,21 @@ export interface ReportTotals {
 export interface ReportBetTypeRow {
   betType: BetType;
   bets: number;
+  /** Liquidadas de ese tipo y sus cifras, del análisis filtrado por el tipo. */
+  settledBets: number;
+  totalStaked: MoneyString;
+  profitLoss: MoneyString;
   winRate: MoneyString | null;
   roi: MoneyString | null;
   yield: MoneyString | null;
+}
+
+/** Una operación destacada (mayor ganancia o mayor pérdida del periodo). */
+export interface ReportHighlight {
+  betId: string;
+  profitLoss: MoneyString;
+  label: string;
+  placedAt: string;
 }
 
 /** `GET /reports/data`: todo lo que pinta el panel y el PDF, con el mismo alcance. */
@@ -149,6 +175,8 @@ export interface ReportData {
   byBetType: ReportBetTypeRow[];
   /** Ganancia/pérdida acumulada de las liquidadas, en orden de liquidación. */
   cumulative: { index: number; settledAt: string; cumulative: MoneyString }[];
+  /** Mayor ganancia y mayor pérdida de las liquidadas (`null` si no hay ninguna de ese signo). */
+  highlights: { best: ReportHighlight | null; worst: ReportHighlight | null };
   bets: ReportBet[];
 }
 

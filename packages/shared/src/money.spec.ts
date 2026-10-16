@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  averageMoney,
   addMoney,
   compareMoney,
   formatPEN,
@@ -196,5 +197,14 @@ describe('normalizeMoneyInput (dinero de una fuente no confiable, p. ej. IA sobr
     expect(normalizeMoneyInput('S/')).toBeNull();
     expect(normalizeMoneyInput('S/10,72')).toBeNull(); // coma ambigua: no se adivina el separador
     expect(normalizeMoneyInput('USD 10.72')).toBeNull(); // otra moneda: no se asume que es soles
+  });
+});
+
+describe('averageMoney (§108.11)', () => {
+  it('media redondeada a 2 decimales; null sin elementos', () => {
+    expect(averageMoney('740.00', 30)).toBe('24.67');
+    expect(averageMoney('100.00', 4)).toBe('25.00');
+    expect(averageMoney('0.01', 2)).toBe('0.01');
+    expect(averageMoney('50.00', 0)).toBeNull();
   });
 });
