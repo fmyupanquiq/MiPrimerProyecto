@@ -1214,14 +1214,22 @@ export function NewBetForm({
     officialPotentialReturn.trim() !== '' && isMoneyString(officialPotentialReturn.trim())
       ? officialPotentialReturn.trim()
       : null;
-  const potentialValue = officialPotential ?? ifWon.returnValue;
-  const potentialNote = officialPotential
-    ? 'Oficial (ticket)'
-    : ifWon.returnValue !== null
-      ? totalOddsSource === 'CALCULATED'
-        ? 'Calculado · cuota de referencia'
-        : 'Calculado: monto × cuota'
-      : 'Sin datos suficientes';
+  // Una vez liquidada con un retorno oficial confirmado (ganancia ajustada a mano o desde el
+  // "Ganancias"/"Retorno" que ya muestra el ticket, §77), ya no hay nada "potencial" que calcular:
+  // esa es la cifra, y manda sobre cualquier estimación (regla crítica: lo oficial de la casa
+  // prevalece sobre lo calculado). Antes de liquidar, sigue siendo la del ticket o, a falta de
+  // ella, la vista previa "si gana" (`ifWon`).
+  const confirmedReturn = figures.officialRealizedReturn ?? null;
+  const potentialValue = confirmedReturn ?? officialPotential ?? ifWon.returnValue;
+  const potentialNote = confirmedReturn
+    ? 'Oficial'
+    : officialPotential
+      ? 'Oficial (ticket)'
+      : ifWon.returnValue !== null
+        ? totalOddsSource === 'CALCULATED'
+          ? 'Calculado · cuota de referencia'
+          : 'Calculado: monto × cuota'
+        : 'Sin datos suficientes';
   const oddsShown =
     visibleTotalOdds.trim() === ''
       ? '—'
@@ -1326,7 +1334,12 @@ export function NewBetForm({
         </span>
       ),
       // La misma cifra que la tarjeta superior; aquí solo su procedencia, en corto.
-      note: potentialValue === null ? undefined : officialPotential ? 'Oficial' : 'Calculado',
+      note:
+        potentialValue === null
+          ? undefined
+          : confirmedReturn || officialPotential
+            ? 'Oficial'
+            : 'Calculado',
     },
     { label: 'Resultado', value: resultPill },
     isManual

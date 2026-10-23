@@ -164,7 +164,11 @@ function Fact({
 }
 
 function figuresOf(bet: BetDetail) {
-  const potential = potentialReturnOf(bet);
+  // "Monto potencial" es la ÚNICA cifra de retorno que muestra esta tarjeta (a diferencia del
+  // ticket digital, que separa "potencial" de "realizado"): una vez liquidada con un retorno
+  // oficial confirmado (§77), esa es la cifra y manda sobre cualquier estimación (regla crítica:
+  // lo oficial de la casa prevalece sobre lo calculado), igual que en el asistente.
+  const potential = bet.officialRealizedReturn ?? potentialReturnOf(bet);
   return {
     amount: formatPEN(bet.effectiveAmount),
     amountNote: bet.amountSource === 'CONFIRMED' ? 'Oficial' : 'Calculado',
@@ -176,7 +180,10 @@ function figuresOf(bet: BetDetail) {
           ? 'Calculada'
           : 'Origen no verificado',
     potential: formatPEN(potential),
-    potentialNote: bet.officialPotentialReturn !== null ? 'Oficial' : 'Calculado',
+    potentialNote:
+      bet.officialRealizedReturn !== null || bet.officialPotentialReturn !== null
+        ? 'Oficial'
+        : 'Calculado',
   };
 }
 
