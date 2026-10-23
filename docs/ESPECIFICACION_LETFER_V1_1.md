@@ -3160,12 +3160,14 @@ queda `UNKNOWN` (nunca se marca oficial por suposición). En Múltiple/Creada la
 Cambiarla es documental: no altera importes, retornos, ganancias ni el ledger. `BetDetail.tickets` solo se
 devuelve a quien tiene `tickets.view`.
 
-**114.8 Asistente de registro (ADR 0024, rediseño 2026-10).** «Añadir apuesta» tiene tres pasos: Añadir apuesta
-(origen *Ticket con IA* o *Manual* y archivo; el análisis solo se ejecuta al pedirlo y el modo Manual nunca analiza),
-Verificar datos (todo editable; **solo «Confirmar apuesta» registra**) y Confirmar («Registro completado», de solo
-lectura, pintado con la respuesta del servidor). El resultado empieza sin definir. Los borradores son el
-estado del formulario, no apuestas: sin movimientos ni reserva de saldo, visibles solo para su dueño. El registro es
-idempotente por `clientRequestId`.
+**114.8 Asistente de registro (ADR 0024, rediseño 2026-10, corrección 2026-10-14).** «Añadir apuesta» tiene tres
+pasos: Añadir apuesta (origen *Ticket con IA* o *Manual* y archivo; el análisis solo se ejecuta al pedirlo y el modo
+Manual nunca analiza), Verificar datos (todo editable; «Continuar» solo avanza, **nunca registra**) y Confirmar
+(resumen de solo lectura de todo lo que se va a guardar; **solo «Registrar apuesta» registra**). Antes de registrar,
+el Paso 3 se pinta con el estado del formulario; si tiene éxito, el mismo paso pasa a mostrarse solo con la respuesta
+del servidor («Registro completado»). El resultado empieza sin definir. Los borradores son el estado del formulario,
+no apuestas: sin movimientos ni reserva de saldo, visibles solo para su dueño. El registro es idempotente por
+`clientRequestId`.
 
 **114.7 IA.** El contrato de extracción es jerárquico y compatible con las respuestas anteriores:
 `selections[]` son los legs; un leg creado lleva `conditions[]` (2 a 10, sin cuota propia; `selection` del leg

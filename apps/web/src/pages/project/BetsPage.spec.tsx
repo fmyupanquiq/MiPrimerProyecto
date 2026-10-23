@@ -22,6 +22,28 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+/*
+ * Asistente de tres pasos (ADR 0024, corrección 2026-10-14): el indicador de pasos nunca salta hacia
+ * adelante (solo un botón real avanza). El Paso 1 (Añadir apuesta) empieza en modo IA cuando se puede
+ * analizar: sin ticket, "Analizar y continuar" queda deshabilitado, así que las pruebas que llenan el
+ * formulario a mano (sin IA) pasan primero a Manual para poder avanzar con "Continuar a verificar
+ * datos". El Paso 2 (Verificar datos) solo avanza con "Continuar a confirmar" (nunca valida ni
+ * registra); el Paso 3 (Confirmar), antes de registrar, es el único punto que valida y registra, con
+ * "Registrar apuesta".
+ */
+const toManual = (form: HTMLElement) =>
+  fireEvent.click(within(form).getByRole('radio', { name: /^Manual/ }));
+/** Del Paso 1 al Paso 2 sin IA: pasa a Manual (si no lo está ya) y pulsa el botón real. */
+const goVerify = (form: HTMLElement) => {
+  toManual(form);
+  fireEvent.click(within(form).getByRole('button', { name: 'Continuar a verificar datos' }));
+};
+/** Del Paso 2 al Paso 3 (resumen previo, sin registrar) y "Registrar apuesta" (valida y registra). */
+const goRegister = (form: HTMLElement) => {
+  fireEvent.click(within(form).getByRole('button', { name: 'Continuar a confirmar' }));
+  fireEvent.click(within(form).getByRole('button', { name: 'Registrar apuesta' }));
+};
+
 const URL = `/projects/${PROJECT_ID}`;
 const BETS_URL = `${URL}/bets`;
 const HOUSES_URL = `${URL}/houses`;
@@ -211,8 +233,8 @@ describe('apuestas, selecciones y liquidaciones (§18-§27, §107)', () => {
     fireEvent.change(fieldFor(form, 'Cuota de la selección 1'), {
       target: { value: '1.95' },
     });
-    fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
-    fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
+    goVerify(form);
+    goRegister(form);
 
     expect(await screen.findByText('Apuesta registrada correctamente.')).toBeTruthy();
     const created = calls.find((c) => c.method === 'POST' && c.path === BETS_URL)!;
@@ -237,8 +259,8 @@ describe('apuestas, selecciones y liquidaciones (§18-§27, §107)', () => {
     renderApp(BETS_URL);
     fireEvent.click(await screen.findByRole('button', { name: 'Añadir apuesta' }));
     const form = screen.getByRole('form', { name: 'Añadir apuesta' });
-    fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
-    fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
+    goVerify(form);
+    goRegister(form);
     expect(await within(form).findByRole('alert')).toBeTruthy();
     expect(calls.filter((c) => c.method === 'POST')).toHaveLength(0);
   });
@@ -733,7 +755,8 @@ describe('tickets e IA en el formulario de apuesta (§28-§31, §110)', () => {
       });
       expect(fieldFor<HTMLInputElement>(form, 'Cuota total visible').value).toBe('4.77');
       fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
-      fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
+      fireEvent.click(within(form).getByRole('button', { name: 'Continuar a confirmar' }));
+      fireEvent.click(within(form).getByRole('button', { name: 'Registrar apuesta' }));
       await screen.findByRole('heading', { name: 'Registro completado' });
       const body = calls.find((c) => c.method === 'POST' && c.path === BETS_URL)!.body as {
         visibleTotalOdds: string;
@@ -824,7 +847,8 @@ describe('tickets e IA en el formulario de apuesta (§28-§31, §110)', () => {
 
       // Se registra con la estructura exacta: 4 legs, 5 filas, cuota 2.50 una vez, marcador en la 1.ª fila.
       fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
-      fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
+      fireEvent.click(within(form).getByRole('button', { name: 'Continuar a confirmar' }));
+      fireEvent.click(within(form).getByRole('button', { name: 'Registrar apuesta' }));
       await screen.findByRole('heading', { name: 'Registro completado' });
       const body = calls.find((c) => c.method === 'POST' && c.path === BETS_URL)!.body as {
         selections: {
@@ -928,7 +952,8 @@ describe('tickets e IA en el formulario de apuesta (§28-§31, §110)', () => {
 
       // Nunca bloquea el registro por falta de una cuota "obligatoria": se registra sin error.
       fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
-      fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
+      fireEvent.click(within(form).getByRole('button', { name: 'Continuar a confirmar' }));
+      fireEvent.click(within(form).getByRole('button', { name: 'Registrar apuesta' }));
       await screen.findByRole('heading', { name: 'Registro completado' });
       const body = calls.find((c) => c.method === 'POST' && c.path === BETS_URL)!.body as {
         visibleTotalOdds: string;
@@ -953,7 +978,8 @@ describe('tickets e IA en el formulario de apuesta (§28-§31, §110)', () => {
       ).toBeTruthy();
 
       fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
-      fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
+      fireEvent.click(within(form).getByRole('button', { name: 'Continuar a confirmar' }));
+      fireEvent.click(within(form).getByRole('button', { name: 'Registrar apuesta' }));
       await screen.findByText('Apuesta registrada correctamente.');
       const body = calls.find((c) => c.method === 'POST' && c.path === BETS_URL)!.body as {
         visibleTotalOdds: string;
@@ -1111,7 +1137,8 @@ describe('tickets e IA en el formulario de apuesta (§28-§31, §110)', () => {
       // El ticket no mostraba stake ni importe: la persona lo completa (nada se supone).
       fireEvent.change(fieldFor(form, 'Stake rápido'), { target: { value: '10' } });
       fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
-      fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
+      fireEvent.click(within(form).getByRole('button', { name: 'Continuar a confirmar' }));
+      fireEvent.click(within(form).getByRole('button', { name: 'Registrar apuesta' }));
       expect(await screen.findByText('Apuesta registrada correctamente.')).toBeTruthy();
       // `calls` ya trae la subida del ticket (previa, en `readTicket`): hay que buscar la del alta.
       const body = calls.find((c) => c.method === 'POST' && c.path === BETS_URL)!.body as {
@@ -1262,7 +1289,8 @@ describe('tickets e IA en el formulario de apuesta (§28-§31, §110)', () => {
       change(form, 'Monto apostado', '10.72');
       change(form, 'Cuota total visible', '1.86'); // el ticket no la mostraba: se completa a mano
       fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
-      fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
+      fireEvent.click(within(form).getByRole('button', { name: 'Continuar a confirmar' }));
+      fireEvent.click(within(form).getByRole('button', { name: 'Registrar apuesta' }));
       // Resultado "Perdida" → se registra ya liquidada, no la apuesta pendiente de siempre.
       await screen.findByRole('heading', { name: 'Registro completado' });
       expect(calls.some((c) => c.method === 'POST' && c.path === BETS_URL)).toBe(true);
@@ -1299,8 +1327,8 @@ describe('tickets e IA en el formulario de apuesta (§28-§31, §110)', () => {
     fireEvent.change(fieldFor(form, 'Cuota de la selección 1'), {
       target: { value: '1.95' },
     });
-    fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
-    fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
+    goVerify(form);
+    goRegister(form);
 
     expect(await screen.findByText('Apuesta registrada correctamente.')).toBeTruthy();
     const created = calls.find((c) => c.method === 'POST' && c.path === BETS_URL)!;
@@ -1533,8 +1561,8 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
       change(form, 'Partido', 'A vs B');
       change(form, 'Pronóstico de la selección 1', 'Gana A');
       change(form, 'Cuota de la selección 1', '1.95');
-      fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
-      fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
+      goVerify(form);
+      goRegister(form);
       expect(await within(form).findByText(/Indica el stake o el monto oficial/)).toBeTruthy();
       expect(calls.some((c) => c.method === 'POST')).toBe(false);
     });
@@ -1560,8 +1588,8 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
       change(form, 'Monto apostado', '10.00');
       expect(shown(form, 'Monto apostado calculado')).toBe('S/ 10.00');
       expect(within(form).getByText('Monto oficial indicado')).toBeTruthy();
-      fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
-      fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
+      goVerify(form);
+      goRegister(form);
       expect(await screen.findByText('Apuesta registrada correctamente.')).toBeTruthy();
       const body = calls.find((c) => c.method === 'POST')!.body as {
         stake: string;
@@ -1632,18 +1660,24 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
       ).toBe('step');
       expect(within(form).getByRole('region', { name: 'Origen del registro' })).toBeTruthy();
       expect(fieldFor(form, 'Sube tu ticket')).toBeTruthy();
-      expect(within(form).queryByRole('button', { name: 'Confirmar apuesta' })).toBeNull();
+      expect(within(form).queryByRole('button', { name: 'Registrar apuesta' })).toBeNull();
     });
 
-    it('el indicador y "Atrás" van y vuelven entre Añadir y Verificar; "Confirmar" solo se alcanza registrando', async () => {
+    it('el indicador nunca salta hacia adelante (avanzar necesita un botón real); "Atrás" vuelve a Añadir; "Confirmar" solo se alcanza con "Continuar a confirmar"', async () => {
       const { form } = await openForm();
       const current = (name: RegExp) =>
         within(form).getByRole('button', { name }).getAttribute('aria-current');
-      expect(within(form).queryByRole('button', { name: 'Confirmar apuesta' })).toBeNull();
+      expect(within(form).queryByRole('button', { name: 'Registrar apuesta' })).toBeNull();
+      // Un clic en el indicador "Verificar datos" no mueve nada: sigue en "Añadir apuesta".
       fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
+      expect(current(/Añadir apuesta/)).toBe('step');
+
+      // Avanzar de verdad pasa por un botón real (aquí, Manual, sin ticket).
+      goVerify(form);
       expect(current(/Verificar datos/)).toBe('step');
-      expect(within(form).getByRole('button', { name: 'Confirmar apuesta' })).toBeTruthy();
-      // "Confirmar" (Paso 3) no se puede elegir: a él solo se llega registrando.
+      // En "Verificar datos" todavía no existe "Registrar apuesta": hace falta "Continuar a confirmar".
+      expect(within(form).queryByRole('button', { name: 'Registrar apuesta' })).toBeNull();
+      // "Confirmar" (Paso 3) tampoco se elige con el indicador: solo retrocede, nunca avanza.
       const confirmStep = within(form).getByRole('button', { name: 'Confirmar' });
       expect((confirmStep as HTMLButtonElement).disabled).toBe(true);
       fireEvent.click(confirmStep);
@@ -1669,11 +1703,11 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
       expect(value('Stake')).toContain('Derivado del monto');
     });
 
-    it('el indicador deja ir y volver entre los Pasos 1 y 2 sin validar nada', async () => {
+    it('una vez en Verificar datos, el indicador deja volver a Añadir sin validar nada (nunca adelanta)', async () => {
       const { form } = await openForm();
       const current = (name: RegExp) =>
         within(form).getByRole('button', { name }).getAttribute('aria-current');
-      fireEvent.click(within(form).getByRole('button', { name: /Verificar datos/ }));
+      goVerify(form);
       expect(current(/Verificar datos/)).toBe('step');
       fireEvent.click(within(form).getByRole('button', { name: /Añadir apuesta/ }));
       expect(current(/Añadir apuesta/)).toBe('step');
@@ -1692,7 +1726,7 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
         within(form).getByRole('button', { name }).getAttribute('aria-current');
       expect(step(/Añadir apuesta/)).toBe('step');
       // También en el Paso 2 (Verificar datos): un envío accidental no registra.
-      fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
+      goVerify(form);
       fireEvent.submit(form);
       expect(step(/Verificar datos/)).toBe('step');
       expect(calls.some((c) => c.method === 'POST')).toBe(false);
@@ -1702,7 +1736,7 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
       const { form, calls } = await openForm({}, created);
       fillSimple(form, '1.95');
       closeLegDialog();
-      fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
+      goVerify(form);
       fireEvent.click(within(form).getByRole('button', { name: 'Atrás' }));
       expect(
         within(form)
@@ -1712,7 +1746,8 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
       expect(fieldFor<HTMLTextAreaElement>(form, 'Partido').value).toBe(
         'Arsenal vs Manchester City',
       );
-      fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
+      // El indicador no vuelve a adelantar: se avanza de nuevo con el botón real.
+      fireEvent.click(within(form).getByRole('button', { name: 'Continuar a verificar datos' }));
       expect(fieldFor<HTMLInputElement>(form, 'Cuota de la selección 1').value).toBe('1.95');
       expect(calls.some((c) => c.method === 'POST')).toBe(false);
     });
@@ -1720,8 +1755,9 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
     it('doble clic en "Registrar apuesta": un solo envío', async () => {
       const { form, calls } = await openForm({}, created);
       fillSimple(form);
-      fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
-      const register = within(form).getByRole('button', { name: 'Confirmar apuesta' });
+      goVerify(form);
+      fireEvent.click(within(form).getByRole('button', { name: 'Continuar a confirmar' }));
+      const register = within(form).getByRole('button', { name: 'Registrar apuesta' });
       fireEvent.click(register);
       fireEvent.click(register);
       expect(await screen.findByText('Apuesta registrada correctamente.')).toBeTruthy();
@@ -1748,8 +1784,8 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
     it('los campos de los tres pasos siguen formando una sola apuesta al registrar', async () => {
       const { form, calls } = await openForm({}, created);
       fillSimple(form);
-      fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
-      fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
+      goVerify(form);
+      goRegister(form);
       expect(await screen.findByText('Apuesta registrada correctamente.')).toBeTruthy();
       expect(calls.find((c) => c.method === 'POST' && c.path === BETS_URL)!.body).toMatchObject({
         houseId: HOUSE_A,
@@ -1807,8 +1843,8 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
     change(form, 'Partido', 'Arsenal vs Manchester City');
     change(form, 'Pronóstico de la selección 1', 'Gana Arsenal');
     change(form, 'Cuota de la selección 1', '1.52');
-    fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
-    fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
+    goVerify(form);
+    goRegister(form);
     expect(await within(form).findByText('Elige una casa.')).toBeTruthy();
     expect(calls.some((c) => c.method === 'POST')).toBe(false);
   });
@@ -1953,8 +1989,8 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
   it('nunca se envía stageId: la apuesta queda en la etapa activa que resuelve la API', async () => {
     const { form, calls } = await openForm({}, created);
     fillSimple(form);
-    fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
-    fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
+    goVerify(form);
+    goRegister(form);
     expect(await screen.findByText('Apuesta registrada correctamente.')).toBeTruthy();
     expect(calls.find((c) => c.method === 'POST')!.body).not.toHaveProperty('stageId');
   });
@@ -1962,8 +1998,8 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
   it('tras registrar, el aviso ofrece "Ver apuesta" hacia el detalle de la apuesta nueva', async () => {
     const { form } = await openForm({}, created);
     fillSimple(form);
-    fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
-    fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
+    goVerify(form);
+    goRegister(form);
     await screen.findByRole('heading', { name: 'Registro completado' });
     // El aviso de la página queda para cuando se cierra el asistente (no pide confirmación).
     fireEvent.click(within(form).getAllByRole('button', { name: 'Cerrar' })[0]!);
@@ -1990,8 +2026,8 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
     fillSimple(form);
     fireEvent.change(fieldFor(form, 'Stake rápido'), { target: { value: 'custom' } });
     change(form, 'Stake', '0');
-    fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
-    fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
+    goVerify(form);
+    goRegister(form);
     expect(await within(form).findByText(/stake válido/)).toBeTruthy();
     expect(calls.some((c) => c.method === 'POST')).toBe(false);
   });
@@ -2001,8 +2037,8 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
     fillSimple(form);
     fireEvent.change(fieldFor(form, 'Stake rápido'), { target: { value: 'custom' } });
     change(form, 'Stake', '6');
-    fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
-    fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
+    goVerify(form);
+    goRegister(form);
     expect(await screen.findByText('Apuesta registrada correctamente.')).toBeTruthy();
     const body = calls.find((c) => c.method === 'POST')!.body as Record<string, unknown>;
     expect(body).toMatchObject({
@@ -2033,8 +2069,8 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
     expect(input(form, 'Ganancia').value).toBe('31.20');
     expect(shown(form, 'Cuota resultante')).toBe('1.52');
     setSettledAt(form);
-    fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
-    fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
+    goVerify(form);
+    goRegister(form);
 
     expect(await screen.findByRole('heading', { name: 'Registro completado' })).toBeTruthy();
     const posts = calls.filter((c) => c.method === 'POST');
@@ -2062,8 +2098,8 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
     expect(shown(form, 'Cuota resultante')).toBe('1.567833');
     expect(within(form).getByText(/La casa muestra 1.56/)).toBeTruthy();
     setSettledAt(form);
-    fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
-    fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
+    goVerify(form);
+    goRegister(form);
 
     expect(await screen.findByRole('heading', { name: 'Registro completado' })).toBeTruthy();
     expect(calls.find((c) => c.method === 'POST')!.body).toMatchObject({
@@ -2099,8 +2135,8 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
     expect(shown(form, 'Ganancia calculada')).toBe('-S/ 60.00');
     expect(within(form).queryByLabelText('Ganancia')).toBeNull();
     setSettledAt(form);
-    fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
-    fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
+    goVerify(form);
+    goRegister(form);
     expect(await screen.findByRole('heading', { name: 'Registro completado' })).toBeTruthy();
     const body = calls.find((c) => c.method === 'POST')!.body as {
       settlement: Record<string, unknown>;
@@ -2121,8 +2157,8 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
     expect(within(form).queryByLabelText('Ganancia')).toBeNull();
     expect(within(form).queryByRole('textbox', { name: 'Ganancia' })).toBeNull();
     setSettledAt(form);
-    fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
-    fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
+    goVerify(form);
+    goRegister(form);
     expect(await screen.findByRole('heading', { name: 'Registro completado' })).toBeTruthy();
     const posts = calls.filter((c) => c.method === 'POST');
     expect(posts).toHaveLength(1); // sigue siendo alta y liquidación en una sola operación
@@ -2150,8 +2186,8 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
     // La etapa nunca se elige al registrar: siempre es la activa del proyecto.
     expect(within(form).queryByLabelText('Etapa')).toBeNull();
     fillSimple(form);
-    fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
-    fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
+    goVerify(form);
+    goRegister(form);
     expect(await screen.findByText('Apuesta registrada correctamente.')).toBeTruthy();
     const body = calls.find((c) => c.method === 'POST')!.body as Record<string, unknown>;
     expect(body).not.toHaveProperty('settlement');
@@ -2168,8 +2204,8 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
     change(form, 'Cuota total visible', '4.71');
     // Una cifra tecleada en una Múltiple/Creada no se asume oficial: se declara su procedencia.
     fireEvent.click(within(form).getByRole('button', { name: 'Oficial (la muestra la casa)' }));
-    fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
-    fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
+    goVerify(form);
+    goRegister(form);
     expect(await screen.findByText('Apuesta registrada correctamente.')).toBeTruthy();
     const body = calls.find((c) => c.method === 'POST')!.body as {
       visibleTotalOdds: string;
@@ -2197,8 +2233,8 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
       return stub;
     };
     const register = (form: HTMLElement) => {
-      fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
-      fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
+      goVerify(form);
+      goRegister(form);
     };
     const posted = (calls: { method: string; body?: unknown }[]) =>
       calls.find((c) => c.method === 'POST')?.body as
@@ -2238,8 +2274,8 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
       expect(within(summary).getByText('Cuota total').nextElementSibling!.textContent).toContain(
         'Calculada de referencia',
       );
-      fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
-      fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
+      goVerify(form);
+      goRegister(form);
       expect(await screen.findByText('Apuesta registrada correctamente.')).toBeTruthy();
       expect(posted(calls)).toMatchObject({
         visibleTotalOdds: '6.00',
@@ -2280,8 +2316,8 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
     change(form, 'Cuota total visible', '3.76');
     // Una cifra tecleada en una Múltiple/Creada no se asume oficial: se declara su procedencia.
     fireEvent.click(within(form).getByRole('button', { name: 'Oficial (la muestra la casa)' }));
-    fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
-    fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
+    goVerify(form);
+    goRegister(form);
     expect(await screen.findByText('Apuesta registrada correctamente.')).toBeTruthy();
     const body = calls.find((c) => c.method === 'POST')!.body as {
       selections: {
@@ -2339,8 +2375,8 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
     change(form, 'Cuota total visible', '2.50');
     // Una cifra tecleada en una Múltiple/Creada no se asume oficial: se declara su procedencia.
     fireEvent.click(within(form).getByRole('button', { name: 'Oficial (la muestra la casa)' }));
-    fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
-    fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
+    goVerify(form);
+    goRegister(form);
     expect(await screen.findByText('Apuesta registrada correctamente.')).toBeTruthy();
     const body = calls.find((c) => c.method === 'POST')!.body as {
       selections: { eventGroup: number; position: number; event: string }[];
@@ -2367,8 +2403,8 @@ describe('formulario "Añadir apuesta" (Fase 10.3)', () => {
     fireEvent.change(fieldFor(form, 'Stake rápido'), { target: { value: '10' } });
     // Una cifra tecleada en una Múltiple/Creada no se asume oficial: se declara su procedencia.
     fireEvent.click(within(form).getByRole('button', { name: 'Oficial (la muestra la casa)' }));
-    fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
-    fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
+    goVerify(form);
+    goRegister(form);
     expect(await screen.findByText('Apuesta registrada correctamente.')).toBeTruthy();
     const body = calls.find((c) => c.method === 'POST')!.body as {
       visibleTotalOdds: string;
@@ -2994,8 +3030,8 @@ describe('apuestas en la zona horaria del proyecto (§93, H-20)', () => {
       target: { value: '1.95' },
     });
     fireEvent.change(fieldFor(form, 'Stake rápido'), { target: { value: '10' } });
-    fireEvent.click(within(form).getByRole('button', { name: 'Verificar datos' }));
-    fireEvent.click(within(form).getByRole('button', { name: 'Confirmar apuesta' }));
+    goVerify(form);
+    goRegister(form);
     expect(await screen.findByText('Apuesta registrada correctamente.')).toBeTruthy();
     const created = calls.find((c) => c.method === 'POST' && c.path === BETS_URL)!;
     // 10:00 en Tokio (UTC+9) = 01:00 UTC.
