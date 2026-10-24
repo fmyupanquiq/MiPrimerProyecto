@@ -3,6 +3,7 @@ import type {
   AccountDeletionStatus,
   AdminUserDetail,
   AdminUserPage,
+  CreateAdminUserInput,
   DecideAccountDeletionInput,
   MyAccountDeletionState,
   SetUserStatusInput,
@@ -22,6 +23,8 @@ export const adminUsersApi = {
   list: (query: AdminUsersQuery = {}) =>
     apiFetch<AdminUserPage>(`/admin/users${toQueryString({ ...query })}`),
   get: (userId: string) => apiFetch<AdminUserDetail>(`/admin/users/${userId}`),
+  create: (input: CreateAdminUserInput) =>
+    apiFetch<AdminUserDetail>('/admin/users', { method: 'POST', body: input }),
   disable: (userId: string, input: SetUserStatusInput) =>
     apiFetch<AdminUserDetail>(`/admin/users/${userId}/disable`, { method: 'POST', body: input }),
   revokeSessions: (userId: string) =>

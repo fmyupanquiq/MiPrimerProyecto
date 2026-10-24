@@ -11,13 +11,7 @@ export function AuthLayout({ title, children }: { title: string; children: React
     <main className="flex min-h-screen w-full items-center justify-center px-4 py-10">
       <div className="flex w-full max-w-md flex-col gap-6">
         <header className="flex flex-col items-center gap-3 text-center">
-          <span
-            className="flex h-11 w-11 items-center justify-center rounded-xl bg-violet-600 text-lg font-bold text-white shadow-sm"
-            aria-hidden="true"
-          >
-            {SYSTEM_NAME.charAt(0)}
-          </span>
-          <p className="text-sm font-medium tracking-wide text-slate-500">{SYSTEM_NAME}</p>
+          <img src="/logo-wordmark.png" alt={SYSTEM_NAME} className="h-14 w-auto" />
           <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
         </header>
         <div className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-surface p-6 shadow-sm">

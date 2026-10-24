@@ -154,6 +154,14 @@ export const PERMISSIONS = {
     scope: 'GLOBAL',
     description: 'Deshabilitar, reactivar y cerrar las sesiones de un usuario',
   },
+  /**
+   * Crear una cuenta con una contraseña que elige quien la crea (ADR 0025), a diferencia del
+   * registro por invitación (§84, §105.7), donde la contraseña siempre la elige su propio dueño.
+   */
+  'system.users.create': {
+    scope: 'GLOBAL',
+    description: 'Crear una cuenta de usuario con correo y contraseña',
+  },
   'system.account_deletions.decide': {
     scope: 'GLOBAL',
     description: 'Aprobar o rechazar solicitudes de eliminación de cuenta',

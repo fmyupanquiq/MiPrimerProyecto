@@ -262,6 +262,7 @@ describe('matriz de roles de sistema (§105.2)', () => {
       'system.audit.view',
       'system.users.view',
       'system.users.manage',
+      'system.users.create',
       'system.account_deletions.decide',
       'system.maintenance.run',
     ] as const) {

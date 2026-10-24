@@ -11,6 +11,7 @@ const ADMIN = [
   'projects.create',
   'system.users.view',
   'system.users.manage',
+  'system.users.create',
   'system.account_deletions.decide',
 ];
 const BETO = '0195f7c0-0000-7000-8000-0000000000b1';
@@ -128,6 +129,124 @@ describe('usuarios (Administrador Global, §111.3)', () => {
     expect(await screen.findByText('No tienes permiso para ver los usuarios.')).toBeTruthy();
     expect(calls.some((call) => call.path.startsWith('/admin/users'))).toBe(false);
     expect(screen.queryByRole('link', { name: 'Usuarios' })).toBeNull();
+  });
+
+  it('sin el permiso de crear, el botón "Crear cuenta" no aparece', async () => {
+    open(
+      ADMIN.filter((p) => p !== 'system.users.create'),
+      {
+        'GET /admin/users?limit=25&offset=0': { status: 200, body: { total: 0, items: [] } },
+      },
+    );
+    renderApp('/admin/users');
+    await screen.findByText('No hay usuarios con esos filtros.');
+    expect(screen.queryByRole('button', { name: 'Crear cuenta' })).toBeNull();
+  });
+});
+
+describe('crear cuenta directamente (ADR 0025)', () => {
+  const openCreateForm = async () => {
+    fireEvent.click(await screen.findByRole('button', { name: 'Crear cuenta' }));
+    return screen.findByRole('form', { name: 'Crear cuenta' });
+  };
+  const fill = (form: HTMLElement) => {
+    fireEvent.change(within(form).getByLabelText('Nombre'), { target: { value: 'Carla' } });
+    fireEvent.change(within(form).getByLabelText('Apellido'), {
+      target: { value: 'Colaboradora' },
+    });
+    fireEvent.change(within(form).getByLabelText('Correo electrónico'), {
+      target: { value: 'carla@example.com' },
+    });
+    fireEvent.change(within(form).getByLabelText('Contraseña inicial'), {
+      target: { value: 'clave-de-prueba-2026' },
+    });
+    fireEvent.change(within(form).getByLabelText('Repite la contraseña'), {
+      target: { value: 'clave-de-prueba-2026' },
+    });
+  };
+
+  it('crea la cuenta con reautenticación, avisa y recarga la lista', async () => {
+    let reauthed = false;
+    const { calls } = open(ADMIN, {
+      'GET /admin/users?limit=25&offset=0': { status: 200, body: { total: 0, items: [] } },
+      'POST /admin/users': () =>
+        reauthed
+          ? {
+              status: 201,
+              body: userDetail({ id: 'nuevo', firstName: 'Carla', email: 'carla@example.com' }),
+            }
+          : apiError(403, 'REAUTH_REQUIRED'),
+      'POST /auth/reauth': () => {
+        reauthed = true;
+        return { status: 200, body: { reauthenticatedAt: '2026-06-01T12:00:00.000Z' } };
+      },
+    });
+    renderApp('/admin/users');
+    const form = await openCreateForm();
+    fill(form);
+    fireEvent.click(within(form).getByRole('button', { name: 'Crear cuenta' }));
+
+    const dialog = await screen.findByRole('dialog', { name: 'Confirma tu contraseña' });
+    fireEvent.change(within(dialog).getByLabelText('Contraseña actual'), {
+      target: { value: 'mi-clave-secreta' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Confirmar' }));
+
+    expect(await screen.findByText(/Cuenta creada para Carla/)).toBeTruthy();
+    expect(screen.queryByRole('form', { name: 'Crear cuenta' })).toBeNull();
+    const posts = calls.filter((call) => call.path === '/admin/users');
+    expect(posts).toHaveLength(2);
+    expect(posts[1]!.body).toEqual({
+      firstName: 'Carla',
+      lastName: 'Colaboradora',
+      email: 'carla@example.com',
+      password: 'clave-de-prueba-2026',
+    });
+    // La lista se recarga tras crear.
+    expect(calls.filter((call) => call.path === '/admin/users?limit=25&offset=0')).toHaveLength(2);
+  });
+
+  it('avisa si las contraseñas no coinciden, sin llegar a pedir la API', async () => {
+    const { calls } = open(ADMIN, {
+      'GET /admin/users?limit=25&offset=0': { status: 200, body: { total: 0, items: [] } },
+    });
+    renderApp('/admin/users');
+    const form = await openCreateForm();
+    fill(form);
+    fireEvent.change(within(form).getByLabelText('Repite la contraseña'), {
+      target: { value: 'otra-clave' },
+    });
+    fireEvent.click(within(form).getByRole('button', { name: 'Crear cuenta' }));
+    expect(await screen.findByText('Las contraseñas no coinciden.')).toBeTruthy();
+    expect(calls.some((call) => call.path === '/admin/users' && call.method === 'POST')).toBe(
+      false,
+    );
+  });
+
+  it('muestra el error del servidor (p. ej. correo ya usado) y deja el formulario abierto', async () => {
+    open(ADMIN, {
+      'GET /admin/users?limit=25&offset=0': { status: 200, body: { total: 0, items: [] } },
+      'POST /admin/users': apiError(409, 'EMAIL_IN_USE'),
+    });
+    renderApp('/admin/users');
+    const form = await openCreateForm();
+    fill(form);
+    fireEvent.click(within(form).getByRole('button', { name: 'Crear cuenta' }));
+    expect(await screen.findByText(/Ese correo ya tiene una cuenta/)).toBeTruthy();
+    expect(screen.getByRole('form', { name: 'Crear cuenta' })).toBeTruthy();
+  });
+
+  it('"Cancelar" cierra el formulario sin llamar a la API', async () => {
+    const { calls } = open(ADMIN, {
+      'GET /admin/users?limit=25&offset=0': { status: 200, body: { total: 0, items: [] } },
+    });
+    renderApp('/admin/users');
+    const form = await openCreateForm();
+    fireEvent.click(within(form).getByRole('button', { name: 'Cancelar' }));
+    expect(screen.queryByRole('form', { name: 'Crear cuenta' })).toBeNull();
+    expect(calls.some((call) => call.path === '/admin/users' && call.method === 'POST')).toBe(
+      false,
+    );
   });
 });
 
