@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { emailSchema, newPasswordSchema, personNameSchema } from './auth.js';
 import { USER_STATUSES, type UserStatus } from './user.js';
 
 /**
@@ -31,6 +32,20 @@ export const setUserStatusSchema = z.object({
   reason: z.string().trim().max(500).optional(),
 });
 export type SetUserStatusInput = z.infer<typeof setUserStatusSchema>;
+
+/**
+ * Crear una cuenta directamente, sin invitación (ADR 0025): exclusivo del Administrador Global
+ * (`system.users.create`). A diferencia del registro por invitación, la contraseña la escribe
+ * quien crea la cuenta, no su futuro dueño — por eso exige reautenticación reciente en la API.
+ * Nace con el rol global `USER`, igual que cualquier otra cuenta nueva (§105.1).
+ */
+export const createAdminUserSchema = z.object({
+  firstName: personNameSchema,
+  lastName: personNameSchema,
+  email: emailSchema,
+  password: newPasswordSchema,
+});
+export type CreateAdminUserInput = z.infer<typeof createAdminUserSchema>;
 
 export const requestAccountDeletionSchema = z.preprocess(
   (value) => value ?? {},

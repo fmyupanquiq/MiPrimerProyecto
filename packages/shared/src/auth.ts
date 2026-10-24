@@ -51,7 +51,7 @@ export const reauthSchema = z.object({
 });
 export type ReauthInput = z.infer<typeof reauthSchema>;
 
-const personNameSchema = z.string().trim().min(1).max(100);
+export const personNameSchema = z.string().trim().min(1).max(100);
 
 /**
  * Registro por invitación (§84, §105.7): sin cuenta, el enlace permite crearla (rol global USER).
