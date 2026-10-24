@@ -10,6 +10,7 @@ import {
   users,
   type UserRow,
 } from '../src/database/schema/index.js';
+import { roleIdByKey } from '../src/database/role-lookup.js';
 import {
   bodyOf,
   createTestApp,
@@ -163,6 +164,98 @@ describe('administración de usuarios (e2e, PostgreSQL real, §111.3, §111.4)',
         await get(actor, `/admin/users/${people.root.id}`).expect(403);
       }
       await request(ctx.server).get('/api/admin/users').expect(401);
+    });
+  });
+
+  describe('crear cuenta directamente (ADR 0025)', () => {
+    const colabInput = {
+      firstName: 'Carla',
+      lastName: 'Colaboradora',
+      email: 'carla@example.com',
+      password: TEST_PASSWORD,
+    };
+
+    it('crea la cuenta con la contraseña indicada, rol USER, y la auditoria sin la contraseña', async () => {
+      const response = await post('root', '/admin/users', colabInput).expect(201);
+      const detail = response.body as AdminUserDetail;
+      expect(detail).toMatchObject({
+        firstName: 'Carla',
+        lastName: 'Colaboradora',
+        email: 'carla@example.com',
+        status: 'ACTIVE',
+        globalRole: 'USER',
+      });
+      expect(JSON.stringify(response.body)).not.toContain('password');
+
+      // La contraseña indicada sirve para iniciar sesión de inmediato.
+      await login(ctx.server, colabInput.email, TEST_PASSWORD).expect(200);
+
+      const [log] = await ctx.t.db
+        .select()
+        .from(auditLogs)
+        .where(and(eq(auditLogs.action, 'admin.user.created'), eq(auditLogs.entityId, detail.id)));
+      expect(log).toMatchObject({
+        actorUserId: people.root.id,
+        newValues: { email: 'carla@example.com', globalRole: 'USER' },
+      });
+      expect(JSON.stringify(log!.newValues)).not.toContain(TEST_PASSWORD);
+    });
+
+    it('exige reautenticación reciente', async () => {
+      ctx.clock.advanceSeconds(6 * 60);
+      const response = await post('root', '/admin/users', colabInput).expect(403);
+      expect(bodyOf(response).code).toBe('REAUTH_REQUIRED');
+      expect(await ctx.t.db.select().from(users).where(eq(users.email, colabInput.email))).toEqual(
+        [],
+      );
+
+      await post('root', '/auth/reauth', { password: TEST_PASSWORD }).expect(200);
+      await post('root', '/admin/users', colabInput).expect(201);
+    });
+
+    it('rechaza un correo ya usado, una contraseña débil o datos faltantes', async () => {
+      const taken = await post('root', '/admin/users', {
+        ...colabInput,
+        email: people.owner.email,
+      }).expect(409);
+      expect(bodyOf(taken).code).toBe('EMAIL_IN_USE');
+
+      const weak = await post('root', '/admin/users', { ...colabInput, password: 'corta' }).expect(
+        400,
+      );
+      expect(bodyOf(weak).code).toBe('VALIDATION_FAILED');
+
+      // La contraseña no puede contener la parte local del correo (misma política que el registro).
+      const containsLocalPart = await post('root', '/admin/users', {
+        ...colabInput,
+        password: `carla-${TEST_PASSWORD}`,
+      }).expect(400);
+      expect(bodyOf(containsLocalPart).code).toBe('VALIDATION_FAILED');
+
+      await post('root', '/admin/users', { ...colabInput, email: 'no-es-un-correo' }).expect(400);
+      await post('root', '/admin/users', { firstName: 'Sin apellido ni correo' }).expect(400);
+    });
+
+    it('solo el Administrador Global puede crear cuentas', async () => {
+      for (const actor of ['owner', 'member', 'plain'] as const) {
+        await post(actor, '/admin/users', colabInput).expect(403);
+      }
+      await request(ctx.server).post('/api/admin/users').send(colabInput).expect(401);
+      expect(await ctx.t.db.select().from(users).where(eq(users.email, colabInput.email))).toEqual(
+        [],
+      );
+    });
+
+    it('la cuenta creada puede ser invitada a un proyecto como cualquier otra (no necesita token de registro)', async () => {
+      await post('root', '/admin/users', colabInput).expect(201);
+      const { project } = await insertProject(ctx.t.db, {
+        owner: people.owner,
+        name: 'Grupo Este',
+      });
+      const invited = await post('owner', `/projects/${project.id}/invitations`, {
+        roleId: await roleIdByKey(ctx.t.db, 'COLLABORATOR'),
+      }).expect(201);
+      expect((invited.body as { id: string }).id).toBeTruthy();
     });
   });
 

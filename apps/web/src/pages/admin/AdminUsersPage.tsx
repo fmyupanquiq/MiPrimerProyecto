@@ -1,8 +1,15 @@
-import { USER_STATUSES, type AdminUserSummary, type UserStatus } from '@letfer/shared';
+import {
+  USER_STATUSES,
+  type AdminUserDetail,
+  type AdminUserSummary,
+  type UserStatus,
+} from '@letfer/shared';
 import { type FormEvent, useState } from 'react';
 import { Link } from 'react-router';
 import { adminUsersApi } from '../../api/admin.js';
+import { describeApiError } from '../../api/errors.js';
 import { useAuth } from '../../auth/AuthContext.js';
+import { isReauthCancelled, useReauth } from '../../auth/ReauthContext.js';
 import { useLoad } from '../../hooks/useLoad.js';
 import { formatDate, roleLabel, USER_STATUS_LABELS } from '../../labels.js';
 import { Badge, btn, btnPrimary, inputClass, LoadingBlock, Notice, Section } from '../../ui.js';
@@ -25,8 +32,11 @@ export function AdminUsersPage() {
     status: '',
   });
   const [offset, setOffset] = useState(0);
+  const [creating, setCreating] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const allowed = can('system.users.view');
+  const canCreate = can('system.users.create');
   const users = useLoad(`admin-users:${applied.search}:${applied.status}:${offset}`, () =>
     allowed
       ? adminUsersApi.list({
@@ -51,7 +61,33 @@ export function AdminUsersPage() {
   const to = Math.min(offset + PAGE_SIZE, total);
 
   return (
-    <Section title="Usuarios">
+    <Section
+      title="Usuarios"
+      action={
+        canCreate &&
+        !creating && (
+          <button type="button" className={btnPrimary} onClick={() => setCreating(true)}>
+            Crear cuenta
+          </button>
+        )
+      }
+    >
+      {notice && <Notice tone="success">{notice}</Notice>}
+      {canCreate && creating && (
+        <CreateUserForm
+          onCancel={() => setCreating(false)}
+          onCreated={(created) => {
+            setCreating(false);
+            setNotice(
+              `Cuenta creada para ${created.firstName} ${created.lastName} (${created.email}). ` +
+                'Comunícale su correo y la contraseña que elegiste: ya puede iniciar sesión.',
+            );
+            setOffset(0);
+            setApplied({ search: '', status: '' });
+            users.reload();
+          }}
+        />
+      )}
       <form onSubmit={apply} className="grid gap-3 sm:grid-cols-3">
         <label className="flex flex-col gap-1 text-sm">
           Buscar por nombre o correo
@@ -121,6 +157,129 @@ export function AdminUsersPage() {
         </div>
       )}
     </Section>
+  );
+}
+
+/**
+ * Crear una cuenta directamente (ADR 0025): la contraseña la escribe el Administrador Global, no
+ * su futuro dueño (a diferencia del registro por invitación). Nace activa, rol `USER`; comunicarle
+ * el correo y la contraseña a la persona es responsabilidad de quien la crea, fuera de LetFer.
+ */
+function CreateUserForm({
+  onCreated,
+  onCancel,
+}: {
+  onCreated: (user: AdminUserDetail) => void;
+  onCancel: () => void;
+}) {
+  const runWithReauth = useReauth();
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [repeat, setRepeat] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError(null);
+    if (password !== repeat) {
+      setError('Las contraseñas no coinciden.');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const created = await runWithReauth(() =>
+        adminUsersApi.create({ firstName, lastName, email, password }),
+      );
+      onCreated(created);
+    } catch (caught) {
+      if (!isReauthCancelled(caught)) setError(describeApiError(caught));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <form
+      onSubmit={(event) => void onSubmit(event)}
+      aria-label="Crear cuenta"
+      className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-surface-2 p-4"
+      noValidate
+    >
+      <p className="text-sm text-slate-600">
+        Elige tú la contraseña inicial y comunícasela a la persona por fuera de LetFer (no se le
+        envía nada). Después podrás invitarla a un proyecto como a cualquier otro usuario.
+      </p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="flex flex-col gap-1 text-sm font-medium">
+          Nombre
+          <input
+            autoComplete="given-name"
+            value={firstName}
+            onChange={(event) => setFirstName(event.target.value)}
+            className={inputClass}
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-sm font-medium">
+          Apellido
+          <input
+            autoComplete="family-name"
+            value={lastName}
+            onChange={(event) => setLastName(event.target.value)}
+            className={inputClass}
+          />
+        </label>
+      </div>
+      <label className="flex flex-col gap-1 text-sm font-medium">
+        Correo electrónico
+        <input
+          type="email"
+          autoComplete="email"
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
+          className={inputClass}
+        />
+      </label>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="flex flex-col gap-1">
+          <label className="flex flex-col gap-1 text-sm font-medium">
+            Contraseña inicial
+            <input
+              type="password"
+              autoComplete="new-password"
+              aria-describedby="create-user-password-help"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              className={inputClass}
+            />
+          </label>
+          <span id="create-user-password-help" className="text-xs text-slate-500">
+            Entre 10 y 128 caracteres; no debe contener la parte local del correo.
+          </span>
+        </div>
+        <label className="flex flex-col gap-1 text-sm font-medium">
+          Repite la contraseña
+          <input
+            type="password"
+            autoComplete="new-password"
+            value={repeat}
+            onChange={(event) => setRepeat(event.target.value)}
+            className={inputClass}
+          />
+        </label>
+      </div>
+      {error && <Notice tone="error">{error}</Notice>}
+      <div className="flex gap-2">
+        <button type="submit" disabled={submitting} className={btnPrimary}>
+          {submitting ? 'Creando…' : 'Crear cuenta'}
+        </button>
+        <button type="button" className={btn} onClick={onCancel} disabled={submitting}>
+          Cancelar
+        </button>
+      </div>
+    </form>
   );
 }
 

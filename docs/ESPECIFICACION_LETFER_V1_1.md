@@ -3174,3 +3174,12 @@ no apuestas: sin movimientos ni reserva de saldo, visibles solo para su dueño. 
 no se usa), más `legScore`, `legResult`, `conditionStatus` y `externalReference` opcionales. El validador
 determinista rechaza estructuras imposibles (una sola condición, demasiadas, condición sin pronóstico,
 duplicadas, estado fuera de `WON|LOST|VOID|PENDING`); la IA propone y la persona confirma.
+
+**115. Creación directa de cuentas (ADR 0025).** El Administrador Global, además de invitar a un proyecto
+(§84, §105.7), puede crear una cuenta directamente con `system.users.create` (`POST /admin/users`): nombre,
+apellido, correo y una contraseña que **elige quien crea la cuenta**, no su futuro dueño (diferencia de fondo
+con el registro por invitación). Exige reautenticación reciente (§104.5), igual que deshabilitar una cuenta o
+revocar sus sesiones. Nace activa con el rol global `USER` (§105.1); nunca se crea ya como Administrador Global
+desde aquí. No hay contraseña temporal ni cambio obligatorio en el primer ingreso (límite conocido, D4 del ADR
+0025). La cuenta creada se invita a un proyecto exactamente igual que cualquier otra (inicia sesión y acepta el
+enlace); esta vía no sustituye a las invitaciones, las complementa.

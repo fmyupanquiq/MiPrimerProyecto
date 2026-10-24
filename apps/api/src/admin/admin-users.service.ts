@@ -1,14 +1,18 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
   ErrorCode,
+  normalizeEmail,
+  passwordPolicyIssues,
   type AdminUserDetail,
   type AdminUserPage,
   type AdminUserSummary,
+  type CreateAdminUserInput,
   type ListAdminUsersQuery,
   type SetUserStatusInput,
 } from '@letfer/shared';
 import { and, desc, eq, sql, type SQL } from 'drizzle-orm';
 import { AuditService } from '../audit/audit.service.js';
+import { PasswordHasher } from '../auth/password-hasher.js';
 import { AppError } from '../common/app-error.js';
 import { escapeLike } from '../common/sql-like.js';
 import { DATABASE } from '../database/database.constants.js';
@@ -23,10 +27,10 @@ import { AccountDeletionsService } from './account-deletions.service.js';
 const userNotFound = () => new AppError(404, ErrorCode.NOT_FOUND, 'Usuario no encontrado.');
 
 /**
- * Gestión de usuarios por el Administrador Global (§4.1, §8, §111.3): listar, consultar y
- * deshabilitar o reactivar cuentas. Nunca se elimina físicamente a nadie; la eliminación pasa por
- * una solicitud (`AccountDeletionsService`). Las reglas de protección viven en
- * `AccountProtectionService`.
+ * Gestión de usuarios por el Administrador Global (§4.1, §8, §111.3): listar, consultar, crear
+ * (ADR 0025) y deshabilitar o reactivar cuentas. Nunca se elimina físicamente a nadie; la
+ * eliminación pasa por una solicitud (`AccountDeletionsService`). Las reglas de protección viven
+ * en `AccountProtectionService`.
  */
 @Injectable()
 export class AdminUsersService {
@@ -37,7 +41,39 @@ export class AdminUsersService {
     private readonly sessions: SessionService,
     private readonly protection: AccountProtectionService,
     private readonly deletions: AccountDeletionsService,
+    private readonly hasher: PasswordHasher,
   ) {}
+
+  /**
+   * Crea una cuenta directamente (ADR 0025): la contraseña la elige quien la crea (el Administrador
+   * Global), no su futuro dueño — a diferencia del registro por invitación. Nace activa, con el rol
+   * global `USER` (§105.1); nunca se crea ya como Administrador Global desde aquí.
+   */
+  async create(actor: UserRow, input: CreateAdminUserInput): Promise<UserRow> {
+    const email = normalizeEmail(input.email);
+    const issues = passwordPolicyIssues(input.password, { email });
+    if (issues.length > 0) {
+      throw new AppError(400, ErrorCode.VALIDATION_FAILED, 'La contraseña no es válida.', {
+        details: issues.map((issue) => ({ path: 'password', message: issue.message })),
+      });
+    }
+    const passwordHash = await this.hasher.hash(input.password);
+
+    return this.db.transaction(async (tx) => {
+      const user = await this.users.create(
+        { firstName: input.firstName, lastName: input.lastName, email, passwordHash },
+        tx,
+      );
+      await this.audit.record(tx, {
+        action: 'admin.user.created',
+        entityType: 'user',
+        entityId: user.id,
+        actorUserId: actor.id,
+        newValues: { email: user.email, globalRole: 'USER' },
+      });
+      return user;
+    });
+  }
 
   async list(query: ListAdminUsersQuery): Promise<AdminUserPage> {
     const conditions: (SQL | undefined)[] = [];

@@ -129,6 +129,12 @@ cuerpo si ambos difieren. Si una regla debe cambiar: primero se actualiza la esp
   (`guard` + `assertCanDeactivate`): nunca el último Administrador Global activo
   (`LAST_GLOBAL_ADMIN`, con disparador en la base de datos) ni a quien es propietario de algún
   proyecto (`OWNS_PROJECTS`). El intento bloqueado se audita **fuera** de la transacción revertida.
+- **Creación directa de cuentas (ADR 0025)**: `POST /admin/users` (`system.users.create`, exclusivo del
+  Administrador Global) crea una cuenta activa con rol `USER`, reutilizando `UsersService.create` y la
+  política de contraseñas de siempre. A diferencia del registro por invitación, **la contraseña la elige
+  quien crea la cuenta**, no su futuro dueño: por eso exige `@RequireRecentAuth()`. Sin contraseña temporal
+  ni cambio obligatorio en el primer ingreso (fuera de alcance, límite conocido). No sustituye a las
+  invitaciones: la cuenta creada se invita a un proyecto igual que cualquier otra.
 - **Eliminación de cuenta**: solicitud (`account_deletion_requests`, una pendiente por usuario) →
   aprueba el Administrador Global con `@RequireRecentAuth()`; siempre borrado lógico.
 - **Papelera**: solo lectura + restaurar por los endpoints existentes; "elegible para purga" es

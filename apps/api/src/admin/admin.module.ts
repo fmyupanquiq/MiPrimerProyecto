@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AuthModule } from '../auth/auth.module.js';
 import { BackupsModule } from '../backups/backups.module.js';
 import { SessionsModule } from '../sessions/sessions.module.js';
 import { UsersModule } from '../users/users.module.js';
@@ -15,7 +16,7 @@ import { MaintenanceService } from './maintenance.service.js';
 
 /** Administración de la instancia (Fase 8, §111, ADR 0018). */
 @Module({
-  imports: [UsersModule, SessionsModule, BackupsModule],
+  imports: [UsersModule, SessionsModule, BackupsModule, AuthModule],
   controllers: [
     AdminUsersController,
     MyAccountDeletionController,

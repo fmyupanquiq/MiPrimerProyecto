@@ -1,9 +1,11 @@
 import { Body, Controller, Get, Header, HttpCode, Param, Post, Query } from '@nestjs/common';
 import {
+  createAdminUserSchema,
   listAdminUsersQuerySchema,
   setUserStatusSchema,
   type AdminUserDetail,
   type AdminUserPage,
+  type CreateAdminUserInput,
   type ListAdminUsersQuery,
   type SetUserStatusInput,
 } from '@letfer/shared';
@@ -34,6 +36,23 @@ export class AdminUsersController {
   @Header('Cache-Control', 'no-store')
   detail(@Param('userId') id: string): Promise<AdminUserDetail> {
     return this.adminUsers.detail(userId(id));
+  }
+
+  /**
+   * Crea una cuenta directamente, con la contraseña que escribe quien la crea (ADR 0025): exige
+   * reautenticación reciente, igual que deshabilitar o revocar sesiones de otra persona.
+   */
+  @Post()
+  @HttpCode(201)
+  @RequireGlobalPermission('system.users.create')
+  @RequireRecentAuth()
+  @Header('Cache-Control', 'no-store')
+  async create(
+    @CurrentAuth() auth: AuthContext,
+    @Body({ schema: createAdminUserSchema }) body: CreateAdminUserInput,
+  ): Promise<AdminUserDetail> {
+    const user = await this.adminUsers.create(auth.user, body);
+    return this.adminUsers.detail(user.id);
   }
 
   /**
