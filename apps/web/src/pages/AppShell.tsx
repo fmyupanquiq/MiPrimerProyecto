@@ -147,12 +147,7 @@ export function AppShell() {
               to="/"
               className="flex items-center gap-2 text-lg font-bold tracking-tight text-white"
             >
-              <span
-                className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-600 text-sm"
-                aria-hidden="true"
-              >
-                {SYSTEM_NAME.charAt(0)}
-              </span>
+              <img src="/logo-64.png" alt="" aria-hidden="true" className="h-8 w-8 shrink-0" />
               {SYSTEM_NAME}
             </Link>
             <button
