@@ -143,12 +143,8 @@ export function AppShell() {
           }`}
         >
           <div className="flex items-center justify-between px-5 py-5">
-            <Link
-              to="/"
-              className="flex items-center gap-2 text-lg font-bold tracking-tight text-white"
-            >
-              <img src="/logo-64.png" alt="" aria-hidden="true" className="h-8 w-8 shrink-0" />
-              {SYSTEM_NAME}
+            <Link to="/" className="flex items-center">
+              <img src="/logo-wordmark.png" alt={SYSTEM_NAME} className="h-9 w-auto" />
             </Link>
             <button
               type="button"
