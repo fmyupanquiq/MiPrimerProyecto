@@ -4,8 +4,7 @@ import {
   type DashboardAnalysis,
   type DashboardStatus,
 } from '@letfer/shared';
-import { useId, useMemo, type ReactNode } from 'react';
-import { Area, AreaChart, ResponsiveContainer, YAxis } from 'recharts';
+import { lazy, Suspense, type ReactNode } from 'react';
 import { formatPercent, signedPEN, signTone } from '../../../format.js';
 import { type GlossaryKey, Help } from '../../../glossary.js';
 import type { Loaded } from '../../../hooks/useLoad.js';
@@ -18,8 +17,6 @@ import {
   TrendIcon,
   WalletIcon,
 } from '../../../icons.js';
-import { zonedParts } from '../../../time-zone.js';
-import { CHART } from '../chart-theme.js';
 import { Skeleton } from './DashboardCard.js';
 
 type Tone = 'violet' | 'blue' | 'orange' | 'green' | 'red';
@@ -37,6 +34,11 @@ const VALUE_TONE = {
   negative: 'text-red-700',
   neutral: 'text-slate-900',
 } as const;
+
+// La curva decorativa usa Recharts: se descarga después de pintar el encabezado y las cifras (no ocupa sitio).
+const Sparkline = lazy(() =>
+  import('./Sparkline.js').then((module) => ({ default: module.Sparkline })),
+);
 
 const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
 
@@ -133,47 +135,6 @@ function MetricValue({
   );
 }
 
-/** Curva decorativa del capital detrás del contenido (la cifra real está en el gráfico). */
-function Sparkline({ bankroll }: { bankroll: BankrollChart | null }) {
-  const gradientId = useId();
-  const data = useMemo(() => {
-    // Solo para dibujar: el último saldo REAL de cada día (posición vertical), nunca un cálculo.
-    const byDay = new Map<string, number>();
-    for (const p of bankroll?.points ?? []) {
-      byDay.set(zonedParts(new Date(p.occurredAt)).date, Number(p.balance));
-    }
-    return [...byDay.values()].slice(-45).map((value) => ({ value }));
-  }, [bankroll]);
-  if (data.length < 2) return null;
-  return (
-    <div
-      aria-hidden="true"
-      className="pointer-events-none absolute top-2 right-[33rem] left-[38rem] hidden h-[5.25rem] [mask-image:linear-gradient(to_right,transparent,black_25%,black_85%,transparent)] @[82rem]:block"
-    >
-      <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={data} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
-          <defs>
-            <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={CHART.brand} stopOpacity={0.35} />
-              <stop offset="100%" stopColor={CHART.brand} stopOpacity={0} />
-            </linearGradient>
-          </defs>
-          <YAxis hide domain={['dataMin', 'dataMax']} />
-          <Area
-            type="linear"
-            dataKey="value"
-            stroke="#8b5cf6"
-            strokeWidth={2}
-            fill={`url(#${gradientId})`}
-            isAnimationActive={false}
-            dot={false}
-          />
-        </AreaChart>
-      </ResponsiveContainer>
-    </div>
-  );
-}
-
 /** ROI y Yield del rango, y el stake unitario de la etapa activa. */
 function RangeMetrics({
   range,
@@ -253,7 +214,9 @@ export function CapitalHero({
       aria-label="Estado financiero"
       className="relative overflow-hidden rounded-2xl border border-violet-200/70 bg-linear-to-r from-violet-50 via-surface to-surface shadow-sm"
     >
-      <Sparkline bankroll={bankroll.data} />
+      <Suspense fallback={null}>
+        <Sparkline bankroll={bankroll.data} />
+      </Suspense>
       <div className="relative flex flex-col gap-3.5 px-5 py-4">
         <div className="flex flex-col gap-4 @[72rem]:flex-row @[72rem]:items-center @[72rem]:justify-between">
           <div className="flex min-w-0 items-start gap-4">

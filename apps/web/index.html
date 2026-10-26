@@ -7,6 +7,20 @@
          viajar en la cabecera Referer hacia otros sitios. -->
     <meta name="referrer" content="no-referrer" />
     <title>LetFer</title>
+    <!-- Tema guardado (claro, oscuro o del sistema) aplicado antes del primer pintado. Es un archivo mínimo del
+         propio origen (la CSP no permite scripts en línea), con caché inmutable bajo /assets: tras la primera
+         visita no cuesta ninguna espera. Solo lee la preferencia; no la modifica. -->
+    <script src="/assets/theme-init.v1.js"></script>
+    <!-- Respaldo si ese archivo no llega: el tema oscuro es el predeterminado, así que el fondo ya es oscuro
+         (sin destello blanco). `style-src` de la CSP permite este bloque. -->
+    <style>
+      html:not([data-theme]) {
+        background-color: oklch(0.175 0.027 264);
+      }
+    </style>
+    <!-- La sesión se pide desde el primer instante, en paralelo con la descarga del JavaScript: cuando la
+         aplicación llama a `authApi.me()` (misma URL y credenciales) el navegador le entrega este resultado. -->
+    <link rel="preload" as="fetch" href="/api/auth/me" crossorigin />
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />

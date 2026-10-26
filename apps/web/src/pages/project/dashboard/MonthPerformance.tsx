@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { formatPercent, signedPEN, signTone } from '../../../format.js';
 import type { Loaded } from '../../../hooks/useLoad.js';
 import { CalendarIcon } from '../../../icons.js';
-import { CompactSelect } from './BetStatusDonut.js';
+import { CompactSelect } from './CompactSelect.js';
 import { CardError, DashboardCard, Skeleton } from './DashboardCard.js';
 import { monthLabel } from './date-range.js';
 

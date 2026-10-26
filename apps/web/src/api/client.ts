@@ -1,4 +1,5 @@
 import { ErrorCode, type ApiErrorBody } from '@letfer/shared';
+import { rawRequest, takeEarly } from './early.js';
 
 /** Error devuelto por la API con su forma uniforme (`code` estable). */
 export class ApiError extends Error {
@@ -35,35 +36,25 @@ function isApiErrorBody(value: unknown): value is ApiErrorBody {
  */
 export async function apiFetch<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { method = 'GET', body } = options;
-  const response = await fetch(`/api${path}`, {
-    method,
-    credentials: 'same-origin',
-    headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
+  // Si la web ya adelantó este mismo GET al arrancar (`early.ts`), se recoge ese resultado.
+  const early = method === 'GET' && body === undefined ? takeEarly(path) : null;
+  const result = await (early ?? rawRequest(path, { method, body }));
 
-  if (response.status === 204) return undefined as T;
+  if (result.status === 204) return undefined as T;
 
-  let payload: unknown;
-  try {
-    payload = await response.json();
-  } catch {
-    payload = undefined;
-  }
-
-  if (!response.ok) {
+  if (!result.ok) {
     throw new ApiError(
-      response.status,
-      isApiErrorBody(payload)
-        ? payload
+      result.status,
+      isApiErrorBody(result.payload)
+        ? result.payload
         : {
-            statusCode: response.status,
+            statusCode: result.status,
             code: ErrorCode.INTERNAL_ERROR,
             message: 'La respuesta del servidor no es válida.',
           },
     );
   }
-  return payload as T;
+  return result.payload as T;
 }
 
 /**

@@ -1,4 +1,5 @@
-import { SYSTEM_NAME } from '@letfer/shared';
+import { BrandLogo } from '../BrandLogo.js';
+import { prefetchRoute } from '../route-loaders.js';
 import { type ReactNode, useEffect, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router';
 import { useAuth } from '../auth/AuthContext.js';
@@ -63,7 +64,14 @@ export function SidebarLink({
   children: ReactNode;
 }) {
   return (
-    <NavLink to={to} end={end} className={sidebarLinkClass}>
+    <NavLink
+      to={to}
+      end={end}
+      className={sidebarLinkClass}
+      // Al apuntar o enfocar el enlace se adelanta la descarga de su pantalla (ver route-loaders.ts).
+      onPointerEnter={() => prefetchRoute(to)}
+      onFocus={() => prefetchRoute(to)}
+    >
       {icon}
       <span className="truncate">{children}</span>
     </NavLink>
@@ -126,7 +134,16 @@ export function AppShell() {
       >
         Saltar al contenido
       </a>
-      <div className="min-h-screen bg-slate-50 lg:flex">
+      <div
+        className="min-h-screen bg-slate-50 lg:flex"
+        // Tocar un enlace del menú cierra el cajón al instante: con las pantallas cargadas bajo demanda, la
+        // ruta puede tardar un momento en cambiar y no hay que esperar a ello para ocultar el menú.
+        onClick={(event) => {
+          if (drawerOpen && event.target instanceof Element && event.target.closest('a[href]')) {
+            setDrawerOpen(false);
+          }
+        }}
+      >
         {drawerOpen && (
           <button
             type="button"
@@ -144,7 +161,7 @@ export function AppShell() {
         >
           <div className="flex items-center justify-between px-5 py-5">
             <Link to="/" className="flex items-center">
-              <img src="/logo-wordmark.png" alt={SYSTEM_NAME} className="h-9 w-auto" />
+              <BrandLogo className="h-9 w-auto" />
             </Link>
             <button
               type="button"
@@ -236,7 +253,7 @@ export function AppShell() {
             id="main-content"
             // El Dashboard y Reportes (`data-page`) usan casi todo el ancho útil, como sus diseños de
             // referencia; el resto de pantallas conserva su ancho máximo de lectura.
-            className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-4 p-4 sm:p-6 has-[[data-page=dashboard]]:max-w-[110rem] has-[[data-page=reports]]:max-w-[110rem]"
+            className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-4 p-4 sm:p-6 has-[[data-page=dashboard]]:max-w-[110rem] has-[[data-page=reports]]:max-w-[110rem] has-[[data-page-loading=dashboard]]:max-w-[110rem] has-[[data-page-loading=reports]]:max-w-[110rem]"
           >
             <Outlet />
           </main>

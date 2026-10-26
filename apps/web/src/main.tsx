@@ -1,3 +1,4 @@
+import './early-start.js';
 import { configureSpanishValidationMessages } from '@letfer/shared';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';

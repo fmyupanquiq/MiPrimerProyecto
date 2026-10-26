@@ -16,6 +16,7 @@ import {
 } from 'react';
 import { authApi } from '../api/auth.js';
 import { ApiError } from '../api/client.js';
+import { clearEarly, rememberSession } from '../api/early.js';
 
 export type AuthStatus = 'loading' | 'authenticated' | 'anonymous';
 
@@ -44,12 +45,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(state.user);
     setPermissions(state.permissions);
     setStatus('authenticated');
+    rememberSession(true);
   }, []);
 
   const clear = useCallback(() => {
     setUser(null);
     setPermissions([]);
     setStatus('anonymous');
+    rememberSession(false);
+    clearEarly();
   }, []);
 
   useEffect(() => {
@@ -74,6 +78,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(
     async (input: LoginInput) => {
+      clearEarly(); // nada pedido con otra sesión puede sobrevivir a este inicio de sesión
       apply(await authApi.login(input));
     },
     [apply],
@@ -81,12 +86,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const register = useCallback(
     async (input: RegisterInput) => {
+      clearEarly();
       apply(await authApi.register(input));
     },
     [apply],
   );
 
   const logout = useCallback(async () => {
+    clearEarly();
     try {
       await authApi.logout();
     } finally {

@@ -1,4 +1,4 @@
-import { SYSTEM_NAME } from '@letfer/shared';
+import { BrandLogo } from '../BrandLogo.js';
 import type { ReactNode } from 'react';
 import { btn, btnPrimary, inputClass as fieldClass } from '../ui.js';
 
@@ -11,7 +11,7 @@ export function AuthLayout({ title, children }: { title: string; children: React
     <main className="flex min-h-screen w-full items-center justify-center px-4 py-10">
       <div className="flex w-full max-w-md flex-col gap-6">
         <header className="flex flex-col items-center gap-3 text-center">
-          <img src="/logo-wordmark.png" alt={SYSTEM_NAME} className="h-14 w-auto" />
+          <BrandLogo className="h-14 w-auto" priority />
           <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
         </header>
         <div className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-surface p-6 shadow-sm">

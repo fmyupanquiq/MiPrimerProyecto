@@ -1,50 +1,68 @@
-import { lazy, type ReactNode, Suspense } from 'react';
+import {
+  type ComponentType,
+  lazy,
+  type LazyExoticComponent,
+  type ReactNode,
+  Suspense,
+} from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router';
 import { AuthProvider, useAuth } from './auth/AuthContext.js';
 import { loginPathFor } from './auth/redirect.js';
 import { ReauthProvider } from './auth/ReauthContext.js';
-import { AdminPage } from './pages/AdminPage.js';
-import { AccountPage } from './pages/AccountPage.js';
-import { AdminAccountDeletionsPage } from './pages/admin/AdminAccountDeletionsPage.js';
-import { AdminAuditPage } from './pages/admin/AdminAuditPage.js';
 import { AdminLayout } from './pages/admin/AdminLayout.js';
-import { AdminProjectsPage } from './pages/admin/AdminProjectsPage.js';
-import { AdminUserDetailPage } from './pages/admin/AdminUserDetailPage.js';
-import { AdminUsersPage } from './pages/admin/AdminUsersPage.js';
 import { AppShell } from './pages/AppShell.js';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage.js';
 import { InvitePage } from './pages/InvitePage.js';
 import { LoginPage } from './pages/LoginPage.js';
 import { ProjectsPage } from './pages/ProjectsPage.js';
-import { ReturnsPage } from './pages/project/ReturnsPage.js';
-import { AuditPage } from './pages/project/AuditPage.js';
-import { BetDetailView } from './pages/project/BetDetailView.js';
-import { BetsPage } from './pages/project/BetsPage.js';
-import { FinancePage } from './pages/project/FinancePage.js';
-import { ImportBatchPage } from './pages/project/imports/ImportBatchPage.js';
-import { ImportsPage } from './pages/project/imports/ImportsPage.js';
-import { ImportUploadPage } from './pages/project/imports/ImportUploadPage.js';
-import { MembersPage } from './pages/project/MembersPage.js';
 import { ProjectLayout } from './pages/project/ProjectLayout.js';
-import { ProjectSetupPage } from './pages/project/ProjectSetupPage.js';
-import { SettingsPage } from './pages/project/SettingsPage.js';
-import { ProjectTrashPage } from './pages/project/TrashPage.js';
-import { StagesPage } from './pages/project/StagesPage.js';
 import { ResetPasswordPage } from './pages/ResetPasswordPage.js';
-import { TrashPage } from './pages/TrashPage.js';
+import * as loaders from './route-loaders.js';
 
-// Dashboard y Reportes usan Recharts: se cargan aparte para no engordar el paquete inicial.
-const DashboardPage = lazy(() =>
-  import('./pages/project/DashboardPage.js').then((module) => ({ default: module.DashboardPage })),
+/**
+ * Pantallas bajo demanda. Login, la lista de proyectos y el shell siguen en el paquete inicial; todo lo
+ * demás (Dashboard y Reportes con Recharts, el asistente de apuestas, importaciones, administración...)
+ * se descarga al entrar en esa sección, así que abrir el Login o el Dashboard no paga por ellas.
+ */
+function lazyNamed<Module, Name extends keyof Module>(
+  load: () => Promise<Module>,
+  name: Name,
+): LazyExoticComponent<ComponentType> {
+  return lazy(() => load().then((module) => ({ default: module[name] as ComponentType })));
+}
+
+const DashboardPage = lazyNamed(loaders.loadDashboardPage, 'DashboardPage');
+const ReportsPage = lazyNamed(loaders.loadReportsPage, 'ReportsPage');
+const BetsPage = lazyNamed(loaders.loadBetsPage, 'BetsPage');
+const BetDetailView = lazyNamed(loaders.loadBetDetailView, 'BetDetailView');
+const FinancePage = lazyNamed(loaders.loadFinancePage, 'FinancePage');
+const StagesPage = lazyNamed(loaders.loadStagesPage, 'StagesPage');
+const ReturnsPage = lazyNamed(loaders.loadReturnsPage, 'ReturnsPage');
+const MembersPage = lazyNamed(loaders.loadMembersPage, 'MembersPage');
+const SettingsPage = lazyNamed(loaders.loadSettingsPage, 'SettingsPage');
+const AuditPage = lazyNamed(loaders.loadAuditPage, 'AuditPage');
+const ProjectTrashPage = lazyNamed(loaders.loadProjectTrashPage, 'ProjectTrashPage');
+const ProjectSetupPage = lazyNamed(loaders.loadProjectSetupPage, 'ProjectSetupPage');
+const ImportsPage = lazyNamed(loaders.loadImportsPage, 'ImportsPage');
+const ImportUploadPage = lazyNamed(loaders.loadImportUploadPage, 'ImportUploadPage');
+const ImportBatchPage = lazyNamed(loaders.loadImportBatchPage, 'ImportBatchPage');
+const AccountPage = lazyNamed(loaders.loadAccountPage, 'AccountPage');
+const TrashPage = lazyNamed(loaders.loadTrashPage, 'TrashPage');
+const AdminPage = lazyNamed(loaders.loadAdminPage, 'AdminPage');
+const AdminAuditPage = lazyNamed(loaders.loadAdminAuditPage, 'AdminAuditPage');
+const AdminUsersPage = lazyNamed(loaders.loadAdminUsersPage, 'AdminUsersPage');
+const AdminUserDetailPage = lazyNamed(loaders.loadAdminUserDetailPage, 'AdminUserDetailPage');
+const AdminAccountDeletionsPage = lazyNamed(
+  loaders.loadAdminAccountDeletionsPage,
+  'AdminAccountDeletionsPage',
 );
-const ReportsPage = lazy(() =>
-  import('./pages/project/ReportsPage.js').then((module) => ({ default: module.ReportsPage })),
-);
+const AdminProjectsPage = lazyNamed(loaders.loadAdminProjectsPage, 'AdminProjectsPage');
 
 /** Mientras llega una página diferida: bloques grises, sin texto ni cifras provisionales. */
-function PageLoading() {
+function PageLoading({ page }: { page?: 'dashboard' | 'reports' }) {
   return (
-    <div className="flex flex-col gap-4" aria-busy="true">
+    // data-page-loading hace que el contenedor ya tenga el ancho de Dashboard/Reportes (sin salto al llegar).
+    <div className="flex flex-col gap-4" aria-busy="true" data-page-loading={page}>
       <p className="sr-only">Cargando…</p>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {[0, 1, 2, 3].map((index) => (
@@ -54,6 +72,11 @@ function PageLoading() {
       <div className="h-80 animate-pulse rounded-2xl bg-slate-200/70" />
     </div>
   );
+}
+
+/** Pantalla diferida con su marcador de carga discreto (el shell y la navegación siguen visibles). */
+function Page({ children, wide }: { children: ReactNode; wide?: 'dashboard' | 'reports' }) {
+  return <Suspense fallback={<PageLoading page={wide} />}>{children}</Suspense>;
 }
 
 /** Solo deja pasar a usuarios con sesión; si no, redirige al inicio de sesión y vuelve después. */
@@ -86,46 +109,193 @@ export function App() {
           }
         >
           <Route path="/" element={<ProjectsPage />} />
-          <Route path="/projects/trash" element={<TrashPage />} />
+          <Route
+            path="/projects/trash"
+            element={
+              <Page>
+                <TrashPage />
+              </Page>
+            }
+          />
           <Route path="/admin" element={<AdminLayout />}>
-            <Route index element={<AdminPage />} />
-            <Route path="audit" element={<AdminAuditPage />} />
-            <Route path="users" element={<AdminUsersPage />} />
-            <Route path="users/:userId" element={<AdminUserDetailPage />} />
-            <Route path="deletions" element={<AdminAccountDeletionsPage />} />
-            <Route path="projects" element={<AdminProjectsPage />} />
+            <Route
+              index
+              element={
+                <Page>
+                  <AdminPage />
+                </Page>
+              }
+            />
+            <Route
+              path="audit"
+              element={
+                <Page>
+                  <AdminAuditPage />
+                </Page>
+              }
+            />
+            <Route
+              path="users"
+              element={
+                <Page>
+                  <AdminUsersPage />
+                </Page>
+              }
+            />
+            <Route
+              path="users/:userId"
+              element={
+                <Page>
+                  <AdminUserDetailPage />
+                </Page>
+              }
+            />
+            <Route
+              path="deletions"
+              element={
+                <Page>
+                  <AdminAccountDeletionsPage />
+                </Page>
+              }
+            />
+            <Route
+              path="projects"
+              element={
+                <Page>
+                  <AdminProjectsPage />
+                </Page>
+              }
+            />
           </Route>
-          <Route path="/account" element={<AccountPage />} />
+          <Route
+            path="/account"
+            element={
+              <Page>
+                <AccountPage />
+              </Page>
+            }
+          />
           <Route path="/projects/:projectId" element={<ProjectLayout />}>
             <Route
               index
               element={
-                <Suspense fallback={<PageLoading />}>
+                <Page wide="dashboard">
                   <DashboardPage />
-                </Suspense>
+                </Page>
               }
             />
             <Route
               path="reports"
               element={
-                <Suspense fallback={<PageLoading />}>
+                <Page wide="reports">
                   <ReportsPage />
-                </Suspense>
+                </Page>
               }
             />
-            <Route path="setup" element={<ProjectSetupPage />} />
-            <Route path="stages" element={<StagesPage />} />
-            <Route path="finance" element={<FinancePage />} />
-            <Route path="bets" element={<BetsPage />} />
-            <Route path="bets/:betId" element={<BetDetailView />} />
-            <Route path="returns" element={<ReturnsPage />} />
-            <Route path="imports" element={<ImportsPage />} />
-            <Route path="imports/new" element={<ImportUploadPage />} />
-            <Route path="imports/:batchId" element={<ImportBatchPage />} />
-            <Route path="members" element={<MembersPage />} />
-            <Route path="audit" element={<AuditPage />} />
-            <Route path="trash" element={<ProjectTrashPage />} />
-            <Route path="settings" element={<SettingsPage />} />
+            <Route
+              path="setup"
+              element={
+                <Page>
+                  <ProjectSetupPage />
+                </Page>
+              }
+            />
+            <Route
+              path="stages"
+              element={
+                <Page>
+                  <StagesPage />
+                </Page>
+              }
+            />
+            <Route
+              path="finance"
+              element={
+                <Page>
+                  <FinancePage />
+                </Page>
+              }
+            />
+            <Route
+              path="bets"
+              element={
+                <Page>
+                  <BetsPage />
+                </Page>
+              }
+            />
+            <Route
+              path="bets/:betId"
+              element={
+                <Page>
+                  <BetDetailView />
+                </Page>
+              }
+            />
+            <Route
+              path="returns"
+              element={
+                <Page>
+                  <ReturnsPage />
+                </Page>
+              }
+            />
+            <Route
+              path="imports"
+              element={
+                <Page>
+                  <ImportsPage />
+                </Page>
+              }
+            />
+            <Route
+              path="imports/new"
+              element={
+                <Page>
+                  <ImportUploadPage />
+                </Page>
+              }
+            />
+            <Route
+              path="imports/:batchId"
+              element={
+                <Page>
+                  <ImportBatchPage />
+                </Page>
+              }
+            />
+            <Route
+              path="members"
+              element={
+                <Page>
+                  <MembersPage />
+                </Page>
+              }
+            />
+            <Route
+              path="audit"
+              element={
+                <Page>
+                  <AuditPage />
+                </Page>
+              }
+            />
+            <Route
+              path="trash"
+              element={
+                <Page>
+                  <ProjectTrashPage />
+                </Page>
+              }
+            />
+            <Route
+              path="settings"
+              element={
+                <Page>
+                  <SettingsPage />
+                </Page>
+              }
+            />
           </Route>
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />

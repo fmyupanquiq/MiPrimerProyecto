@@ -1,6 +1,7 @@
 import type { PermissionCode } from '@letfer/shared';
+import { useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Link, Outlet, useParams } from 'react-router';
+import { Link, Outlet, useLocation, useParams } from 'react-router';
 import { projectsApi } from '../../api/projects.js';
 import { useLoad } from '../../hooks/useLoad.js';
 import {
@@ -17,6 +18,7 @@ import {
   UsersIcon,
 } from '../../icons.js';
 import { roleLabel } from '../../labels.js';
+import { prefetchCommonRoutesWhenIdle } from '../../route-loaders.js';
 import { Notice, ProjectStatusBadge, btnPrimary } from '../../ui.js';
 import { SidebarLink } from '../AppShell.js';
 import { useShellSlots } from '../shell-slots.js';
@@ -32,10 +34,26 @@ export function ProjectLayout() {
   const { projectId = '' } = useParams();
   const slots = useShellSlots();
   const loaded = useLoad(`project:${projectId}`, () => projectsApi.get(projectId));
+  const { pathname } = useLocation();
+  const ready = loaded.data !== null;
+  useEffect(() => {
+    // Con el proyecto ya a la vista, el navegador descarga en reposo las secciones de uso diario.
+    if (ready) prefetchCommonRoutesWhenIdle(`/projects/${projectId}`);
+  }, [ready, projectId]);
 
   if (loaded.loading && !loaded.data) {
     return (
-      <div className="flex flex-col gap-3" aria-busy="true">
+      <div
+        className="flex flex-col gap-3"
+        aria-busy="true"
+        data-page-loading={
+          pathname.endsWith('/reports')
+            ? 'reports'
+            : pathname.split('/').length <= 3
+              ? 'dashboard'
+              : undefined
+        }
+      >
         <p className="sr-only">Cargando proyecto…</p>
         <div className="h-24 animate-pulse rounded-xl bg-slate-200/70" />
         <div className="h-64 animate-pulse rounded-xl bg-slate-200/70" />

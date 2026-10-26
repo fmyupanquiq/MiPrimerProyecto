@@ -4,11 +4,11 @@ import type {
   DashboardAnalysis,
   DashboardStatus,
 } from '@letfer/shared';
-import { useState, type ReactNode } from 'react';
-import { Cell, Pie, PieChart, ResponsiveContainer } from 'recharts';
+import { lazy, Suspense, useState } from 'react';
 import type { Loaded } from '../../../hooks/useLoad.js';
-import { ChevronDownIcon, DonutIcon, PlusIcon } from '../../../icons.js';
+import { DonutIcon, PlusIcon } from '../../../icons.js';
 import { DONUT_COLORS } from '../chart-theme.js';
+import { CompactSelect } from './CompactSelect.js';
 import { CardError, DashboardCard, PrimaryLink, Skeleton } from './DashboardCard.js';
 
 const ORDER: { status: BetStatus; key: keyof Omit<BetStatusCounts, 'total'>; label: string }[] = [
@@ -25,48 +25,10 @@ const share = (count: number, total: number) =>
 
 type Scope = 'ALL' | 'RANGE';
 
-/** Select compacto de la cabecera de una tarjeta. */
-export function CompactSelect<T extends string>({
-  value,
-  onChange,
-  options,
-  ariaLabel,
-  icon,
-}: {
-  value: T;
-  onChange: (value: T) => void;
-  options: readonly { value: T; label: string }[];
-  ariaLabel: string;
-  icon?: ReactNode;
-}) {
-  return (
-    <span className="relative inline-flex items-center">
-      {icon && (
-        <span className="pointer-events-none absolute left-2 text-slate-500" aria-hidden="true">
-          {icon}
-        </span>
-      )}
-      <select
-        aria-label={ariaLabel}
-        value={value}
-        onChange={(event) => onChange(event.target.value as T)}
-        className={`h-8 appearance-none rounded-lg border border-slate-200 bg-surface pr-6 text-[0.6875rem] font-medium text-slate-700 transition-colors hover:border-violet-300 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-violet-500 ${
-          icon ? 'pl-6' : 'pl-2.5'
-        }`}
-      >
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-      <ChevronDownIcon
-        className="pointer-events-none absolute right-1.5 h-3.5 w-3.5 text-slate-500"
-        aria-hidden="true"
-      />
-    </span>
-  );
-}
+// Recharts pesa más que el resto del Dashboard: el aro se descarga después de pintar las cifras.
+const DonutPlot = lazy(() =>
+  import('./DonutPlot.js').then((module) => ({ default: module.DonutPlot })),
+);
 
 /**
  * Estado de apuestas (§108.6): «Todo» usa los conteos de `/dashboard/status` (todo el proyecto) y
@@ -136,28 +98,9 @@ export function BetStatusDonut({
                       .join(', ')}`
               }
             >
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={empty ? [{ status: 'EMPTY', count: 1 }] : visible}
-                    dataKey="count"
-                    nameKey="status"
-                    innerRadius="76%"
-                    outerRadius="100%"
-                    startAngle={90}
-                    endAngle={-270}
-                    paddingAngle={visible.length > 1 ? 1.5 : 0}
-                    stroke="none"
-                    isAnimationActive={false}
-                  >
-                    {empty ? (
-                      <Cell fill="var(--color-slate-200)" />
-                    ) : (
-                      visible.map((r) => <Cell key={r.status} fill={DONUT_COLORS[r.status]} />)
-                    )}
-                  </Pie>
-                </PieChart>
-              </ResponsiveContainer>
+              <Suspense fallback={<Skeleton className="h-full w-full rounded-full" />}>
+                <DonutPlot empty={empty} visible={visible} />
+              </Suspense>
               <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
                 <span
                   className="text-3xl font-bold text-slate-900 tabular-nums"
