@@ -186,6 +186,16 @@ cuerpo si ambos difieren. Si una regla debe cambiar: primero se actualiza la esp
   secuencia crea funciones (`() => post(...)`), no objetos ya construidos. `truncateAll` también vacía
   `bet_corrections`.
 
+## Rendimiento de carga de la web (ADR 0027)
+
+- Las pantallas pesadas son `lazy` desde `route-loaders.ts`; no las importes de forma estática en `App.tsx`.
+  Recharts solo debe llegar por `CapitalPlot`/`DonutPlot`/`Sparkline` o por Reportes.
+- `api/early.ts` adelanta GET del Dashboard: un solo uso, ruta exacta, 15 s, descartado con `clearEarly()` al
+  iniciar/cerrar sesión o ante un 401. No amplíes la lista de rutas adelantadas sin pensar en autorización.
+- El tema se aplica con `public/assets/theme-init.v1.js` (espejo de `theme.tsx`; si cambia, nueva versión).
+- El logo es `BrandLogo` (WebP + PNG, 504×168). Producción tiene Cloudflare delante: el HTML público lleva su script
+  de analítica, así que nunca compares el `index.html` publicado byte a byte.
+
 ## Comandos (desde la raíz)
 
 - `npm run check`: formato, lint, tipos, pruebas y build (ejecútalo antes de dar algo por hecho).
